@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: next-todo-postgres
+    ports:
+      - '54321:5432' # 使用你配置的端口
+    volumes:
+      - ./backend/postgres.conf:/etc/postgresql/postgresql.conf:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+      - /tmp
+    environment:
+      POSTGRES_DB: next_todo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+
+  electric:
+    image: electricsql/electric
+    container_name: next-todo-electric
+    ports:
+      # We will use port 5133 for the client, as it is the default
+      # and less likely to conflict than 3000 (Next.js default).
+      - '5133:5133'
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/next_todo?sslmode=disable
+      # Not suitable for production. Only use insecure mode in development or if you've otherwise secured the Electric API.
+      # See https://electric-sql.com/docs/guides/security
+      ELECTRIC_INSECURE: true
+    depends_on:
+      - postgres
