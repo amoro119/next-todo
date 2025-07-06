@@ -15,8 +15,8 @@ export async function startSync(pg: PGliteWithExtensions) {
   
   try {
     // 首先彻底清理本地数据，避免主键冲突
-    console.log('Cleaning up local data to avoid conflicts...')
-    await cleanupLocalData(pg)
+    // console.log('Cleaning up local data to avoid conflicts...')
+    // await cleanupLocalData(pg)
     
     // 初始化ElectricSQL系统表
     console.log('Initializing ElectricSQL system tables...')

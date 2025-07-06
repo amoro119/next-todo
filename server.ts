@@ -76,52 +76,50 @@ async function applyTableChange(
 ): Promise<void> {
   const {
     id,
-    modified_columns: modified_columns_raw,
     new: isNew,
     deleted,
   } = change
-
-  const modified_columns = (modified_columns_raw as (keyof typeof change)[]) || [];
 
   if (deleted) {
     await sql`
       DELETE FROM ${sql(tableName)} WHERE id = ${id}::uuid
     `
-  } else if (isNew) {
-    // Remove local-only fields before insert
-    const { new: _n, deleted: _d, modified_columns: _mc, synced: _s, backup: _b, ...insertData } = change as any;
-    const columnsToInsert = Object.keys(insertData);
-    
-    // Use ON CONFLICT to handle duplicate keys
-    await sql`
-      INSERT INTO ${sql(tableName)} ${sql(insertData, ...columnsToInsert)}
-      ON CONFLICT (id) DO UPDATE SET
-        ${sql(insertData, ...columnsToInsert.filter(col => col !== 'id'))}
-    `
-  } else {
-    // Remove fields that shouldn't be updated
-    const { id: _id, new: _n, deleted: _d, modified_columns: _mc, synced: _s, backup: _b, ...updateData } = change as any;
-    
-    if (modified_columns.length > 0) {
-      // Add modified timestamp for lists table
-      if (tableName === 'lists') {
-        updateData.modified = new Date();
-      }
-      
-      const columnsToUpdate = modified_columns.filter(col => col in updateData);
-      
-      // For lists table, always include modified timestamp
-      if (tableName === 'lists' && !columnsToUpdate.includes('modified')) {
-        columnsToUpdate.push('modified');
-      }
+    return
+  }
 
-      if (columnsToUpdate.length > 0) {
-        await sql`
-          UPDATE ${sql(tableName)} 
-          SET ${sql(updateData, ...columnsToUpdate)}
-          WHERE id = ${id}::uuid
-        `
-      }
+  // Remove local-first fields for insertion/update
+  // The 'as any' is a concession to the different shapes of ListChange and TodoChange
+  const { new: _n, deleted: _d, modified_columns: _mc, ...data } = change as any;
+
+  if (isNew) {
+    // If it's a new record, we perform an "upsert".
+    // This makes the endpoint idempotent. If the client sends the same new
+    // record twice, the second one will update the existing record instead of failing.
+    const columns = Object.keys(data);
+    if (tableName === 'lists') {
+      data.modified = new Date();
+    }
+    
+    await sql`
+      INSERT INTO ${sql(tableName)} ${sql(data, ...columns)}
+      ON CONFLICT (id) DO UPDATE SET
+        ${sql(data, ...columns.filter(c => c !== 'id'))}
+    `;
+  } else {
+    // If it's an existing record, we update it.
+    // Also update the 'modified' timestamp for lists.
+    if (tableName === 'lists') {
+      data.modified = new Date();
+    }
+    
+    const columnsToUpdate = Object.keys(data).filter(c => c !== 'id');
+    
+    if (columnsToUpdate.length > 0) {
+      await sql`
+        UPDATE ${sql(tableName)}
+        SET ${sql(data, ...columnsToUpdate)}
+        WHERE id = ${id}::uuid
+      `
     }
   }
 }
