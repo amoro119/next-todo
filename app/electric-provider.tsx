@@ -48,6 +48,13 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
 
       setPg(db)
 
+      // 将 PGlite 实例暴露到 window 对象上，方便调试
+      if (typeof window !== 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).pg = db;
+        console.log('PGlite 实例已暴露到 window.pg');
+      }
+
       // 立即启动同步，不等待leader选举
       console.log('Starting sync immediately...')
       startSync(db)

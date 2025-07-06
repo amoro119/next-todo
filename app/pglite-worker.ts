@@ -9,8 +9,10 @@ import { migrate } from '../db/migrations-client'
  */
 worker({
   async init() {
+    // 在浏览器环境中，PGlite 会自动使用 IndexedDB 存储
     const pg = await PGlite.create({
       relaxedDurability: true,
+      // 不指定 dataDir，让 PGlite 自动使用 IndexedDB
     })
 
     // Check if the 'todos' table exists. If not, it's a fresh DB, so apply migrations.
