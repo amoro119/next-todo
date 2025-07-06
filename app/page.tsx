@@ -291,21 +291,23 @@ export default function TodoListPage() {
           created_time = EXCLUDED.created_time
       `;
 
-          // 暂时禁用手动推送，只依赖 ElectricSQL 自动同步
-    // try {
-    //   await sendChangesToServer({
-    //     lists: [],
-    //     todos: [createTodoChange(todoId, {
-    //       title: newTodoTitle.trim(),
-    //       list_id: listId,
-    //       due_date: dueDateUTC,
-    //       start_date: dueDateUTC,
-    //       created_time: createdTime,
-    //     }, true)]
-    //   });
-    // } catch (error) {
-    //   console.error('Failed to sync new todo:', error);
-    // }
+      // 重新启用手动推送，但添加延迟避免冲突
+      setTimeout(async () => {
+        try {
+          await sendChangesToServer({
+            lists: [],
+            todos: [createTodoChange(todoId, {
+              title: newTodoTitle.trim(),
+              list_id: listId,
+              due_date: dueDateUTC,
+              start_date: dueDateUTC,
+              created_time: createdTime,
+            }, true)]
+          });
+        } catch (error) {
+          console.error('Failed to sync new todo:', error);
+        }
+      }, 1000); // 延迟1秒推送
 
       setNewTodoTitle('');
       setNewTodoDate(null);
@@ -325,15 +327,17 @@ export default function TodoListPage() {
       const query = `UPDATE todos SET ${setClauses} WHERE id = $1`;
       await pg.query(query, params);
 
-      // 暂时禁用手动推送，只依赖 ElectricSQL 自动同步
-      // try {
-      //   await sendChangesToServer({
-      //     lists: [],
-      //     todos: [createTodoChange(todoId, updates)]
-      //   });
-      // } catch (error) {
-      //   console.error('Failed to sync todo update:', error);
-      // }
+      // 重新启用手动推送，但添加延迟避免冲突
+      setTimeout(async () => {
+        try {
+          await sendChangesToServer({
+            lists: [],
+            todos: [createTodoChange(todoId, updates)]
+          });
+        } catch (error) {
+          console.error('Failed to sync todo update:', error);
+        }
+      }, 1000); // 延迟1秒推送
   }, [pg]);
   
   const handleToggleComplete = async (todo: Todo) => {
@@ -416,19 +420,21 @@ export default function TodoListPage() {
           is_hidden = EXCLUDED.is_hidden
       `;
       
-      // 推送变化到服务器
-      try {
-        await sendChangesToServer({
-          lists: [createListChange(newList.id, {
-            name: newList.name,
-            sort_order: newList.sort_order,
-            is_hidden: newList.is_hidden,
-          }, true)],
-          todos: []
-        });
-      } catch (error) {
-        console.error('Failed to sync new list:', error);
-      }
+      // 重新启用手动推送，但添加延迟避免冲突
+      setTimeout(async () => {
+        try {
+          await sendChangesToServer({
+            lists: [createListChange(newList.id, {
+              name: newList.name,
+              sort_order: newList.sort_order,
+              is_hidden: newList.is_hidden,
+            }, true)],
+            todos: []
+          });
+        } catch (error) {
+          console.error('Failed to sync new list:', error);
+        }
+      }, 1000); // 延迟1秒推送
       
       return newList;
     } catch (error) {
@@ -546,18 +552,20 @@ export default function TodoListPage() {
     
     await pg.sql`UPDATE todos SET completed = TRUE, completed_time = ${newCompletedTime} WHERE id = ANY(${idsToUpdate}::uuid[])`;
 
-    // 推送变化到服务器
-    try {
-      await sendChangesToServer({
-        lists: [],
-        todos: todosToUpdate.map((t: Todo) => createTodoChange(t.id, {
-          completed: true,
-          completed_time: newCompletedTime
-        }))
-      });
-    } catch (error) {
-      console.error('Failed to sync batch completion:', error);
-    }
+    // 重新启用手动推送，但添加延迟避免冲突
+    setTimeout(async () => {
+      try {
+        await sendChangesToServer({
+          lists: [],
+          todos: todosToUpdate.map((t: Todo) => createTodoChange(t.id, {
+            completed: true,
+            completed_time: newCompletedTime
+          }))
+        });
+      } catch (error) {
+        console.error('Failed to sync batch completion:', error);
+      }
+    }, 1000); // 延迟1秒推送
   };
   
   const handleImport = async (file: File) => {

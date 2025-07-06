@@ -5,8 +5,6 @@ import { PGliteWithSync } from '@electric-sql/pglite-sync'
 import { postInitialSync } from '../db/migrations-client'
 import { useEffect, useState } from 'react'
 
-
-
 type SyncStatus = 'initial-sync' | 'done' | 'error'
 
 type PGliteWithExtensions = PGliteWithLive & PGliteWithSync
@@ -16,66 +14,85 @@ export async function startSync(pg: PGliteWithExtensions) {
   updateSyncStatus('initial-sync', 'Starting sync...')
   
   try {
-    // 首先初始化ElectricSQL系统表
+    // 首先彻底清理本地数据，避免主键冲突
+    console.log('Cleaning up local data to avoid conflicts...')
+    await cleanupLocalData(pg)
+    
+    // 初始化ElectricSQL系统表
     console.log('Initializing ElectricSQL system tables...')
     await initializeElectricSystemTables(pg)
     
-    // 重新启用清理过程
-    console.log('Re-enabling cleanup process...')
-    await cleanupSyncState(pg)
-    
-    // 使用简化的同步方法
-    await startSimpleSync(pg)
+    // 启动同步
+    console.log('Starting sync process...')
+    await startSyncToDatabase(pg)
   } catch (error) {
     console.error('Sync failed:', error)
     updateSyncStatus('error', '同步失败，但应用仍可使用')
   }
 }
 
+async function cleanupLocalData(pg: PGliteWithExtensions) {
+  try {
+    console.log('Cleaning up local data...')
+    
+    // 删除旧的同步订阅
+    try {
+      await pg.sync.deleteSubscription('lists')
+      await pg.sync.deleteSubscription('todos')
+      console.log('Deleted old sync subscriptions')
+    } catch (error) {
+      console.log('No old subscriptions to delete:', error)
+    }
+    
+    // 彻底清空所有表数据
+    try {
+      await pg.exec(`DELETE FROM todos;`)
+      await pg.exec(`DELETE FROM lists;`)
+      console.log('Cleared todos and lists tables')
+    } catch (e) {
+      console.log('Table cleanup error:', e)
+    }
+    
+    // 清理ElectricSQL系统表
+    try {
+      await pg.exec(`DELETE FROM electric.subscriptions_metadata;`)
+      await pg.exec(`DELETE FROM electric.migrations;`)
+      console.log('Cleaned up ElectricSQL system tables')
+    } catch (e) {
+      console.log('ElectricSQL system table cleanup:', e)
+    }
+    
+    console.log('Local data cleanup completed')
+    
+  } catch (error) {
+    console.log('Cleanup error:', error)
+  }
+}
+
 async function initializeElectricSystemTables(pg: PGliteWithExtensions) {
   console.log('Waiting for ElectricSQL to initialize system tables...')
   
-  // 等待一段时间让ElectricSQL初始化
+  // 等待ElectricSQL初始化
   await new Promise(resolve => setTimeout(resolve, 2000))
   
-  // 尝试创建一个简单的查询来触发ElectricSQL系统表初始化
   try {
     await pg.query('SELECT 1')
-    console.log('ElectricSQL system tables should be initialized')
+    console.log('ElectricSQL system tables initialized')
   } catch {
     console.log('ElectricSQL still initializing, continuing...')
   }
   
-  // 再等待一段时间确保系统表创建完成
   await new Promise(resolve => setTimeout(resolve, 1000))
 }
 
-async function startSimpleSync(pg: PGliteWithExtensions) {
-  console.log('Starting simple sync...')
-  
-  try {
-    // 重新启用实际的同步功能
-    console.log('Re-enabling server sync...')
-    await startSyncToDatabase(pg)
-    console.log('Server sync completed - application ready')
-  } catch (error) {
-    console.error('Simple sync error:', error)
-    updateSyncStatus('error', '同步失败，但应用仍可使用')
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function startSyncToDatabase(pg: PGliteWithExtensions) {
   const MAX_RETRIES = 3
-  
-  // 逐步启用同步：先同步 lists 表，再同步 todos 表
   const shapes = ['lists', 'todos']
   
   console.log('Starting sync for shapes:', shapes)
   
   const initialSyncPromises: Promise<void>[] = []
   let syncedShapes = 0
-  // 为每个 shape 单独跟踪同步状态
   const shapeSyncStatus = new Map<string, boolean>()
 
   shapes.forEach((shapeName) => {
@@ -88,19 +105,16 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
         try {
           console.log(`Attempting to sync ${shapeName} (attempt ${retryCount + 1})...`)
           
-          const timeoutPromise = new Promise<void>((_, reject) => {
-            setTimeout(() => reject(new Error(`Sync timeout for ${shapeName}`)), 15000) // 减少超时时间
-          })
-
           const ELECTRIC_URL = 'http://localhost:5133'
           console.log(`Setting up sync for ${shapeName} with URL: ${ELECTRIC_URL}/v1/shape`)
           
+          // 使用简化的同步配置，参考官方示例
           const syncPromise = pg.sync.syncShapeToTable({
             shape: {
               url: new URL(`${ELECTRIC_URL}/v1/shape`).toString(),
               params: { 
                 table: shapeName,
-                // 只同步服务端实际存在的字段
+                // 确保字段与服务端完全一致
                 columns: shapeName === 'lists' ? 
                   ['id', 'name', 'sort_order', 'is_hidden', 'modified'] :
                   ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
@@ -111,12 +125,10 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             shapeKey: shapeName,
             onInitialSync: async () => {
               console.log(`Initial sync completed for ${shapeName}`)
-              // 检查这个特定的 shape 是否已经同步过
               if (!shapeSyncStatus.get(shapeName)) {
                 shapeSyncStatus.set(shapeName, true)
                 syncedShapes++
                 
-                // 只在所有 shapes 都同步完成时才更新状态，避免重复日志
                 if (syncedShapes === shapes.length) {
                   updateSyncStatus('initial-sync', `Synced ${syncedShapes}/${shapes.length} data shapes...`)
                   
@@ -128,7 +140,6 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
                     console.log('All shapes synced and postInitialSync completed')
                   }
                 } else {
-                  // 只在调试模式下显示进度
                   console.log(`Progress: ${syncedShapes}/${shapes.length} shapes synced`)
                 }
               }
@@ -140,7 +151,11 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             }
           })
 
-          // 简化同步策略：只等待初始同步完成，不等待实时同步
+          // 等待同步完成，但设置合理的超时
+          const timeoutPromise = new Promise<void>((_, reject) => {
+            setTimeout(() => reject(new Error(`Sync timeout for ${shapeName}`)), 20000)
+          })
+
           const syncWithTimeout = Promise.race([
             syncPromise,
             timeoutPromise
@@ -151,7 +166,6 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             console.log(`Successfully synced ${shapeName}`)
             resolve()
           } catch (error) {
-            // 如果是超时，我们仍然认为同步成功
             if (error instanceof Error && error.message.includes('timeout')) {
               console.log(`Sync timeout for ${shapeName}, but initial sync should be complete - continuing...`)
               resolve()
@@ -163,41 +177,6 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
         } catch (error) {
           console.error(`${shapeName} sync error (attempt ${retryCount + 1}):`, error)
           
-          // 更详细的错误信息
-          let errorMessage = 'Unknown error'
-          let errorStack = undefined
-          let errorType = 'unknown'
-          
-          try {
-            if (error instanceof Error) {
-              errorMessage = error.message || 'Error without message'
-              errorStack = error.stack
-              errorType = 'Error'
-            } else if (typeof error === 'string') {
-              errorMessage = error
-              errorType = 'string'
-            } else if (error && typeof error === 'object') {
-              errorMessage = JSON.stringify(error) || 'Object error'
-              errorType = 'object'
-            } else {
-              errorMessage = String(error) || 'Unknown error type'
-              errorType = typeof error
-            }
-          } catch (stringifyError) {
-            errorMessage = 'Error while stringifying error: ' + String(stringifyError)
-          }
-          
-          const errorDetails = {
-            message: errorMessage,
-            stack: errorStack,
-            shapeName,
-            retryCount,
-            errorType,
-            originalError: error
-          }
-          console.error('Error details:', errorDetails)
-          
-          // 如果是must-refetch错误，直接重试
           if (error instanceof Error && error.message && error.message.includes('Must refetch')) {
             if (retryCount < MAX_RETRIES) {
               retryCount++
@@ -228,97 +207,11 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
   await Promise.all(initialSyncPromises)
   console.log('All shape sync promises completed')
   
-  await pg.query(`SELECT 1;`)
-  console.log('PGlite is idle')
-
   if (!initialSyncDone) {
     updateSyncStatus('done')
-    console.log('Sync to database completed (fallback)')
-  } else {
-    console.log('Sync to database completed (already set to done)')
+    console.log('Sync to database completed')
   }
 }
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function cleanupSyncState(pg: PGliteWithExtensions) {
-  try {
-    console.log('Cleaning up sync state...')
-    
-    // 先清理同步订阅，避免在删除表后查询
-    try {
-      await pg.sync.deleteSubscription('lists')
-      await pg.sync.deleteSubscription('todos')
-      await pg.sync.deleteSubscription('meta')
-      console.log('Deleted old sync subscriptions')
-    } catch (error) {
-      console.log('No old subscriptions to delete or error:', error instanceof Error ? error.message : String(error))
-    }
-    
-    // 等待一小段时间确保订阅删除完成
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // 彻底清空所有相关表，避免主键冲突
-    try {
-      // 先删除所有表的数据
-      await pg.exec(`TRUNCATE TABLE todos CASCADE;`)
-      await pg.exec(`TRUNCATE TABLE lists CASCADE;`)
-      console.log('Truncated todos and lists tables')
-      
-      // 重置序列（如果有的话）
-      try {
-        await pg.exec(`ALTER SEQUENCE IF EXISTS todos_id_seq RESTART WITH 1;`)
-        await pg.exec(`ALTER SEQUENCE IF EXISTS lists_id_seq RESTART WITH 1;`)
-        console.log('Reset sequences')
-      } catch (seqError) {
-        console.log('No sequences to reset:', seqError)
-      }
-      
-    } catch (e) {
-      console.log('Table cleanup error:', e)
-      // 如果 TRUNCATE 失败，尝试 DELETE
-      try {
-        await pg.exec(`DELETE FROM todos;`)
-        await pg.exec(`DELETE FROM lists;`)
-        console.log('Deleted todos and lists data as fallback')
-      } catch (deleteError) {
-        console.log('Delete fallback also failed:', deleteError)
-      }
-    }
-    
-    // 清理 meta 表和其他可能的表
-    try {
-      await pg.exec(`DELETE FROM meta WHERE key = 'slogan';`)
-      console.log('Cleaned up meta table')
-    } catch (e) {
-      console.log('Meta table cleanup:', e)
-    }
-    
-    // 清理 ElectricSQL 系统表（如果存在）
-    try {
-      await pg.exec(`DELETE FROM electric.subscriptions_metadata;`)
-      console.log('Cleaned up electric.subscriptions_metadata')
-    } catch (e) {
-      console.log('ElectricSQL system table cleanup:', e)
-    }
-    
-    try {
-      await pg.exec(`DELETE FROM electric.migrations;`)
-      console.log('Cleaned up electric.migrations')
-    } catch (e) {
-      console.log('ElectricSQL migrations cleanup:', e)
-    }
-    
-    console.log('Sync state cleanup completed')
-    
-    // 等待一小段时间确保清理完成
-    await new Promise(resolve => setTimeout(resolve, 200))
-    
-  } catch (error) {
-    console.log('Cleanup sync state:', error)
-  }
-}
-
-
 
 export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
   // Guard against SSR
