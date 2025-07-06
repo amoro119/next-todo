@@ -38,3 +38,66 @@ export const changeSetSchema = z.object({
   todos: z.array(todoChangeSchema),
 })
 export type ChangeSet = z.infer<typeof changeSetSchema>
+
+// 添加变化推送功能
+export async function sendChangesToServer(changes: ChangeSet): Promise<void> {
+  try {
+    console.log('Starting manual sync to server...');
+    
+    const response = await fetch('http://localhost:3001/apply-changes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(changes),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to send changes: ${response.status} ${errorText}`)
+    }
+
+    const result = await response.json()
+    if (!result.success) {
+      throw new Error('Server returned error')
+    }
+
+    console.log('Changes sent to server successfully')
+    
+  } catch (error) {
+    console.error('Failed to send changes to server:', error)
+    throw error
+  }
+}
+
+// 创建变化对象的工具函数
+export function createListChange(
+  id: string,
+  data: Partial<ListChange>,
+  isNew = false,
+  deleted = false
+): ListChange {
+  return {
+    id,
+    ...data,
+    new: isNew,
+    deleted,
+    modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'deleted' && key !== 'modified_columns') as (keyof ListChange)[],
+  }
+}
+
+export function createTodoChange(
+  id: string,
+  data: Partial<TodoChange>,
+  isNew = false,
+  deleted = false
+): TodoChange {
+  return {
+    id,
+    ...data,
+    new: isNew,
+    deleted,
+    modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'deleted' && key !== 'modified_columns') as (keyof TodoChange)[],
+  }
+}
+

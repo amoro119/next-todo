@@ -9,10 +9,10 @@ interface TodoDetailsModalProps {
   lists: List[];
   onClose: () => void;
   onSave: (updatedTodo: Todo) => void;
-  onDelete: (todoId: number) => void;
-  onUpdate: (todoId: number, updates: Partial<Todo>) => Promise<void>;
-  onRestore?: (todoId: number) => void;
-  onPermanentDelete?: (todoId: number) => void;
+  onDelete: (todoId: string) => void;
+  onUpdate: (todoId: string, updates: Partial<Todo>) => Promise<void>;
+  onRestore?: (todoId: string) => void;
+  onPermanentDelete?: (todoId: string) => void;
 }
 
 // Helper function: Convert UTC timestamp string to local date string (YYYY-MM-DD)
@@ -59,7 +59,7 @@ export default function TodoDetailsModal({
     onPermanentDelete
 }: TodoDetailsModalProps) {
   const [editableTodo, setEditableTodo] = useState<Todo>(todo);
-  const isRecycled = !!todo.removed;
+  const isRecycled = !!todo.deleted;
 
   const handleSave = () => {
     onSave(editableTodo);
@@ -99,7 +99,7 @@ export default function TodoDetailsModal({
     if (isRecycled) return;
     const isCompleted = !!editableTodo.completed;
     const updates = {
-      completed: isCompleted ? 0 : 1,
+      completed: !isCompleted,
       completed_time: isCompleted ? null : new Date().toISOString(),
     };
     setEditableTodo(prev => ({ ...prev, ...updates }));

@@ -137,7 +137,7 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
               console.log(`Must refetch for ${shapeName}, clearing table and retrying...`)
               await tx.query(`DELETE FROM ${shapeName}`)
               throw new Error(`Must refetch for ${shapeName}`)
-            },
+            }
           })
 
           // 简化同步策略：只等待初始同步完成，不等待实时同步
@@ -257,32 +257,55 @@ async function cleanupSyncState(pg: PGliteWithExtensions) {
     // 等待一小段时间确保订阅删除完成
     await new Promise(resolve => setTimeout(resolve, 100))
     
-    // 检查是否有数据冲突，如果有则清空表
+    // 彻底清空所有相关表，避免主键冲突
     try {
-      const listsCount = await pg.query('SELECT COUNT(*) as count FROM lists;')
-      const todosCount = await pg.query('SELECT COUNT(*) as count FROM todos;')
+      // 先删除所有表的数据
+      await pg.exec(`TRUNCATE TABLE todos CASCADE;`)
+      await pg.exec(`TRUNCATE TABLE lists CASCADE;`)
+      console.log('Truncated todos and lists tables')
       
-      console.log(`Current data: lists=${(listsCount.rows[0] as { count: string }).count}, todos=${(todosCount.rows[0] as { count: string }).count}`)
-      
-      // 如果本地有数据，清空以避免主键冲突
-      if (parseInt((listsCount.rows[0] as { count: string }).count) > 0) {
-        await pg.exec(`DELETE FROM lists;`)
-        console.log('Cleaned up lists table')
+      // 重置序列（如果有的话）
+      try {
+        await pg.exec(`ALTER SEQUENCE IF EXISTS todos_id_seq RESTART WITH 1;`)
+        await pg.exec(`ALTER SEQUENCE IF EXISTS lists_id_seq RESTART WITH 1;`)
+        console.log('Reset sequences')
+      } catch (seqError) {
+        console.log('No sequences to reset:', seqError)
       }
       
-      if (parseInt((todosCount.rows[0] as { count: string }).count) > 0) {
-        await pg.exec(`DELETE FROM todos;`)
-        console.log('Cleaned up todos table')
-      }
     } catch (e) {
-      console.log('Table cleanup:', e)
+      console.log('Table cleanup error:', e)
+      // 如果 TRUNCATE 失败，尝试 DELETE
+      try {
+        await pg.exec(`DELETE FROM todos;`)
+        await pg.exec(`DELETE FROM lists;`)
+        console.log('Deleted todos and lists data as fallback')
+      } catch (deleteError) {
+        console.log('Delete fallback also failed:', deleteError)
+      }
     }
     
+    // 清理 meta 表和其他可能的表
     try {
       await pg.exec(`DELETE FROM meta WHERE key = 'slogan';`)
       console.log('Cleaned up meta table')
     } catch (e) {
       console.log('Meta table cleanup:', e)
+    }
+    
+    // 清理 ElectricSQL 系统表（如果存在）
+    try {
+      await pg.exec(`DELETE FROM electric.subscriptions_metadata;`)
+      console.log('Cleaned up electric.subscriptions_metadata')
+    } catch (e) {
+      console.log('ElectricSQL system table cleanup:', e)
+    }
+    
+    try {
+      await pg.exec(`DELETE FROM electric.migrations;`)
+      console.log('Cleaned up electric.migrations')
+    } catch (e) {
+      console.log('ElectricSQL migrations cleanup:', e)
     }
     
     console.log('Sync state cleanup completed')
