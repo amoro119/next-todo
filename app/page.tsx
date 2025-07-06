@@ -226,17 +226,7 @@ export default function TodoListPage() {
     return { displayTodos: [], uncompletedCount: 0 };
   }, [currentView, recycledTodos, todayTodos, inboxTodos, uncompletedTodosByListId, listNameToIdMap]);
 
-  // 调试信息 - 在 displayTodos 定义之后打印
-  console.log('=== 调试信息 ===');
-  console.log('todosQuery:', todosQuery);
-  console.log('todosQuery.rows:', todosQuery?.rows);
-  console.log('todosQuery.fields:', todosQuery?.fields);
-  console.log('todos:', todos);
-  console.log('activeTodos:', activeTodos);
-  console.log('inboxTodos:', inboxTodos);
-  console.log('todayTodos:', todayTodos);
-  console.log('currentView:', currentView);
-  console.log('displayTodos:', displayTodos);
+
 
   const inboxCount = useMemo(() => inboxTodos.length, [inboxTodos]);
   

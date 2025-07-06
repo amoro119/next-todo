@@ -10,7 +10,6 @@ import { migrate } from '../db/migrations-client'
 worker({
   async init() {
     const pg = await PGlite.create({
-      dataDir: 'idb://next-todo-localfirst-db',
       relaxedDurability: true,
     })
 
