@@ -44,4 +44,4 @@ pnpm-debug.log*
 *.sqlite
 *.sql
 
-pgdata/
+file:local.db/

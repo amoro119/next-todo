@@ -3,7 +3,7 @@ export interface Todo {
   id: string;
   title: string;
   completed: boolean;
-  deleted: boolean; // was 'removed'
+  deleted: boolean;
   sort_order: number;
   due_date: string | null;
   content: string | null;
@@ -21,4 +21,5 @@ export interface List {
   name: string;
   sort_order: number;
   is_hidden: boolean;
+  modified?: string; // Service-side field
 }

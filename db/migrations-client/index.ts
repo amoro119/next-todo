@@ -7,10 +7,5 @@ export async function migrate(db: PGlite) {
 }
 
 export async function postInitialSync(db: PGlite) {
-  console.log('Applying post-initial-sync migrations (enabling triggers)...')
-  await db.exec(`
-    ALTER TABLE lists ENABLE TRIGGER ALL;
-    ALTER TABLE todos ENABLE TRIGGER ALL;
-  `)
-  console.log('Triggers enabled.')
+  console.log('Post-initial-sync migrations completed (no triggers to enable)')
 }

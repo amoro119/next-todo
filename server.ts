@@ -80,25 +80,48 @@ async function applyTableChange(
     new: isNew,
     deleted,
   } = change
-  const modified_columns = modified_columns_raw as (keyof typeof change)[]
+
+  const modified_columns = (modified_columns_raw as (keyof typeof change)[]) || [];
 
   if (deleted) {
     await sql`
-      DELETE FROM ${sql(tableName)} WHERE id = ${id}
+      DELETE FROM ${sql(tableName)} WHERE id = ${id}::uuid
     `
   } else if (isNew) {
+    // Remove local-only fields before insert
+    const { new: _n, deleted: _d, modified_columns: _mc, synced: _s, backup: _b, ...insertData } = change as any;
+    const columnsToInsert = Object.keys(insertData);
+    
+    // Use ON CONFLICT to handle duplicate keys
     await sql`
-      INSERT INTO ${sql(tableName)} ${sql(change, 'id', ...modified_columns)}
+      INSERT INTO ${sql(tableName)} ${sql(insertData, ...columnsToInsert)}
+      ON CONFLICT (id) DO UPDATE SET
+        ${sql(insertData, ...columnsToInsert.filter(col => col !== 'id'))}
     `
   } else {
-    // We remove modified_columns from the change object so it doesn't try to update it.
-    // The server-side table doesn't have this column.
-    const { modified_columns: _mc, new: _n, deleted: _d, ...updateData } = change
+    // Remove fields that shouldn't be updated
+    const { id: _id, new: _n, deleted: _d, modified_columns: _mc, synced: _s, backup: _b, ...updateData } = change as any;
     
-    await sql`
-      UPDATE ${sql(tableName)} 
-      SET ${sql(updateData, ...modified_columns)}
-      WHERE id = ${id}
-    `
+    if (modified_columns.length > 0) {
+      // Add modified timestamp for lists table
+      if (tableName === 'lists') {
+        updateData.modified = new Date();
+      }
+      
+      const columnsToUpdate = modified_columns.filter(col => col in updateData);
+      
+      // For lists table, always include modified timestamp
+      if (tableName === 'lists' && !columnsToUpdate.includes('modified')) {
+        columnsToUpdate.push('modified');
+      }
+
+      if (columnsToUpdate.length > 0) {
+        await sql`
+          UPDATE ${sql(tableName)} 
+          SET ${sql(updateData, ...columnsToUpdate)}
+          WHERE id = ${id}::uuid
+        `
+      }
+    }
   }
 }

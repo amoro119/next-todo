@@ -4,8 +4,8 @@
   "private": true,
   "main": "main.js",
   "scripts": {
-    "dev": "concurrently \"npm:backend:up\" \"npm:write-server\" \"npm:next:dev\" ",
-    "electron2:dev": "concurrently \"npm:backend:up\" \"npm:write-server\" \"npm:next:dev\" \"npm:electron:dev\"",
+    "dev": "npm run backend:up && concurrently -k \"npm:write-server\" \"npm:next:dev\"",
+    "electron2:dev": "npm run backend:up && concurrently -k \"npm:write-server\" \"npm:next:dev\" \"npm:electron:dev\"",
     "next:dev": "next dev -p 3000",
     "electron:dev": "wait-on http://localhost:3000 && electron .",
     "build": "npm run next:build && npm run prepare:electron && npm run electron:build",

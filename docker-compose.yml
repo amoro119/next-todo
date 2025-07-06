@@ -22,13 +22,22 @@ services:
     image: electricsql/electric
     container_name: next-todo-electric
     ports:
-      # We will use port 5133 for the client, as it is the default
-      # and less likely to conflict than 3000 (Next.js default).
-      - '5133:5133'
+      # ElectricSQL runs on port 3000 inside the container
+      - 5133:3000
     environment:
       DATABASE_URL: postgresql://postgres:password@postgres:5432/next_todo?sslmode=disable
       # Not suitable for production. Only use insecure mode in development or if you've otherwise secured the Electric API.
       # See https://electric-sql.com/docs/guides/security
       ELECTRIC_INSECURE: true
+      # Performance optimizations
+      ELECTRIC_DEBUG: true
+      ELECTRIC_USAGE_REPORTING: false
+      # Additional performance settings
+      ELECTRIC_LOG_LEVEL: debug
+      ELECTRIC_MAX_CONNECTIONS: 10
+      ELECTRIC_POOL_SIZE: 5
+      # Timeout and performance settings
+      ELECTRIC_SYNC_TIMEOUT: 5000
+      ELECTRIC_WAL_TIMEOUT: 3000
     depends_on:
       - postgres

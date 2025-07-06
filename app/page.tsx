@@ -39,6 +39,7 @@ const utcToLocalDateString = (utcDate: string | null | undefined): string => {
     return '';
   }
 };
+
 const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | null => {
   if (!localDate || !/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return null;
   try {
@@ -48,6 +49,25 @@ const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | 
     console.error("Error converting date to UTC:", localDate, e);
     return null;
   }
+};
+
+// 添加类型转换函数
+const normalizeTodo = (raw: Record<string, unknown>): Todo => {
+  return {
+    ...raw,
+    completed: raw.completed === true || raw.completed === 'true' || raw.completed === 1 || raw.completed === '1',
+    deleted: raw.deleted === true || raw.deleted === 'true' || raw.deleted === 1 || raw.deleted === '1',
+    priority: typeof raw.priority === 'string' ? parseInt(raw.priority, 10) : (raw.priority as number) ?? 0,
+    sort_order: typeof raw.sort_order === 'string' ? parseInt(raw.sort_order, 10) : (raw.sort_order as number) ?? 0,
+  } as Todo;
+};
+
+const normalizeList = (raw: Record<string, unknown>): List => {
+  return {
+    ...raw,
+    is_hidden: raw.is_hidden === true || raw.is_hidden === 'true' || raw.is_hidden === 1 || raw.is_hidden === '1',
+    sort_order: typeof raw.sort_order === 'string' ? parseInt(raw.sort_order, 10) : (raw.sort_order as number) ?? 0,
+  } as List;
 };
 
 type LastAction =
@@ -60,43 +80,7 @@ type LastAction =
 export default function TodoListPage() {
   const pg = usePGlite();
 
-  // 1. 使用 "提前返回" 模式处理加载状态
-  // 这能确保在 pg 实例完全就绪前，后续依赖它的钩子不会被执行
-  if (!pg) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-        <div className="mt-4 text-gray-600">正在连接数据库...</div>
-      </div>
-    );
-  }
-
-  // 2. 在 pg 实例可用后，安全地调用 useLiveQuery
-  const todosQuery = useLiveQuery.sql<Todo>`
-    SELECT t.*, l.name as list_name
-    FROM todos t
-    LEFT JOIN lists l ON t.list_id = l.id
-    ORDER BY t.sort_order, t.created_time DESC
-  `;
-  const todos = todosQuery?.results ?? [];
-  const todosError = todosQuery?.error;
-  
-  const listsQuery = useLiveQuery.sql<List>`SELECT * FROM lists ORDER BY sort_order, name`;
-  const lists = listsQuery?.results ?? [];
-  const listsError = listsQuery?.error;
-  
-  const metaQuery = useLiveQuery.sql<{ key: string, value: string }>`SELECT * FROM meta WHERE key = 'slogan'`;
-  const metaResults = metaQuery?.results;
-  const metaError = metaQuery?.error;
-
-  // 添加错误日志，方便调试
-  useEffect(() => {
-    if (todosError) console.error("Todos query error:", todosError);
-    if (listsError) console.error("Lists query error:", listsError);
-    if (metaError) console.error("Meta query error:", metaError);
-  }, [todosError, listsError, metaError]);
-  
-  // 3. 将原 TodoListPage 的所有状态和逻辑移到这里
+  // 所有 Hooks 必须在早期返回之前调用
   const [slogan, setSlogan] = useState("今日事今日毕，勿将今事待明日!.☕");
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newTodoDate, setNewTodoDate] = useState<string | null>(null);
@@ -114,6 +98,44 @@ export default function TodoListPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+
+  // 1. 使用 "提前返回" 模式处理加载状态
+  if (!pg) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+        <div className="mt-4 text-gray-600">正在连接数据库...</div>
+      </div>
+    );
+  }
+
+  // 2. 在 pg 实例可用后，安全地调用 useLiveQuery
+  const todosQuery = useLiveQuery.sql<Todo>`
+    SELECT t.*, l.name as list_name
+    FROM todos t
+    LEFT JOIN lists l ON t.list_id = l.id
+    WHERE t.deleted = false
+    ORDER BY t.sort_order, t.created_time DESC
+  `;
+  const todos = ((todosQuery as any)?.rows ?? []).map(normalizeTodo);
+
+  const listsQuery = useLiveQuery.sql<List>`SELECT id, name, sort_order, is_hidden FROM lists ORDER BY sort_order, name`;
+  const lists = ((listsQuery as any)?.rows ?? []).map(normalizeList);
+  
+  const recycledQuery = useLiveQuery.sql<Todo>`SELECT id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id FROM todos WHERE deleted = true`;
+  const recycled = ((recycledQuery as any)?.rows ?? []).map(normalizeTodo);
+  
+  // 重新启用 meta 表查询
+  const metaQuery = useLiveQuery.sql<{ key: string, value: string }>`SELECT * FROM meta WHERE key = 'slogan'`;
+  const metaResults = (metaQuery as any)?.rows ?? [];
+
+  // 添加错误日志，方便调试
+  useEffect(() => {
+    if ((todosQuery as any)?.error) console.error("Todos query error:", (todosQuery as any).error);
+    if ((listsQuery as any)?.error) console.error("Lists query error:", (listsQuery as any).error);
+    if ((recycledQuery as any)?.error) console.error("Recycled query error:", (recycledQuery as any).error);
+    // if ((metaQuery as any)?.error) console.error("Meta query error:", (metaQuery as any).error);
+  }, [todosQuery, listsQuery, recycledQuery]);
   
   useEffect(() => {
     if (metaResults?.[0]?.value) {
@@ -127,7 +149,7 @@ export default function TodoListPage() {
     }
   }, [isEditingSlogan]);
 
-  const activeTodos = useMemo(() => todos.filter(t => !t.deleted), [todos]);
+  const activeTodos = useMemo(() => todos.filter((t: Todo) => !t.deleted), [todos]);
 
   const calendarVisibleTodos = useMemo(() => {
     const monthStart = startOfMonth(currentDate);
@@ -135,7 +157,7 @@ export default function TodoListPage() {
     const viewStart = startOfWeek(monthStart, { weekStartsOn: 0 });
     const viewEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
 
-    return activeTodos.filter(todo => {
+    return activeTodos.filter((todo: Todo) => {
       if (!todo.start_date && !todo.due_date) {
         return false;
       }
@@ -150,17 +172,17 @@ export default function TodoListPage() {
     });
   }, [activeTodos, currentDate]);
 
-  const uncompletedTodos = useMemo(() => activeTodos.filter(t => !t.completed_time), [activeTodos]);
-  const recycledTodos = useMemo(() => todos.filter(t => t.deleted), [todos]);
+  const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
+  const recycledTodos = useMemo(() => recycled, [recycled]);
 
   const todayTodos = useMemo(() => {
     const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-    return activeTodos.filter(todo => todo.due_date && utcToLocalDateString(todo.due_date) === todayStrInUTC8);
+    return activeTodos.filter((todo: Todo) => todo.due_date && utcToLocalDateString(todo.due_date) === todayStrInUTC8);
   }, [activeTodos]);
 
   const inboxTodos = useMemo(() => {
     const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-    return uncompletedTodos.filter(todo => {
+    return uncompletedTodos.filter((todo: Todo) => {
         const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
         const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
         return !todo.list_id || isOverdue;
@@ -168,7 +190,7 @@ export default function TodoListPage() {
   }, [uncompletedTodos]);
 
   const uncompletedTodosByListId = useMemo(() => {
-    return uncompletedTodos.reduce((acc, todo) => {
+    return uncompletedTodos.reduce((acc: Record<string, Todo[]>, todo: Todo) => {
       if (todo.list_id) {
         acc[todo.list_id] = acc[todo.list_id] || [];
         acc[todo.list_id].push(todo);
@@ -178,7 +200,7 @@ export default function TodoListPage() {
   }, [uncompletedTodos]);
   
   const listNameToIdMap = useMemo(() => 
-    lists.reduce((acc, list) => {
+    lists.reduce((acc: Record<string, string>, list: List) => {
       acc[list.name] = list.id;
       return acc;
     }, {} as Record<string, string>),
@@ -204,6 +226,18 @@ export default function TodoListPage() {
     return { displayTodos: [], uncompletedCount: 0 };
   }, [currentView, recycledTodos, todayTodos, inboxTodos, uncompletedTodosByListId, listNameToIdMap]);
 
+  // 调试信息 - 在 displayTodos 定义之后打印
+  console.log('=== 调试信息 ===');
+  console.log('todosQuery:', todosQuery);
+  console.log('todosQuery.rows:', todosQuery?.rows);
+  console.log('todosQuery.fields:', todosQuery?.fields);
+  console.log('todos:', todos);
+  console.log('activeTodos:', activeTodos);
+  console.log('inboxTodos:', inboxTodos);
+  console.log('todayTodos:', todayTodos);
+  console.log('currentView:', currentView);
+  console.log('displayTodos:', displayTodos);
+
   const inboxCount = useMemo(() => inboxTodos.length, [inboxTodos]);
   
   const todosByList = useMemo(() => {
@@ -226,7 +260,8 @@ export default function TodoListPage() {
   const handleUpdateSlogan = useCallback(debounce(async () => {
     setIsEditingSlogan(false);
     if (slogan === originalSlogan) return;
-    await pg.sql`INSERT OR REPLACE INTO meta (key, value) VALUES ('slogan', ${slogan})`;
+    // 重新启用 meta 表操作
+    await pg.sql`INSERT INTO meta (key, value) VALUES ('slogan', ${slogan}) ON CONFLICT(key) DO UPDATE SET value = ${slogan}`;
   }, 500), [pg, slogan, originalSlogan]);
 
   const handleSloganKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -268,7 +303,7 @@ export default function TodoListPage() {
   }, [pg]);
   
   const handleToggleComplete = async (todo: Todo) => {
-    setLastAction({ type: 'toggle-complete', data: { id: todo.id, previousCompletedTime: todo.completed_time, previousCompleted: todo.completed } });
+    setLastAction({ type: 'toggle-complete', data: { id: todo.id, previousCompletedTime: todo.completed_time, previousCompleted: !!todo.completed } });
     const newCompletedTime = todo.completed_time ? null : new Date().toISOString();
     const newCompletedFlag = !todo.completed;
     await handleUpdateTodo(todo.id, { completed_time: newCompletedTime, completed: newCompletedFlag });
@@ -281,21 +316,21 @@ export default function TodoListPage() {
     if (selectedTodo && selectedTodo.id === todoId) {
         setSelectedTodo(null);
     }
-    await handleUpdateTodo(todoId, { deleted: true });
+    await pg.sql`UPDATE todos SET deleted = true WHERE id = ${todoId}`;
   };
   
   const handleRestoreTodo = async (todoId: string) => {
-    const todoToRestore = todos.find(t => t.id === todoId);
+    const todoToRestore = recycled.find(t => t.id === todoId);
     if (!todoToRestore) return;
     setLastAction({ type: 'restore', data: todoToRestore });
     if (selectedTodo && selectedTodo.id === todoId) {
         setSelectedTodo(null);
     }
-    await handleUpdateTodo(todoId, { deleted: false });
+    await pg.sql`UPDATE todos SET deleted = false WHERE id = ${todoId}`;
   };
   
   const handlePermanentDeleteTodo = async (todoId: string) => {
-    const todoToDelete = todos.find(t => t.id === todoId);
+    const todoToDelete = recycled.find(t => t.id === todoId);
     if (!todoToDelete) return;
     const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`);
     if (confirmed) {
@@ -314,10 +349,9 @@ export default function TodoListPage() {
 
   const handleAddList = async (name: string): Promise<List | null> => {
     try {
-      const newList: Omit<List, 'id' | 'is_hidden'> & {is_hidden: boolean} = { name, sort_order: lists.length, is_hidden: false };
-      const newId = uuid();
-      await pg.sql`INSERT INTO lists (id, name, sort_order, is_hidden) VALUES (${newId}, ${newList.name}, ${newList.sort_order}, ${newList.is_hidden})`;
-      return { ...newList, id: newId };
+      const newList = { id: uuid(), name, sort_order: lists.length, is_hidden: false };
+      await pg.sql`INSERT INTO lists (id, name, sort_order, is_hidden) VALUES (${newList.id}, ${newList.name}, ${newList.sort_order}, ${newList.is_hidden})`;
+      return newList;
     } catch (error) {
       console.error("Failed to add list:", error);
       alert(`添加清单失败: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -391,7 +425,7 @@ export default function TodoListPage() {
           break;
       }
     } catch (error) {
-        alert(`撤销操作失败: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        alert(`撤销操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
     setLastAction(null);
   };
@@ -407,7 +441,7 @@ export default function TodoListPage() {
     
     setLastAction({
         type: 'batch-complete',
-        data: todosToUpdate.map(t => ({ id: t.id, previousCompletedTime: t.completed_time, previousCompleted: t.completed }))
+        data: todosToUpdate.map(t => ({ id: t.id, previousCompletedTime: t.completed_time, previousCompleted: !!t.completed }))
     });
     
     await pg.sql`UPDATE todos SET completed = TRUE, completed_time = ${newCompletedTime} WHERE id = ANY(${idsToUpdate}::uuid[])`;
@@ -447,7 +481,7 @@ export default function TodoListPage() {
           }
         });
         
-        const currentLists = await pg.query.rows<List>(`SELECT * FROM lists`);
+        const currentLists = await pg.query.rows<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
         const listNameToIdMap = new Map<string, string>();
         currentLists.forEach((list: List) => listNameToIdMap.set(list.name, list.id));
 
@@ -480,7 +514,7 @@ export default function TodoListPage() {
   const newTodoPlaceholder = useMemo(() => {
     if (newTodoDate) return `为 ${newTodoDate} 添加新事项...`;
     if (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') {
-        return `在“${currentView}”中新增待办...`;
+        return `在"${currentView}"中新增待办...`;
     }
     return '新增待办事项...';
   }, [newTodoDate, currentView]);
@@ -502,7 +536,6 @@ export default function TodoListPage() {
     viewSwitcherRef.current.scrollLeft = scrollLeft - walk;
   };
 
-  // 4. 返回原 TodoListPage 的 JSX
   return (
     <>
       <div className="bg-pattern"></div>
@@ -566,13 +599,12 @@ export default function TodoListPage() {
                     )}
                   </div>
 
-                  {todos.length === 0 && !displayTodos.length ? (
+                  {todos.length === 0 && displayTodos.length === 0 && currentView !== 'recycle' ? (
                       <div className="todo-list">
                           <div className="empty-tips">
                             {currentView === 'list' && <div>今日无待办事项！🎉</div>}
                             {currentView === 'inbox' && <div>收件箱是空的！👍</div>}
-                            {currentView === 'recycle' && <div>回收站是空的！🗑️</div>}
-                            {currentView !== 'list' && currentView !== 'inbox' && currentView !== 'recycle' && <div>此清单中没有待办事项！📝</div>}
+                            {currentView !== 'list' && currentView !== 'inbox' && <div>此清单中没有待办事项！📝</div>}
                           </div>
                       </div>
                   ) : displayTodos.length > 0 ? (
@@ -605,6 +637,10 @@ export default function TodoListPage() {
                               </li>
                           ))}
                       </ul>
+                  ) : currentView === 'recycle' && recycled.length === 0 ? (
+                      <div className="todo-list">
+                          <div className="empty-tips"><div>回收站是空的！🗑️</div></div>
+                      </div>
                   ) : null}
 
                   <div className="bar-message bar-bottom">

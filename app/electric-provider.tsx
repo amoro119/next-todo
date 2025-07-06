@@ -8,6 +8,7 @@ import { live } from '@electric-sql/pglite/live'
 import { electricSync } from '@electric-sql/pglite-sync'
 import { startSync, useSyncStatus } from './sync'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PGliteWithExtensions = PGliteWorker & { live: any; sync: any }
 
 const LoadingScreen = ({ children }: { children: React.ReactNode }) => {
@@ -47,13 +48,13 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
 
       setPg(db)
 
-      let syncStarted = false
+      // 立即启动同步，不等待leader选举
+      console.log('Starting sync immediately...')
+      startSync(db)
+      
+      // 监听leader变化，但同步已经启动
       leaderSub = db.onLeaderChange(() => {
         console.log('Leader changed, isLeader:', db.isLeader)
-        if (db.isLeader && !syncStarted) {
-          syncStarted = true
-          startSync(db)
-        }
       })
     }
 
