@@ -75,14 +75,14 @@ export function createListChange(
   id: string,
   data: Partial<ListChange>,
   isNew = false,
-  deleted = false
+  isPermanentDelete = false
 ): ListChange {
   return {
     id,
-    ...data,
     new: isNew,
-    deleted,
-    modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'deleted' && key !== 'modified_columns') as (keyof ListChange)[],
+    deleted: isPermanentDelete,
+    ...data,
+    modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'modified_columns') as (keyof ListChange)[],
   }
 }
 
@@ -90,14 +90,15 @@ export function createTodoChange(
   id: string,
   data: Partial<TodoChange>,
   isNew = false,
-  deleted = false
+  isPermanentDelete = false
 ): TodoChange {
   return {
     id,
-    ...data,
     new: isNew,
-    deleted,
-    modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'deleted' && key !== 'modified_columns') as (keyof TodoChange)[],
+    deleted: isPermanentDelete,
+    ...data,
+    // CORRECTED: Do NOT filter out 'deleted' from modified_columns.
+    // This allows the server to differentiate between soft and hard deletes.
+    modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'modified_columns') as (keyof TodoChange)[],
   }
 }
-

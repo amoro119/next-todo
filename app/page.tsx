@@ -13,7 +13,7 @@ import { parseDidaCsv } from '../lib/csvParser';
 import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { v4 as uuid } from 'uuid';
 import debounce from 'lodash.debounce';
-import { sendChangesToServer, createTodoChange, createListChange } from '../lib/changes';
+import { sendChangesToServer, createTodoChange, createListChange, ListChange, TodoChange } from '../lib/changes';
 
 
 const TodoDetailsModal = dynamic(() => import('../components/TodoDetailsModal'), {
@@ -393,6 +393,17 @@ export default function TodoListPage() {
     const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`);
     if (confirmed) {
       await pg.sql`DELETE FROM todos WHERE id = ${todoId}`;
+      
+      // 推送变化到服务器
+      try {
+        await sendChangesToServer({
+          lists: [],
+          todos: [createTodoChange(todoId, {}, false, true)]
+        });
+      } catch (error) {
+        console.error('Failed to sync permanent todo deletion:', error);
+      }
+
       if (selectedTodo && selectedTodo.id === todoId) {
         setSelectedTodo(null);
       }
@@ -449,6 +460,10 @@ export default function TodoListPage() {
     if (!listToDelete) return;
     const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`);
     if (!confirmed) return;
+
+    // 获取将要被修改的 todo
+    const todosToUpdateQuery = await pg.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
+    const todosToUpdate = todosToUpdateQuery.rows;
     
     await pg.transaction(async tx => {
         await tx.sql`UPDATE todos SET list_id = NULL WHERE list_id = ${listId}`;
@@ -457,9 +472,10 @@ export default function TodoListPage() {
     
     // 推送变化到服务器
     try {
+      const todoChanges = todosToUpdate.map(todo => createTodoChange(todo.id, { list_id: null }));
       await sendChangesToServer({
         lists: [createListChange(listId, {}, false, true)],
-        todos: []
+        todos: todoChanges,
       });
     } catch (error) {
       console.error('Failed to sync list deletion:', error);
@@ -494,7 +510,19 @@ export default function TodoListPage() {
           for(const [index, list] of reorderedLists.entries()) {
               await tx.sql`UPDATE lists SET sort_order = ${index} WHERE id = ${list.id}`;
           }
-      })
+      });
+
+      // 推送变化到服务器
+      setTimeout(async () => {
+        try {
+          await sendChangesToServer({
+            lists: reorderedLists.map((list, index) => createListChange(list.id, { sort_order: index })),
+            todos: []
+          });
+        } catch (error) {
+          console.error('Failed to sync lists order update:', error);
+        }
+      }, 1000);
   };
   
   const handleAddTodoFromCalendar = (date: string) => {
@@ -522,13 +550,30 @@ export default function TodoListPage() {
         case 'restore':
           await handleUpdateTodo(lastAction.data.id, { deleted: true });
           break;
-        case 'batch-complete':
+        case 'batch-complete': {
+          const lastActionData = lastAction.data;
           await pg.transaction(async tx => {
-            for (const d of lastAction.data) {
+            for (const d of lastActionData) {
                 await tx.sql`UPDATE todos SET completed_time = ${d.previousCompletedTime}, completed = ${d.previousCompleted} WHERE id = ${d.id}`;
             }
           });
+
+          // 推送变化到服务器
+          setTimeout(async () => {
+            try {
+              await sendChangesToServer({
+                lists: [],
+                todos: lastActionData.map(d => createTodoChange(d.id, {
+                  completed_time: d.previousCompletedTime,
+                  completed: d.previousCompleted,
+                }))
+              });
+            } catch (error) {
+              console.error('Failed to sync undo batch completion:', error);
+            }
+          }, 1000);
           break;
+        }
       }
     } catch (error) {
         alert(`撤销操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -578,7 +623,8 @@ export default function TodoListPage() {
         let todosToImport: Partial<Todo>[] = [];
         if (file.name.endsWith('.csv')) {
           const { todos, removedTodos } = parseDidaCsv(content);
-          todosToImport = [...todos, ...removedTodos];
+          // Manually map 'removed' property to 'deleted'
+          todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as any).removed}));
         } else {
           const data = JSON.parse(content);
           const importedTodos = data.todos || (Array.isArray(data) ? data : []);
@@ -594,10 +640,16 @@ export default function TodoListPage() {
         const existingListNames = new Set(lists.map((l: List) => l.name));
         const newListsToCreate = [...listNames].filter(name => !existingListNames.has(name));
         
+        const createdLists: ListChange[] = [];
+        const createdTodos: TodoChange[] = [];
+
         await pg.transaction(async tx => {
           if (newListsToCreate.length > 0) {
+              let sortOrder = lists.length;
               for (const listName of newListsToCreate) {
-                  await tx.sql`INSERT INTO lists (id, name, is_hidden) VALUES (${uuid()}, ${listName}, false)`;
+                  const newListData = { id: uuid(), name: listName, is_hidden: false, sort_order: sortOrder++ };
+                  await tx.sql`INSERT INTO lists (id, name, is_hidden, sort_order) VALUES (${newListData.id}, ${newListData.name}, ${newListData.is_hidden}, ${newListData.sort_order})`;
+                  createdLists.push(createListChange(newListData.id, { name: newListData.name, is_hidden: newListData.is_hidden, sort_order: newListData.sort_order }, true));
               }
           }
         });
@@ -609,20 +661,51 @@ export default function TodoListPage() {
         await pg.transaction(async tx => {
             for (const todo of todosToImport) {
                 const listId = todo.list_name ? listNameToIdMap.get(todo.list_name) || null : null;
+                const newTodoData = {
+                  id: uuid(),
+                  title: todo.title || '',
+                  completed: !!todo.completed,
+                  deleted: !!todo.deleted,
+                  sort_order: todo.sort_order || 0,
+                  due_date: todo.due_date || null,
+                  content: todo.content || null,
+                  tags: todo.tags || null,
+                  priority: todo.priority === undefined ? 0 : todo.priority,
+                  created_time: todo.created_time || new Date().toISOString(),
+                  completed_time: todo.completed_time || null,
+                  start_date: todo.start_date || null,
+                  list_id: listId,
+                };
+
                 await tx.sql`
                     INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                    VALUES (${uuid()}, ${todo.title || ''}, ${todo.completed || false}, ${todo.deleted || false}, ${todo.sort_order || 0},
-                            ${todo.due_date || null}, ${todo.content || null}, ${todo.tags || null},
-                            ${todo.priority === undefined ? 0 : todo.priority},
-                            ${todo.created_time || new Date().toISOString()},
-                            ${todo.completed_time || null},
-                            ${todo.start_date || null},
-                            ${listId}
+                    VALUES (${newTodoData.id}, ${newTodoData.title}, ${newTodoData.completed}, ${newTodoData.deleted}, ${newTodoData.sort_order},
+                            ${newTodoData.due_date}, ${newTodoData.content}, ${newTodoData.tags},
+                            ${newTodoData.priority},
+                            ${newTodoData.created_time},
+                            ${newTodoData.completed_time},
+                            ${newTodoData.start_date},
+                            ${newTodoData.list_id}
                     );
                 `;
+                createdTodos.push(createTodoChange(newTodoData.id, newTodoData, true));
             }
         });
         alert(`成功导入 ${todosToImport.length} 个事项！`);
+        
+        if (createdLists.length > 0 || createdTodos.length > 0) {
+          setTimeout(async () => {
+            try {
+              await sendChangesToServer({
+                lists: createdLists,
+                todos: createdTodos
+              });
+            } catch (error) {
+              console.error('Failed to sync imported data:', error);
+              alert('本地数据导入成功，但同步到服务器失败。');
+            }
+          }, 1000);
+        }
 
       } catch (error) {
         console.error("Import failed:", error);

@@ -77,24 +77,27 @@ async function applyTableChange(
   const {
     id,
     new: isNew,
-    deleted,
-  } = change
+    deleted: isDeletedFlag,
+    modified_columns
+  } = change;
 
-  if (deleted) {
+  // A permanent delete is signaled by `deleted: true` and an empty `modified_columns` array.
+  // A soft delete will have `deleted: true` and `modified_columns: ['deleted', ...]`.
+  const isPermanentDelete = isDeletedFlag && (!modified_columns || modified_columns.length === 0);
+
+  if (isPermanentDelete) {
     await sql`
       DELETE FROM ${sql(tableName)} WHERE id = ${id}::uuid
-    `
-    return
+    `;
+    return;
   }
 
-  // Remove local-first fields for insertion/update
-  // The 'as any' is a concession to the different shapes of ListChange and TodoChange
-  const { new: _n, deleted: _d, modified_columns: _mc, ...data } = change as any;
+  // Handle inserts and updates (including soft-deletes/restores).
+  // We remove local-first helper fields but keep the `deleted` field for updates.
+  const { new: _n, modified_columns: _mc, ...data } = change as any;
 
   if (isNew) {
-    // If it's a new record, we perform an "upsert".
-    // This makes the endpoint idempotent. If the client sends the same new
-    // record twice, the second one will update the existing record instead of failing.
+    // If it's a new record, perform an "upsert".
     const columns = Object.keys(data);
     if (tableName === 'lists') {
       data.modified = new Date();
@@ -106,18 +109,19 @@ async function applyTableChange(
         ${sql(data, ...columns.filter(c => c !== 'id'))}
     `;
   } else {
-    // If it's an existing record, we update it.
-    // Also update the 'modified' timestamp for lists.
+    // If it's an existing record, update it.
     if (tableName === 'lists') {
       data.modified = new Date();
     }
     
-    const columnsToUpdate = Object.keys(data).filter(c => c !== 'id');
+    // `data` contains all properties for the update, including `deleted` for soft-deletes.
+    const { id: _id, ...updateData } = data;
+    const columnsToUpdate = Object.keys(updateData);
     
     if (columnsToUpdate.length > 0) {
       await sql`
         UPDATE ${sql(tableName)}
-        SET ${sql(data, ...columnsToUpdate)}
+        SET ${sql(updateData, ...columnsToUpdate)}
         WHERE id = ${id}::uuid
       `
     }
