@@ -65,7 +65,19 @@ try {
     process.exit(1);
   }
 
-   // 5. 复制数据库目录 (如果存在)
+  // 5. 复制 write-server 编译产物
+  console.log('🔧 复制 write-server 编译产物 (dist-server)...');
+  const serverSrcDir = path.join(projectRoot, 'dist-server');
+  const serverDestDir = path.join(standaloneDir, 'dist-server');
+  if (fs.existsSync(serverSrcDir)) {
+    fs.cpSync(serverSrcDir, serverDestDir, { recursive: true });
+    console.log('✅ dist-server 目录复制成功。');
+  } else {
+    console.error('❌ 源 write-server 编译产物目录 (dist-server) 不存在。请确保已经编译 server.ts。');
+    process.exit(1);
+  }
+
+   // 6. 复制数据库目录 (如果存在)
   console.log('🗄️ 复制数据库目录...');
   const dbSrc = path.join(projectRoot, 'pgdata');
   const dbDest = path.join(standaloneDir, 'pgdata');
