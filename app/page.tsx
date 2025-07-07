@@ -803,7 +803,7 @@ export default function TodoListPage() {
                     )}
                   </div>
 
-                  {todos.length === 0 && displayTodos.length === 0 && currentView !== 'recycle' ? (
+                  {displayTodos.length === 0 && currentView !== 'recycle' ? (
                       <div className="todo-list">
                           <div className="empty-tips">
                             {currentView === 'list' && <div>今日无待办事项！🎉</div>}
