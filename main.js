@@ -1,111 +1,154 @@
 // main.js
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 const { fork } = require('child_process');
+const fs = require('fs');
 const treeKill = require('tree-kill');
+const portfinder = require('portfinder');
 
-// --- 全局变量 ---
-let nextServerProcess;
+let serverProcess;
 let mainWindow;
-let serverUrl; // 保存服务器的 URL
 
-const DEV_PORT = 3000;
-const DEV_URL = `http://localhost:${DEV_PORT}`;
+const isDev = !app.isPackaged;
 
-/**
- * 启动 Next.js 服务器子进程
- * @returns {Promise<string>} 返回服务器监听的 URL
- */
 function startNextServer() {
-    // 如果服务器已在运行，则直接返回
-    if (nextServerProcess && !nextServerProcess.killed) {
-        console.log('Next.js server is already running.');
-        return Promise.resolve(serverUrl);
-    }
-    
-    return new Promise((resolve, reject) => {
-        const serverPath = path.join(__dirname, 'node_modules', 'next', 'dist', 'bin', 'next');
-        const args = ['dev', '-p', DEV_PORT];
+  return new Promise((resolve, reject) => {
+    portfinder.basePort = isDev ? 3000 : 8000;
+    portfinder.getPort((err, port) => {
+      if (err) {
+        return reject(err);
+      }
+      
+      console.log(`[Next Server] Starting on port ${port}...`);
+      
+      // 因为没有 asar，__dirname 总是指向 main.js 所在的真实目录
+      const serverCwd = __dirname;
+      const standaloneCwd = path.join(serverCwd, '.next', 'standalone');
+      const serverPath = path.join(standaloneCwd, 'server.js');
 
-        nextServerProcess = fork(serverPath, args, { silent: true });
+      console.log(`[Next Server] server.js Path: ${serverPath}`);
+      console.log(`[Next Server] CWD for fork: ${standaloneCwd}`);
 
-        serverUrl = DEV_URL;
+      if (!fs.existsSync(serverPath)) {
+        return reject(new Error(`FATAL: server.js not found at: ${serverPath}`));
+      }
 
-        nextServerProcess.stdout.on('data', (data) => {
-            const output = data.toString();
-            console.log('[Next.js Dev Server]:', output);
-            if (output.includes('ready') || output.includes('started server on')) {
-                console.log(`Next.js server is ready at ${serverUrl}`);
-                resolve(serverUrl);
-            }
-        });
-        nextServerProcess.stderr.on('data', (data) => console.error('[Next.js Dev Server stderr]:', data.toString()));
-        nextServerProcess.on('exit', (code) => console.log(`Next.js server process exited with code ${code}`));
-        nextServerProcess.on('error', (error) => reject(error));
+      serverProcess = fork(
+        serverPath,
+        ['-p', port.toString()],
+        {
+          cwd: standaloneCwd,
+          silent: true,
+          env: {
+            ...process.env,
+            PORT: port.toString(),
+            NODE_ENV: isDev ? 'development' : 'production'
+          }
+        }
+      );
+
+      if (!serverProcess) {
+        return reject(new Error('Failed to fork server process.'));
+      }
+      
+      const serverUrl = `http://localhost:${port}`;
+      
+      serverProcess.stdout.on('data', (data) => {
+        const output = data.toString();
+        console.log('[Next Server STDOUT]:', output);
+        if (output.includes('ready') || output.includes('- Local:')) {
+          console.log(`[Next Server] Ready at ${serverUrl}`);
+          resolve(serverUrl);
+        }
+      });
+      
+      serverProcess.stderr.on('data', (data) => {
+        console.error('[Next Server STDERR]:', data.toString());
+      });
+      
+      serverProcess.on('exit', (code) => {
+        console.log(`[Next Server] Exited with code ${code}`);
+        serverProcess = null;
+      });
+
+      serverProcess.on('error', (err) => {
+        console.error('[Next Server] Error:', err);
+        reject(err);
+      });
     });
+  });
 }
 
-/**
- * 杀死服务器进程
- */
-function killServerProcess() {
-    if (nextServerProcess && !nextServerProcess.killed) {
-        console.log(`Killing Next.js server process with PID: ${nextServerProcess.pid}`);
-        treeKill(nextServerProcess.pid, 'SIGKILL');
-        nextServerProcess = null;
-        serverUrl = null;
-    }
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      webSecurity: false,
+      nodeIntegrationInWorker: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+    icon: path.join(__dirname, 'public', 'favicon.png'),
+    show: false,
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  const startUrl = isDev ? 'http://localhost:3000' : 'about:blank';
+  
+  if (isDev) {
+    mainWindow.loadURL(startUrl);
+    mainWindow.webContents.openDevTools();
+  } else {
+    startNextServer()
+      .then((url) => {
+        mainWindow.loadURL(url);
+      })
+      .catch((err) => {
+        console.error("Failed to start Next.js server", err);
+        app.quit();
+      });
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
 }
-
-async function createWindow() {
-    if (mainWindow) {
-        mainWindow.focus();
-        return;
-    }
-
-    mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-        },
-    });
-
-    try {
-        const loadUrl = await startNextServer();
-        console.log(`Loading URL: ${loadUrl}`);
-        await mainWindow.loadURL(loadUrl);
-
-    } catch (error) {
-        console.error('Failed to create window or start server:', error);
-    }
-
-    mainWindow.on('closed', () => {
-        console.log('Main window closed.');
-        mainWindow = null;
-    });
-}
-
-// --- 应用生命周期事件 ---
 
 app.on('ready', () => {
-    createWindow();
-});
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' data:; connect-src 'self' http://localhost:*;"
+        ]
+      }
+    });
+  });
 
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
-    }
+  createWindow();
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
 });
 
 app.on('will-quit', () => {
-    console.log('Application is quitting. Final cleanup...');
-    killServerProcess();
+  if (serverProcess) {
+    console.log(`[Electron] Killing server process with PID: ${serverProcess.pid}`);
+    treeKill(serverProcess.pid, 'SIGKILL');
+  }
 });

@@ -1,0 +1,14 @@
+// tsconfig.worker.json
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "node16",
+    "outDir": "dist-worker",
+    "esModuleInterop": true,
+    "strict": true,
+    "sourceMap": true,
+    "moduleResolution": "node16",
+    "skipLibCheck": true
+  },
+  "include": ["app/pglite-worker.ts", "db/migrations-client/index.ts"]
+}

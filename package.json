@@ -1,18 +1,19 @@
 {
-  "name": "next-todo-desktop",
+  "name": "next-todo-localfirst-desktop",
   "version": "1.0.0",
   "private": true,
   "main": "main.js",
   "scripts": {
     "dev": "npm run backend:up && concurrently -k \"npm:write-server\" \"npm:next:dev\"",
-    "electron2:dev": "npm run backend:up && concurrently -k \"npm:write-server\" \"npm:next:dev\" \"npm:electron:dev\"",
+    "electron:dev": "npm run backend:up && concurrently -k \"npm:write-server\" \"npm:next:dev\" \"wait-on http://localhost:3000 && electron .\"",
     "next:dev": "next dev -p 3000",
-    "electron:dev": "wait-on http://localhost:3000 && electron .",
+    "build:worker": "tsc --project tsconfig.worker.json",
     "build": "npm run next:build && npm run prepare:electron && npm run electron:build",
-    "next:build": "next build  --turbopack",
-    "prepare:electron": "cp package.json .next/standalone/ && cp -R .next/static .next/standalone/.next/static && cp -R public .next/standalone/public && (cd .next/standalone && npm install --omit=dev)",
-    "electron:build": "PYTHONPATH='' electron-builder",
-    "start": "next start",
+    "next:build": "npm run build:worker && ELECTRON=true next build",
+    "prepare:electron": "node scripts/prepare-standalone.js",
+    "electron:build": "electron-builder",
+    "start": "node scripts/start-production.js",
+    "test:build": "node scripts/test-build.js",
     "lint": "next lint",
     "backend:up": "docker compose up -d",
     "backend:down": "docker compose down",
@@ -20,18 +21,29 @@
     "write-server": "dotenv -e .env.local -- tsx server.ts"
   },
   "build": {
-    "appId": "com.example.next-todo-desktop",
-    "productName": "Next Todo Desktop",
+    "appId": "com.example.next-todo-localfirst-desktop",
+    "productName": "Next Todo Local-First",
     "asar": false,
+    "directories": {
+      "output": "dist",
+      "app": "."
+    },
     "files": [
       "main.js",
-      "server.ts",
-      "public",
+      "preload.js",
       ".next/standalone/**/*",
-      ".next/static/**/*"
+      "public",
+      ".next/static/**/*",
+      "package.json"
     ],
-    "directories": {
-      "output": "dist"
+    "mac": {
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
     }
   },
   "dependencies": {
