@@ -1,0 +1,34 @@
+project_id = "next-todo-localfirst"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# 确保这个版本号与你 Supabase 项目的 PostgreSQL 版本一致
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+# --- Edge Function 配置 ---
+# Gatekeeper：用 Supabase JWT 交换一个自定义的 Electric JWT
+[functions.gatekeeper]
+verify_jwt = true # 验证来自客户端的 Supabase JWT
+import_map = "./functions/import_map.json"
+
+# Write-server：用于应用来自客户端的更改
+[functions.write-server]
+verify_jwt = true # 验证来自客户端的 Supabase JWT
+import_map = "./functions/import_map.json"
+
+# 新的 ElectricSQL 同步授权代理
+[functions.electric-proxy]
+verify_jwt = false # 重要：代理自己进行JWT验证
+import_map = "./functions/import_map.json"

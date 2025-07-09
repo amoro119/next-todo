@@ -5,8 +5,6 @@ import { PGliteWithSync } from '@electric-sql/pglite-sync'
 import { postInitialSync } from '../db/migrations-client'
 import { useEffect, useState } from 'react'
 
-
-
 type SyncStatus = 'initial-sync' | 'done' | 'error'
 
 type PGliteWithExtensions = PGliteWithLive & PGliteWithSync
@@ -92,12 +90,20 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             setTimeout(() => reject(new Error(`Sync timeout for ${shapeName}`)), 15000) // 减少超时时间
           })
 
-          const ELECTRIC_URL = 'http://localhost:5133'
-          console.log(`Setting up sync for ${shapeName} with URL: ${ELECTRIC_URL}/v1/shape`)
+          // 使用新的、指向Edge Function的URL
+          const ELECTRIC_PROXY_URL = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL
+
+          // 在本地开发时，如果代理函数未运行，可以回退到直接连接Electric容器
+          if (!ELECTRIC_PROXY_URL) {
+            console.warn("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set, falling back to direct connection for local dev.")
+          }
+          const baseUrl = ELECTRIC_PROXY_URL || 'http://localhost:5133';
+
+          console.log(`Setting up sync for ${shapeName} with base URL: ${baseUrl}`)
           
           const syncPromise = pg.sync.syncShapeToTable({
             shape: {
-              url: new URL(`${ELECTRIC_URL}/v1/shape`).toString(),
+              url: new URL(`${baseUrl}/v1/shape`).toString(),
               params: { 
                 table: shapeName,
                 // 只同步服务端实际存在的字段
