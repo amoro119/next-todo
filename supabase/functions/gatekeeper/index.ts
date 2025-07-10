@@ -154,9 +154,7 @@ Deno.serve(async (req) => {
         primaryKey: ['id']
       },
       hasMore: false,
-      rows: (data || []).map(row =>
-        columns.map(col => row[col])
-      )
+      rows: data || []
     };
 
 
