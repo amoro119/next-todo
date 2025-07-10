@@ -1,19 +1,76 @@
 // app/sync.ts
+
 import { PGlite } from '@electric-sql/pglite'
 import { PGliteWithLive } from '@electric-sql/pglite/live'
 import { PGliteWithSync } from '@electric-sql/pglite-sync'
 import { postInitialSync } from '../db/migrations-client'
 import { useEffect, useState } from 'react'
+import { ShapeStreamOptions } from "@electric-sql/client"
 
 type SyncStatus = 'initial-sync' | 'done' | 'error'
 
 type PGliteWithExtensions = PGliteWithLive & PGliteWithSync
+
+// --- 认证逻辑 ---
+let cachedElectricToken: string | null = null;
+
+export function invalidateElectricToken() {
+  console.log("Invalidating cached Electric token.");
+  cachedElectricToken = null;
+}
+
+async function getElectricToken(): Promise<string> {
+  if (cachedElectricToken) {
+    return cachedElectricToken;
+  }
+
+  try {
+    console.log("Fetching new ElectricSQL auth token from token-issuer function...");
+    
+    // **已修改**: 指向新的、专门的令牌颁发函数URL
+    // 您需要在.env.local中设置这个新变量
+    const tokenIssuerUrl = process.env.NEXT_PUBLIC_TOKEN_ISSUER_URL;
+    if (!tokenIssuerUrl) {
+      throw new Error("NEXT_PUBLIC_TOKEN_ISSUER_URL is not set.");
+    }
+
+    const response = await fetch(tokenIssuerUrl);
+    if (!response.ok) {
+      throw new Error(`获取Electric令牌失败: ${response.status} ${response.statusText}`);
+    }
+    const { token } = await response.json();
+    if (!token) {
+      throw new Error('在响应中未找到令牌');
+    }
+    cachedElectricToken = token;
+    return token;
+  } catch (error) {
+    // --- 修改开始 ---
+    // 增强错误处理，确保错误能被上层捕获
+    console.error("获取Electric令牌时发生严重错误:", error);
+    invalidateElectricToken(); // 获取失败时，清空可能存在的无效缓存
+    // 向上抛出错误，以便调用者（如 startSync）可以捕获它
+    throw new Error(`无法获取认证令牌: ${error instanceof Error ? error.message : String(error)}`);
+    // --- 修改结束 ---
+  }
+}
 
 export async function startSync(pg: PGliteWithExtensions) {
   console.log('Starting ElectricSQL sync...')
   updateSyncStatus('initial-sync', 'Starting sync...')
   
   try {
+    // --- 修改开始 ---
+    // **核心修复**: 在开始同步前，先调用函数获取并缓存认证令牌。
+    console.log("正在获取同步认证令牌...");
+    await getElectricToken(); 
+    // 防御性检查，确保 getElectricToken 成功设置了缓存
+    if (!cachedElectricToken) {
+      throw new Error("认证失败：未能获取到有效的同步令牌。");
+    }
+    console.log("认证成功，令牌已缓存。");
+    // --- 修改结束 ---
+
     // 首先初始化ElectricSQL系统表
     console.log('Initializing ElectricSQL system tables...')
     await initializeElectricSystemTables(pg)
@@ -26,7 +83,13 @@ export async function startSync(pg: PGliteWithExtensions) {
     await startSimpleSync(pg)
   } catch (error) {
     console.error('Sync failed:', error)
-    updateSyncStatus('error', '同步失败，但应用仍可使用')
+    // 根据错误类型提供更具体的用户反馈
+    const errorMessage = error instanceof Error ? error.message : '同步失败，但应用仍可使用';
+    if (errorMessage.includes('认证失败') || errorMessage.includes('认证令牌')) {
+      updateSyncStatus('error', '认证失败，无法同步数据');
+    } else {
+      updateSyncStatus('error', '同步失败，但应用仍可使用');
+    }
   }
 }
 
@@ -62,6 +125,7 @@ async function startSimpleSync(pg: PGliteWithExtensions) {
   }
 }
 
+// ... (文件的其余部分保持不变)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function startSyncToDatabase(pg: PGliteWithExtensions) {
   const MAX_RETRIES = 3
@@ -70,6 +134,17 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
   const shapes = ['lists', 'todos']
   
   console.log('Starting sync for shapes:', shapes)
+  // 检查本地数据库状态
+  try {
+    const localLists = await pg.query('SELECT COUNT(*) as count FROM lists');
+    const localTodos = await pg.query('SELECT COUNT(*) as count FROM todos');
+    console.log('Local database state:', {
+      lists: localLists.rows[0]?.count || 0,
+      todos: localTodos.rows[0]?.count || 0
+    });
+  } catch (error) {
+    console.log('Local database check failed:', error);
+  }
   
   const initialSyncPromises: Promise<void>[] = []
   let syncedShapes = 0
@@ -100,7 +175,22 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
           const baseUrl = ELECTRIC_PROXY_URL || 'http://localhost:5133';
 
           console.log(`Setting up sync for ${shapeName} with base URL: ${baseUrl}`)
-          
+          // **这里的令牌现在肯定有值了**
+          console.log(`使用这个令牌进行同步: ${cachedElectricToken}`); 
+
+          const shapeOptions: ShapeStreamOptions = {
+            url: new URL(`${baseUrl}/v1/shape`).toString(),
+            params: { 
+              table: shapeName,
+              columns: shapeName === 'lists' ? 
+                ['id', 'name', 'sort_order', 'is_hidden', 'modified'] :
+                ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
+            },
+            headers: {
+              'Authorization': `Bearer ${cachedElectricToken}` // 确保这行存在
+            }
+          };
+
           const syncPromise = pg.sync.syncShapeToTable({
             shape: {
               url: new URL(`${baseUrl}/v1/shape`).toString(),
@@ -111,12 +201,24 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
                   ['id', 'name', 'sort_order', 'is_hidden', 'modified'] :
                   ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
               },
+              headers: {
+                'Authorization': `Bearer ${cachedElectricToken}`
+              }
             },
             table: shapeName,
             primaryKey: ['id'],
             shapeKey: shapeName,
             onInitialSync: async () => {
               console.log(`Initial sync completed for ${shapeName}`)
+              
+              if (!initialSyncDone) {
+                initialSyncDone = true;
+                updateSyncStatus('initial-sync', 'Creating indexes...');
+                await postInitialSync(pg as unknown as PGlite);
+                updateSyncStatus('done');
+                console.log('All shapes synced and postInitialSync completed');
+              }
+              
               // 检查这个特定的 shape 是否已经同步过
               if (!shapeSyncStatus.get(shapeName)) {
                 shapeSyncStatus.set(shapeName, true)
@@ -146,25 +248,34 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             }
           })
 
-          // 简化同步策略：只等待初始同步完成，不等待实时同步
-          const syncWithTimeout = Promise.race([
-            syncPromise,
-            timeoutPromise
-          ])
-          
           try {
-            await syncWithTimeout
-            console.log(`Successfully synced ${shapeName}`)
-            resolve()
-          } catch (error) {
-            // 如果是超时，我们仍然认为同步成功
-            if (error instanceof Error && error.message.includes('timeout')) {
-              console.log(`Sync timeout for ${shapeName}, but initial sync should be complete - continuing...`)
-              resolve()
-            } else {
-              throw error
-            }
-          }
+  await syncPromise
+  console.log(`Successfully synced ${shapeName}`)
+  resolve()
+} catch (error) {
+  console.error(`${shapeName} sync failed:`, error)
+  reject(error)
+}
+
+          // 简化同步策略：只等待初始同步完成，不等待实时同步
+          // const syncWithTimeout = Promise.race([
+          //   syncPromise,
+          //   timeoutPromise
+          // ])
+          
+          // try {
+          //   await syncWithTimeout
+          //   console.log(`Successfully synced ${shapeName}`)
+          //   resolve()
+          // } catch (error) {
+          //   // 如果是超时，我们仍然认为同步成功
+          //   if (error instanceof Error && error.message.includes('timeout')) {
+          //     console.log(`Sync timeout for ${shapeName}, but initial sync should be complete - continuing...`)
+          //     resolve()
+          //   } else {
+          //     throw error
+          //   }
+          // }
           
         } catch (error) {
           console.error(`${shapeName} sync error (attempt ${retryCount + 1}):`, error)
@@ -323,8 +434,6 @@ async function cleanupSyncState(pg: PGliteWithExtensions) {
     console.log('Cleanup sync state:', error)
   }
 }
-
-
 
 export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
   // Guard against SSR
