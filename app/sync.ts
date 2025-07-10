@@ -1,5 +1,4 @@
 // app/sync.ts
-
 import { PGlite } from '@electric-sql/pglite'
 import { PGliteWithLive } from '@electric-sql/pglite/live'
 import { PGliteWithSync } from '@electric-sql/pglite-sync'
@@ -125,81 +124,39 @@ async function startSimpleSync(pg: PGliteWithExtensions) {
   }
 }
 
-// ... (文件的其余部分保持不变)
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// =====================================================================
+// 重点修改：重写 startSyncToDatabase 函数以确保 onInitialSync 正确执行
+// =====================================================================
 async function startSyncToDatabase(pg: PGliteWithExtensions) {
-  const MAX_RETRIES = 3
-  
-  // 逐步启用同步：先同步 lists 表，再同步 todos 表
-  const shapes = ['lists', 'todos']
-  
-  console.log('Starting sync for shapes:', shapes)
-  // 检查本地数据库状态
+  const MAX_RETRIES = 3;
+  const shapes = ['lists', 'todos'];
+  console.log('Starting sync for shapes:', shapes);
+
   try {
-    const localLists = await pg.query('SELECT COUNT(*) as count FROM lists');
-    const localTodos = await pg.query('SELECT COUNT(*) as count FROM todos');
-    console.log('Local database state:', {
-      lists: localLists.rows[0]?.count || 0,
-      todos: localTodos.rows[0]?.count || 0
-    });
-  } catch (error) {
-    console.log('Local database check failed:', error);
-  }
-  
-  const initialSyncPromises: Promise<void>[] = []
-  let syncedShapes = 0
-  // 为每个 shape 单独跟踪同步状态
-  const shapeSyncStatus = new Map<string, boolean>()
+    // 检查并获取必要的环境变量
+    const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
+    if (!electricProxyUrl) {
+      throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
+    }
+    if (!cachedElectricToken) {
+      throw new Error("Authentication token is not available for sync.");
+    }
 
-  shapes.forEach((shapeName) => {
-    console.log(`Setting up sync for ${shapeName}...`)
-    
-    const shapeSyncPromise = new Promise<void>(async (resolve, reject) => {
-      let retryCount = 0
-      
-      const attemptSync = async (): Promise<void> => {
+    // 为每个 shape 定义一个带重试逻辑的同步函数
+    const syncShape = async (shapeName: string): Promise<void> => {
+      let lastError: any = null;
+      for (let i = 0; i < MAX_RETRIES; i++) {
         try {
-          console.log(`Attempting to sync ${shapeName} (attempt ${retryCount + 1})...`)
-          
-          const timeoutPromise = new Promise<void>((_, reject) => {
-            setTimeout(() => reject(new Error(`Sync timeout for ${shapeName}`)), 15000) // 减少超时时间
-          })
+          console.log(`Attempting to sync ${shapeName} (attempt ${i + 1}/${MAX_RETRIES})...`);
 
-          // 使用新的、指向Edge Function的URL
-          const ELECTRIC_PROXY_URL = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL
-
-          // 在本地开发时，如果代理函数未运行，可以回退到直接连接Electric容器
-          if (!ELECTRIC_PROXY_URL) {
-            console.warn("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set, falling back to direct connection for local dev.")
-          }
-          const baseUrl = ELECTRIC_PROXY_URL || 'http://localhost:5133';
-
-          console.log(`Setting up sync for ${shapeName} with base URL: ${baseUrl}`)
-          // **这里的令牌现在肯定有值了**
-          console.log(`使用这个令牌进行同步: ${cachedElectricToken}`); 
-
-          const shapeOptions: ShapeStreamOptions = {
-            url: new URL(`${baseUrl}/v1/shape`).toString(),
-            params: { 
-              table: shapeName,
-              columns: shapeName === 'lists' ? 
-                ['id', 'name', 'sort_order', 'is_hidden', 'modified'] :
-                ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
-            },
-            headers: {
-              'Authorization': `Bearer ${cachedElectricToken}` // 确保这行存在
-            }
-          };
-
-          const syncPromise = pg.sync.syncShapeToTable({
+          const shapeOptions = {
             shape: {
-              url: new URL(`${baseUrl}/v1/shape`).toString(),
-              params: { 
+              url: new URL(`${electricProxyUrl}/v1/shape`).toString(),
+              params: {
                 table: shapeName,
-                // 只同步服务端实际存在的字段
-                columns: shapeName === 'lists' ? 
-                  ['id', 'name', 'sort_order', 'is_hidden', 'modified'] :
-                  ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
+                columns: shapeName === 'lists'
+                  ? ['id', 'name', 'sort_order', 'is_hidden', 'modified']
+                  : ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
               },
               headers: {
                 'Authorization': `Bearer ${cachedElectricToken}`
@@ -208,151 +165,61 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             table: shapeName,
             primaryKey: ['id'],
             shapeKey: shapeName,
-            onInitialSync: async () => {
-              console.log(`Initial sync completed for ${shapeName}`)
-              
-              if (!initialSyncDone) {
-                initialSyncDone = true;
-                updateSyncStatus('initial-sync', 'Creating indexes...');
-                await postInitialSync(pg as unknown as PGlite);
-                updateSyncStatus('done');
-                console.log('All shapes synced and postInitialSync completed');
-              }
-              
-              // 检查这个特定的 shape 是否已经同步过
-              if (!shapeSyncStatus.get(shapeName)) {
-                shapeSyncStatus.set(shapeName, true)
-                syncedShapes++
-                
-                // 只在所有 shapes 都同步完成时才更新状态，避免重复日志
-                if (syncedShapes === shapes.length) {
-                  updateSyncStatus('initial-sync', `Synced ${syncedShapes}/${shapes.length} data shapes...`)
-                  
-                  if (!initialSyncDone) {
-                    initialSyncDone = true
-                    updateSyncStatus('initial-sync', 'Creating indexes...')
-                    await postInitialSync(pg as unknown as PGlite)
-                    updateSyncStatus('done')
-                    console.log('All shapes synced and postInitialSync completed')
-                  }
-                } else {
-                  // 只在调试模式下显示进度
-                  console.log(`Progress: ${syncedShapes}/${shapes.length} shapes synced`)
-                }
-              }
+            onInitialSync: () => {
+              // 这个回调函数现在应该可以被正确触发了
+              console.log(`✅ onInitialSync fired for ${shapeName}.`);
             },
             onMustRefetch: async (tx) => {
-              console.log(`Must refetch for ${shapeName}, clearing table and retrying...`)
-              await tx.query(`DELETE FROM ${shapeName}`)
-              throw new Error(`Must refetch for ${shapeName}`)
+              console.warn(`Must refetch for ${shapeName}, clearing table and retrying...`);
+              await tx.query(`DELETE FROM ${shapeName}`);
+              throw new Error(`Must refetch for ${shapeName}`);
             }
-          })
+          };
 
-          try {
-  await syncPromise
-  console.log(`Successfully synced ${shapeName}`)
-  resolve()
-} catch (error) {
-  console.error(`${shapeName} sync failed:`, error)
-  reject(error)
-}
+          const subscription = await pg.sync.syncShapeToTable(shapeOptions);
+          
+          // **核心修复**：等待 subscription.synced promise，它在初始数据同步完成后 resolve
+          await subscription.synced;
 
-          // 简化同步策略：只等待初始同步完成，不等待实时同步
-          // const syncWithTimeout = Promise.race([
-          //   syncPromise,
-          //   timeoutPromise
-          // ])
-          
-          // try {
-          //   await syncWithTimeout
-          //   console.log(`Successfully synced ${shapeName}`)
-          //   resolve()
-          // } catch (error) {
-          //   // 如果是超时，我们仍然认为同步成功
-          //   if (error instanceof Error && error.message.includes('timeout')) {
-          //     console.log(`Sync timeout for ${shapeName}, but initial sync should be complete - continuing...`)
-          //     resolve()
-          //   } else {
-          //     throw error
-          //   }
-          // }
-          
+          console.log(`🎉 Successfully synced initial data for ${shapeName}.`);
+          return; // 同步成功，退出此 shape 的重试循环
         } catch (error) {
-          console.error(`${shapeName} sync error (attempt ${retryCount + 1}):`, error)
-          
-          // 更详细的错误信息
-          let errorMessage = 'Unknown error'
-          let errorStack = undefined
-          let errorType = 'unknown'
-          
-          try {
-            if (error instanceof Error) {
-              errorMessage = error.message || 'Error without message'
-              errorStack = error.stack
-              errorType = 'Error'
-            } else if (typeof error === 'string') {
-              errorMessage = error
-              errorType = 'string'
-            } else if (error && typeof error === 'object') {
-              errorMessage = JSON.stringify(error) || 'Object error'
-              errorType = 'object'
-            } else {
-              errorMessage = String(error) || 'Unknown error type'
-              errorType = typeof error
-            }
-          } catch (stringifyError) {
-            errorMessage = 'Error while stringifying error: ' + String(stringifyError)
-          }
-          
-          const errorDetails = {
-            message: errorMessage,
-            stack: errorStack,
-            shapeName,
-            retryCount,
-            errorType,
-            originalError: error
-          }
-          console.error('Error details:', errorDetails)
-          
-          // 如果是must-refetch错误，直接重试
-          if (error instanceof Error && error.message && error.message.includes('Must refetch')) {
-            if (retryCount < MAX_RETRIES) {
-              retryCount++
-              console.log(`Retrying ${shapeName} sync due to must-refetch, attempt ${retryCount + 1}`)
-              await new Promise(resolve => setTimeout(resolve, 500))
-              return attemptSync()
-            }
-          }
-          
-          if (retryCount < MAX_RETRIES) {
-            retryCount++
-            console.log(`Retrying ${shapeName} sync, attempt ${retryCount + 1}`)
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount))
-            return attemptSync()
-          } else {
-            reject(error)
+          lastError = error;
+          console.error(`Error syncing ${shapeName} on attempt ${i + 1}:`, error);
+          if (i < MAX_RETRIES - 1) {
+            const delay = 1000 * (i + 1); // 简单的指数退避
+            console.log(`Retrying sync for ${shapeName} in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
       }
-  
-      await attemptSync()
-    })
+      // 如果所有重试都失败了，则抛出最后的错误
+      throw new Error(`Failed to sync shape ${shapeName} after ${MAX_RETRIES} attempts. Last error: ${lastError?.message || lastError}`);
+    };
 
-    initialSyncPromises.push(shapeSyncPromise)
-  })
+    // 并行启动所有 shape 的同步
+    const allSyncPromises = shapes.map(syncShape);
 
-  console.log('Waiting for all shape sync promises to complete...')
-  await Promise.all(initialSyncPromises)
-  console.log('All shape sync promises completed')
-  
-  await pg.query(`SELECT 1;`)
-  console.log('PGlite is idle')
+    updateSyncStatus('initial-sync', `Syncing ${shapes.length} data shapes...`);
+    
+    // 等待所有 shape 的同步完成
+    await Promise.all(allSyncPromises);
 
-  if (!initialSyncDone) {
-    updateSyncStatus('done')
-    console.log('Sync to database completed (fallback)')
-  } else {
-    console.log('Sync to database completed (already set to done)')
+    console.log('All shapes have completed their initial sync.');
+
+    // **修复竞态条件**：只有在所有 shape 同步完成后才执行此逻辑
+    if (!initialSyncDone) {
+      initialSyncDone = true;
+      updateSyncStatus('initial-sync', 'Finalizing local database...');
+      await postInitialSync(pg as unknown as PGlite);
+      updateSyncStatus('done', 'Application ready.');
+      console.log('All shapes synced and postInitialSync completed.');
+    }
+
+  } catch (error) {
+    console.error('Data synchronization failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    updateSyncStatus('error', `Sync failed: ${errorMessage}`);
   }
 }
 
