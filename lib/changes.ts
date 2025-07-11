@@ -44,10 +44,26 @@ export async function sendChangesToServer(changes: ChangeSet): Promise<void> {
   try {
     console.log('Starting manual sync to server...');
     
-    const response = await fetch('http://localhost:3001/apply-changes', {
+    // 获取认证令牌
+    let authToken: string;
+    try {
+      const tokenResponse = await fetch('https://uurjvmztzzresuplaiuw.supabase.co/functions/v1/token-issuer');
+      if (!tokenResponse.ok) {
+        throw new Error(`Failed to get auth token: ${tokenResponse.status}`);
+      }
+      const { token } = await tokenResponse.json();
+      authToken = token;
+    } catch (tokenError) {
+      console.error('Failed to get auth token:', tokenError);
+      throw new Error('Failed to get authentication token');
+    }
+    
+    // 使用远程的 Supabase write-server Edge Function
+    const response = await fetch('https://uurjvmztzzresuplaiuw.supabase.co/functions/v1/write-server', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify(changes),
     })
