@@ -474,7 +474,7 @@ export default function TodoListPage() {
     try {
       const todoChanges = todosToUpdate.map(todo => createTodoChange(todo.id, { list_id: null }));
       await sendChangesToServer({
-        lists: [createListChange(listId, {}, false, true)],
+        lists: [createListChange(listId, {}, false)],
         todos: todoChanges,
       });
     } catch (error) {
@@ -696,10 +696,32 @@ export default function TodoListPage() {
         if (createdLists.length > 0 || createdTodos.length > 0) {
           setTimeout(async () => {
             try {
-              await sendChangesToServer({
-                lists: createdLists,
-                todos: createdTodos
-              });
+              // 分批发送大量数据，避免超时
+              const batchSize = 100; // 每批100条数据
+              
+              // 先发送lists
+              if (createdLists.length > 0) {
+                await sendChangesToServer({
+                  lists: createdLists,
+                  todos: []
+                });
+              }
+              
+              // 分批发送todos
+              if (createdTodos.length > 0) {
+                for (let i = 0; i < createdTodos.length; i += batchSize) {
+                  const batch = createdTodos.slice(i, i + batchSize);
+                  await sendChangesToServer({
+                    lists: [],
+                    todos: batch
+                  });
+                  
+                  // 添加延迟避免请求过于频繁
+                  if (i + batchSize < createdTodos.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                  }
+                }
+              }
             } catch (error) {
               console.error('Failed to sync imported data:', error);
               alert('本地数据导入成功，但同步到服务器失败。');
