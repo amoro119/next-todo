@@ -14,7 +14,6 @@ const listChangeSchema = z.object({
   is_hidden: z.boolean().nullable().optional(),
   // local-first fields
   modified_columns: z.array(z.string()).nullable().optional(),
-  deleted: z.boolean().nullable().optional(),
   new: z.boolean().nullable().optional(),
 })
 type ListChange = z.infer<typeof listChangeSchema>
@@ -163,22 +162,43 @@ async function applyTableChange(
   change: ListChange | TodoChange,
   supabase: SupabaseClient
 ) {
-  const { id, deleted: isDeletedFlag, modified_columns } = change;
+  const { id, modified_columns, new: isNew, ...data } = change as Record<string, unknown>;
 
-  const isPermanentDelete = isDeletedFlag && (!modified_columns || modified_columns.length === 0);
+  // 过滤掉远程数据库不存在的列
+  const { new: _new, modified_columns: _mc, ...cleanData } = data as Record<string, unknown>;
 
-  if (isPermanentDelete) {
+  // 检查是否为删除操作（对于lists表，如果modified_columns为空且不是新记录，则认为是删除）
+  const isEmptyUpdate = !modified_columns || modified_columns.length === 0;
+  const isDeleteOperation = isEmptyUpdate && !isNew;
+
+  if (isDeleteOperation) {
+    // 执行删除操作
     const { error } = await supabase.from(tableName).delete().eq('id', id);
     if (error) throw new Error(`Failed to delete from ${tableName}: ${error.message}`);
     return;
   }
-  
-  const { new: _n, modified_columns: _mc, ...data } = change as Record<string, unknown>;
-  if (tableName === 'lists') {
-    (data as ListChange).modified = new Date().toISOString();
+
+  // 对于 todos 表，处理 deleted 字段
+  if (tableName === 'todos') {
+    const { deleted: isDeletedFlag } = change as TodoChange;
+    const isPermanentDelete = isDeletedFlag && (!modified_columns || modified_columns.length === 0);
+
+    if (isPermanentDelete) {
+      const { error } = await supabase.from(tableName).delete().eq('id', id);
+      if (error) throw new Error(`Failed to delete from ${tableName}: ${error.message}`);
+      return;
+    }
   }
   
-  const { error } = await supabase.from(tableName).upsert(data);
+  // 为 lists 表添加 modified 时间戳
+  if (tableName === 'lists') {
+    (cleanData as ListChange).modified = new Date().toISOString();
+  }
+  
+  // 确保 id 字段包含在 upsert 数据中
+  const upsertData = { id, ...cleanData };
+  
+  const { error } = await supabase.from(tableName).upsert(upsertData);
   if (error) {
     throw new Error(`Failed to upsert into ${tableName}: ${error.message}`);
   }

@@ -8,7 +8,6 @@ export const listChangeSchema = z.object({
   is_hidden: z.boolean().nullable().optional(),
   // local-first fields
   modified_columns: z.array(z.string()).nullable().optional(),
-  deleted: z.boolean().nullable().optional(),
   new: z.boolean().nullable().optional(),
 })
 export type ListChange = z.infer<typeof listChangeSchema>
@@ -90,13 +89,11 @@ export async function sendChangesToServer(changes: ChangeSet): Promise<void> {
 export function createListChange(
   id: string,
   data: Partial<ListChange>,
-  isNew = false,
-  isPermanentDelete = false
+  isNew = false
 ): ListChange {
   return {
     id,
     new: isNew,
-    deleted: isPermanentDelete,
     ...data,
     modified_columns: Object.keys(data).filter(key => key !== 'id' && key !== 'new' && key !== 'modified_columns') as (keyof ListChange)[],
   }
