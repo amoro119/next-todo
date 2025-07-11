@@ -4,7 +4,6 @@ import { PGliteWithLive } from '@electric-sql/pglite/live'
 import { PGliteWithSync } from '@electric-sql/pglite-sync'
 import { postInitialSync } from '../db/migrations-client'
 import { useEffect, useState } from 'react'
-import { ShapeStreamOptions } from "@electric-sql/client"
 
 type SyncStatus = 'initial-sync' | 'done' | 'error'
 
@@ -26,8 +25,6 @@ async function getElectricToken(): Promise<string> {
   try {
     console.log("Fetching new ElectricSQL auth token from token-issuer function...");
     
-    // **已修改**: 指向新的、专门的令牌颁发函数URL
-    // 您需要在.env.local中设置这个新变量
     const tokenIssuerUrl = process.env.NEXT_PUBLIC_TOKEN_ISSUER_URL;
     if (!tokenIssuerUrl) {
       throw new Error("NEXT_PUBLIC_TOKEN_ISSUER_URL is not set.");
@@ -44,13 +41,9 @@ async function getElectricToken(): Promise<string> {
     cachedElectricToken = token;
     return token;
   } catch (error) {
-    // --- 修改开始 ---
-    // 增强错误处理，确保错误能被上层捕获
     console.error("获取Electric令牌时发生严重错误:", error);
-    invalidateElectricToken(); // 获取失败时，清空可能存在的无效缓存
-    // 向上抛出错误，以便调用者（如 startSync）可以捕获它
+    invalidateElectricToken();
     throw new Error(`无法获取认证令牌: ${error instanceof Error ? error.message : String(error)}`);
-    // --- 修改结束 ---
   }
 }
 
@@ -59,16 +52,13 @@ export async function startSync(pg: PGliteWithExtensions) {
   updateSyncStatus('initial-sync', 'Starting sync...')
   
   try {
-    // --- 修改开始 ---
-    // **核心修复**: 在开始同步前，先调用函数获取并缓存认证令牌。
+    // 获取认证令牌
     console.log("正在获取同步认证令牌...");
     await getElectricToken(); 
-    // 防御性检查，确保 getElectricToken 成功设置了缓存
     if (!cachedElectricToken) {
       throw new Error("认证失败：未能获取到有效的同步令牌。");
     }
     console.log("认证成功，令牌已缓存。");
-    // --- 修改结束 ---
 
     // 首先初始化ElectricSQL系统表
     console.log('Initializing ElectricSQL system tables...')
@@ -82,7 +72,6 @@ export async function startSync(pg: PGliteWithExtensions) {
     await startSimpleSync(pg)
   } catch (error) {
     console.error('Sync failed:', error)
-    // 根据错误类型提供更具体的用户反馈
     const errorMessage = error instanceof Error ? error.message : '同步失败，但应用仍可使用';
     if (errorMessage.includes('认证失败') || errorMessage.includes('认证令牌')) {
       updateSyncStatus('error', '认证失败，无法同步数据');
@@ -124,102 +113,138 @@ async function startSimpleSync(pg: PGliteWithExtensions) {
   }
 }
 
-// =====================================================================
-// 重点修改：重写 startSyncToDatabase 函数以确保 onInitialSync 正确执行
-// =====================================================================
 async function startSyncToDatabase(pg: PGliteWithExtensions) {
-  const MAX_RETRIES = 3;
-  const shapes = ['lists', 'todos'];
-  console.log('Starting sync for shapes:', shapes);
+  const MAX_RETRIES = 3
+  
+  // 逐步启用同步：先同步 lists 表，再同步 todos 表
+  const shapes = ['lists', 'todos']
+  
+  console.log('Starting sync for shapes:', shapes)
+  
+  // 检查并获取必要的环境变量
+  const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
+  if (!electricProxyUrl) {
+    throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
+  }
+  if (!cachedElectricToken) {
+    throw new Error("Authentication token is not available for sync.");
+  }
 
-  try {
-    // 检查并获取必要的环境变量
-    const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
-    if (!electricProxyUrl) {
-      throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
-    }
-    if (!cachedElectricToken) {
-      throw new Error("Authentication token is not available for sync.");
-    }
-
-    // 为每个 shape 定义一个带重试逻辑的同步函数
-    const syncShape = async (shapeName: string): Promise<void> => {
-      let lastError: any = null;
-      for (let i = 0; i < MAX_RETRIES; i++) {
-        try {
-          console.log(`Attempting to sync ${shapeName} (attempt ${i + 1}/${MAX_RETRIES})...`);
-
-          const shapeOptions = {
-            shape: {
-              url: new URL(`${electricProxyUrl}/v1/shape`).toString(),
-              params: {
-                table: shapeName,
-                columns: shapeName === 'lists'
-                  ? ['id', 'name', 'sort_order', 'is_hidden', 'modified']
-                  : ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
-              },
-              headers: {
-                'Authorization': `Bearer ${cachedElectricToken}`
-              }
-            },
-            table: shapeName,
-            primaryKey: ['id'],
-            shapeKey: shapeName,
-            onInitialSync: () => {
-              // 这个回调函数现在应该可以被正确触发了
-              console.log(`✅ onInitialSync fired for ${shapeName}.`);
-            },
-            onMustRefetch: async (tx) => {
-              console.warn(`Must refetch for ${shapeName}, clearing table and retrying...`);
-              await tx.query(`DELETE FROM ${shapeName}`);
-              throw new Error(`Must refetch for ${shapeName}`);
-            }
-          };
-
-          const subscription = await pg.sync.syncShapeToTable(shapeOptions);
-          
-          // **核心修复**：等待 subscription.synced promise，它在初始数据同步完成后 resolve
-          await subscription.synced;
-
-          console.log(`🎉 Successfully synced initial data for ${shapeName}.`);
-          return; // 同步成功，退出此 shape 的重试循环
-        } catch (error) {
-          lastError = error;
-          console.error(`Error syncing ${shapeName} on attempt ${i + 1}:`, error);
-          if (i < MAX_RETRIES - 1) {
-            const delay = 1000 * (i + 1); // 简单的指数退避
-            console.log(`Retrying sync for ${shapeName} in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+  // 使用更直接的方法：先获取数据，然后手动写入
+  for (const shapeName of shapes) {
+    console.log(`🔄 开始同步 ${shapeName}...`)
+    
+    let retryCount = 0;
+    let success = false;
+    
+    while (retryCount < MAX_RETRIES && !success) {
+      try {
+        console.log(`📥 尝试获取 ${shapeName} 数据 (尝试 ${retryCount + 1}/${MAX_RETRIES})...`)
+        
+        // 构建请求URL
+        const columns = shapeName === 'lists' 
+          ? 'id,name,sort_order,is_hidden,modified'
+          : 'id,title,completed,deleted,sort_order,due_date,content,tags,priority,created_time,completed_time,start_date,list_id';
+        
+        const shapeUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns}&offset=0`;
+        console.log(`🔗 请求URL: ${shapeUrl}`)
+        
+        // 获取数据
+        const response = await fetch(shapeUrl, {
+          headers: {
+            'Authorization': `Bearer ${cachedElectricToken}`
           }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log(`📊 ${shapeName} 数据获取成功:`, data.rows?.length || 0, '条记录');
+        
+        if (data.rows && data.rows.length > 0) {
+          console.log(`📋 ${shapeName} 数据示例:`, data.rows[0]);
+          
+          // 清空本地表
+          console.log(`🗑️ 清空本地 ${shapeName} 表...`);
+          await pg.exec(`DELETE FROM ${shapeName}`);
+          
+          // 手动插入数据
+          console.log(`💾 开始写入 ${shapeName} 数据到本地数据库...`);
+          
+          for (const row of data.rows) {
+            const columns = Object.keys(row).filter(key => row[key] !== null && row[key] !== undefined);
+            const values = columns.map(col => {
+              const value = row[col];
+              if (typeof value === 'string') {
+                return `'${value.replace(/'/g, "''")}'`;
+              }
+              return value;
+            });
+            
+            const insertSql = `INSERT INTO ${shapeName} (${columns.join(', ')}) VALUES (${values.join(', ')})`;
+            console.log(`📝 执行SQL: ${insertSql}`);
+            
+            try {
+              await pg.exec(insertSql);
+            } catch (insertError) {
+              console.error(`❌ 插入数据失败:`, insertError);
+              console.error(`📝 失败的SQL: ${insertSql}`);
+              throw insertError;
+            }
+          }
+          
+          // 验证数据写入
+          const verifyResult = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
+          const count = (verifyResult.rows[0] as { count: string }).count;
+          console.log(`✅ ${shapeName} 数据验证: ${count} 条记录已写入本地数据库`);
+          
+          if (parseInt(count) > 0) {
+            console.log(`🎉 ${shapeName} 同步成功！`);
+            success = true;
+          } else {
+            throw new Error(`${shapeName} 数据写入失败：本地数据库为空`);
+          }
+        } else {
+          console.log(`⚠️ ${shapeName} 没有数据需要同步`);
+          success = true; // 没有数据也算成功
+        }
+        
+      } catch (error) {
+        console.error(`❌ ${shapeName} 同步错误 (尝试 ${retryCount + 1}):`, error);
+        
+        if (retryCount < MAX_RETRIES - 1) {
+          retryCount++;
+          const delay = 1000 * retryCount;
+          console.log(`⏳ ${delay}ms 后重试 ${shapeName}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw new Error(`同步 ${shapeName} 失败，已重试 ${MAX_RETRIES} 次: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
-      // 如果所有重试都失败了，则抛出最后的错误
-      throw new Error(`Failed to sync shape ${shapeName} after ${MAX_RETRIES} attempts. Last error: ${lastError?.message || lastError}`);
-    };
-
-    // 并行启动所有 shape 的同步
-    const allSyncPromises = shapes.map(syncShape);
-
-    updateSyncStatus('initial-sync', `Syncing ${shapes.length} data shapes...`);
-    
-    // 等待所有 shape 的同步完成
-    await Promise.all(allSyncPromises);
-
-    console.log('All shapes have completed their initial sync.');
-
-    // **修复竞态条件**：只有在所有 shape 同步完成后才执行此逻辑
-    if (!initialSyncDone) {
-      initialSyncDone = true;
-      updateSyncStatus('initial-sync', 'Finalizing local database...');
-      await postInitialSync(pg as unknown as PGlite);
-      updateSyncStatus('done', 'Application ready.');
-      console.log('All shapes synced and postInitialSync completed.');
     }
+  }
 
-  } catch (error) {
-    console.error('Data synchronization failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-    updateSyncStatus('error', `Sync failed: ${errorMessage}`);
+  console.log('🎉 所有数据同步完成！');
+  
+  // 最终验证
+  for (const shapeName of shapes) {
+    try {
+      const result = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
+      const count = (result.rows[0] as { count: string }).count;
+      console.log(`📊 最终验证 ${shapeName}: ${count} 条记录`);
+    } catch (error) {
+      console.error(`❌ 验证 ${shapeName} 失败:`, error);
+    }
+  }
+
+  if (!initialSyncDone) {
+    initialSyncDone = true;
+    updateSyncStatus('initial-sync', 'Creating indexes...');
+    await postInitialSync(pg as unknown as PGlite);
+    updateSyncStatus('done');
+    console.log('✅ 同步完成，应用已准备就绪');
   }
 }
 
