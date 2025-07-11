@@ -130,7 +130,7 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
     throw new Error("Authentication token is not available for sync.");
   }
 
-  // 使用更直接的方法：先获取数据，然后手动写入
+  // 使用 ElectricSQL 的 syncShapeToTable，但添加数据验证
   for (const shapeName of shapes) {
     console.log(`🔄 开始同步 ${shapeName}...`)
     
@@ -139,41 +139,40 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
     
     while (retryCount < MAX_RETRIES && !success) {
       try {
-        console.log(`📥 尝试获取 ${shapeName} 数据 (尝试 ${retryCount + 1}/${MAX_RETRIES})...`)
+        console.log(`📥 尝试同步 ${shapeName} (尝试 ${retryCount + 1}/${MAX_RETRIES})...`)
         
-        // 构建请求URL
+        // 首先测试数据获取
         const columns = shapeName === 'lists' 
           ? 'id,name,sort_order,is_hidden,modified'
           : 'id,title,completed,deleted,sort_order,due_date,content,tags,priority,created_time,completed_time,start_date,list_id';
         
-        const shapeUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns}&offset=0`;
-        console.log(`🔗 请求URL: ${shapeUrl}`)
+        const testUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns}&offset=0`;
+        console.log(`🔍 测试数据获取: ${testUrl}`)
         
-        // 获取数据
-        const response = await fetch(shapeUrl, {
+        const testResponse = await fetch(testUrl, {
           headers: {
             'Authorization': `Bearer ${cachedElectricToken}`
           }
         });
         
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!testResponse.ok) {
+          throw new Error(`测试数据获取失败: HTTP ${testResponse.status}`);
         }
         
-        const data = await response.json();
-        console.log(`📊 ${shapeName} 数据获取成功:`, data.rows?.length || 0, '条记录');
+        const testData = await testResponse.json();
+        console.log(`📊 ${shapeName} 测试数据: ${testData.rows?.length || 0} 条记录`);
         
-        if (data.rows && data.rows.length > 0) {
-          console.log(`📋 ${shapeName} 数据示例:`, data.rows[0]);
+        if (testData.rows && testData.rows.length > 0) {
+          console.log(`📋 ${shapeName} 数据示例:`, testData.rows[0]);
           
           // 清空本地表
           console.log(`🗑️ 清空本地 ${shapeName} 表...`);
           await pg.exec(`DELETE FROM ${shapeName}`);
           
-          // 手动插入数据
-          console.log(`💾 开始写入 ${shapeName} 数据到本地数据库...`);
+          // 直接使用手动写入进行初始同步
+          console.log(`�� 使用手动写入 ${shapeName} 数据...`);
           
-          for (const row of data.rows) {
+          for (const row of testData.rows) {
             const columns = Object.keys(row).filter(key => row[key] !== null && row[key] !== undefined);
             const values = columns.map(col => {
               const value = row[col];
@@ -184,28 +183,63 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             });
             
             const insertSql = `INSERT INTO ${shapeName} (${columns.join(', ')}) VALUES (${values.join(', ')})`;
-            console.log(`📝 执行SQL: ${insertSql}`);
             
             try {
               await pg.exec(insertSql);
             } catch (insertError) {
               console.error(`❌ 插入数据失败:`, insertError);
-              console.error(`📝 失败的SQL: ${insertSql}`);
               throw insertError;
             }
           }
           
-          // 验证数据写入
-          const verifyResult = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
-          const count = (verifyResult.rows[0] as { count: string }).count;
-          console.log(`✅ ${shapeName} 数据验证: ${count} 条记录已写入本地数据库`);
+          // 验证手动写入
+          const manualVerifyResult = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
+          const manualCount = (manualVerifyResult.rows[0] as { count: string }).count;
+          console.log(`📊 ${shapeName} 手动写入验证: ${manualCount} 条记录`);
           
-          if (parseInt(count) > 0) {
-            console.log(`🎉 ${shapeName} 同步成功！`);
+          if (parseInt(manualCount) > 0) {
+            console.log(`🎉 ${shapeName} 手动写入成功！`);
             success = true;
           } else {
-            throw new Error(`${shapeName} 数据写入失败：本地数据库为空`);
+            throw new Error(`${shapeName} 手动写入失败`);
           }
+          
+          // 在手动写入成功后，建立 ElectricSQL 同步流用于实时同步
+          console.log(`🔄 建立 ${shapeName} ElectricSQL 实时同步流...`);
+          
+          const syncConfig = {
+            shape: {
+              url: new URL(`${electricProxyUrl}/v1/shape`).toString(),
+              params: { 
+                table: shapeName,
+                columns: shapeName === 'lists' ? 
+                  ['id', 'name', 'sort_order', 'is_hidden', 'modified'] :
+                  ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
+              },
+              headers: {
+                'Authorization': `Bearer ${cachedElectricToken}`
+              }
+            },
+            table: shapeName,
+            primaryKey: ['id'],
+            shapeKey: shapeName,
+            onInitialSync: async () => {
+              console.log(`✅ ${shapeName} ElectricSQL 实时同步流建立成功`);
+            },
+            onMustRefetch: async (tx: unknown) => {
+              console.log(`⚠️ ${shapeName} Must refetch, 清空表并重试...`);
+              await (tx as { query: (sql: string) => Promise<unknown> }).query(`DELETE FROM ${shapeName}`);
+              throw new Error(`Must refetch for ${shapeName}`);
+            }
+          };
+          
+          try {
+            const subscription = await pg.sync.syncShapeToTable(syncConfig);
+            console.log(`✅ ${shapeName} ElectricSQL 实时同步流建立成功:`, subscription);
+          } catch (electricError) {
+            console.warn(`⚠️ ${shapeName} ElectricSQL 实时同步流建立失败，但不影响初始同步:`, electricError);
+          }
+          
         } else {
           console.log(`⚠️ ${shapeName} 没有数据需要同步`);
           success = true; // 没有数据也算成功
