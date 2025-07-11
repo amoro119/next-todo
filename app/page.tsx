@@ -124,9 +124,8 @@ export default function TodoListPage() {
   const lists = ((listsQuery as any)?.rows ?? []).map(normalizeList);
   
   const recycledQuery = useLiveQuery.sql<Todo>`SELECT id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id FROM todos WHERE deleted = true`;
-  const recycled = ((recycledQuery as any)?.rows ?? []).map(normalizeTodo);
+  const recycledTodos = ((recycledQuery as any)?.rows ?? []).map(normalizeTodo);
   
-  // 重新启用 meta 表查询
   const metaQuery = useLiveQuery.sql<{ key: string, value: string }>`SELECT * FROM meta WHERE key = 'slogan'`;
   const metaResults = (metaQuery as any)?.rows ?? [];
 
@@ -135,7 +134,6 @@ export default function TodoListPage() {
     if ((todosQuery as any)?.error) console.error("Todos query error:", (todosQuery as any).error);
     if ((listsQuery as any)?.error) console.error("Lists query error:", (listsQuery as any).error);
     if ((recycledQuery as any)?.error) console.error("Recycled query error:", (recycledQuery as any).error);
-    // if ((metaQuery as any)?.error) console.error("Meta query error:", (metaQuery as any).error);
   }, [todosQuery, listsQuery, recycledQuery]);
   
   useEffect(() => {
@@ -150,9 +148,16 @@ export default function TodoListPage() {
     }
   }, [isEditingSlogan]);
 
+  // ========= 性能优化点 =========
+  // 基础的派生数据，这些计算开销较小，可以保留
   const activeTodos = useMemo(() => todos.filter((t: Todo) => !t.deleted), [todos]);
+  const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
 
+  // 优化点 1: 仅在日历视图激活时才进行复杂的日期过滤
   const calendarVisibleTodos = useMemo(() => {
+    if (currentView !== 'calendar') {
+      return []; // 如果不是日历视图，直接返回空数组，避免不必要的计算
+    }
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
     const viewStart = startOfWeek(monthStart, { weekStartsOn: 0 });
@@ -171,35 +176,8 @@ export default function TodoListPage() {
       const effectiveEnd = todoStart > todoEnd ? todoStart : todoEnd;
       return effectiveStart <= viewEnd && effectiveEnd >= viewStart;
     });
-  }, [activeTodos, currentDate]);
+  }, [activeTodos, currentDate, currentView]); // 添加 currentView 作为依赖
 
-  const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
-  const recycledTodos = useMemo(() => recycled, [recycled]);
-
-  const todayTodos = useMemo(() => {
-    const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-    return activeTodos.filter((todo: Todo) => todo.due_date && utcToLocalDateString(todo.due_date) === todayStrInUTC8);
-  }, [activeTodos]);
-
-  const inboxTodos = useMemo(() => {
-    const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-    return uncompletedTodos.filter((todo: Todo) => {
-        const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
-        const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
-        return !todo.list_id || isOverdue;
-    });
-  }, [uncompletedTodos]);
-
-  const uncompletedTodosByListId = useMemo(() => {
-    return uncompletedTodos.reduce((acc: Record<string, Todo[]>, todo: Todo) => {
-      if (todo.list_id) {
-        acc[todo.list_id] = acc[todo.list_id] || [];
-        acc[todo.list_id].push(todo);
-      }
-      return acc;
-    }, {} as Record<string, Todo[]>);
-  }, [uncompletedTodos]);
-  
   const listNameToIdMap = useMemo(() => 
     lists.reduce((acc: Record<string, string>, list: List) => {
       acc[list.name] = list.id;
@@ -207,42 +185,81 @@ export default function TodoListPage() {
     }, {} as Record<string, string>),
   [lists]);
 
+  // 优化点 2: 将所有视图的待办事项计算逻辑合并到一个 useMemo 中
+  // 这个 useMemo 依赖于 currentView，因此只会为当前视图计算数据
   const { displayTodos, uncompletedCount } = useMemo(() => {
+    // 回收站视图
     if (currentView === 'recycle') {
       return { displayTodos: recycledTodos, uncompletedCount: 0 };
     }
+
+    // “今日待办”视图
     if (currentView === 'list') {
-      return { displayTodos: todayTodos, uncompletedCount: todayTodos.filter((t: Todo) => !t.completed_time).length };
+      const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+      const filtered = activeTodos.filter((todo: Todo) => todo.due_date && utcToLocalDateString(todo.due_date) === todayStrInUTC8);
+      return {
+        displayTodos: filtered,
+        uncompletedCount: filtered.filter((t: Todo) => !t.completed_time).length
+      };
     }
+
+    // “收件箱”视图
     if (currentView === 'inbox') {
-      return { displayTodos: inboxTodos, uncompletedCount: inboxTodos.length };
+      const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+      // 注意: 收件箱只显示未完成的
+      const filtered = uncompletedTodos.filter((todo: Todo) => {
+        const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
+        const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
+        return !todo.list_id || isOverdue;
+      });
+      return { displayTodos: filtered, uncompletedCount: filtered.length };
     }
     
+    // 自定义清单视图
     const listId = listNameToIdMap[currentView];
     if (listId) {
-      const listTodos = uncompletedTodosByListId[listId] || [];
+      // 注意: 自定义清单只显示未完成的
+      const listTodos = uncompletedTodos.filter(todo => todo.list_id === listId);
       return { displayTodos: listTodos, uncompletedCount: listTodos.length };
     }
 
+    // 默认情况或日历视图（日历有自己的渲染逻辑，这里返回空）
     return { displayTodos: [], uncompletedCount: 0 };
-  }, [currentView, recycledTodos, todayTodos, inboxTodos, uncompletedTodosByListId, listNameToIdMap]);
-
-
-
-  const inboxCount = useMemo(() => inboxTodos.length, [inboxTodos]);
+  }, [currentView, activeTodos, uncompletedTodos, recycledTodos, listNameToIdMap]);
   
+  // 优化点 3: 为UI上必须一直显示的计数创建独立的、轻量的 useMemo
+  // 收件箱计数 (用于按钮徽章)
+  const inboxCount = useMemo(() => {
+    const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+    return uncompletedTodos.filter((todo: Todo) => {
+        const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
+        const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
+        return !todo.list_id || isOverdue;
+    }).length;
+  }, [uncompletedTodos]);
+  
+  // 各个清单的未完成计数 (用于按钮徽章)
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const list of lists) {
-        if (uncompletedTodosByListId[list.id]) {
-            counts[list.name] = uncompletedTodosByListId[list.id].length;
+    // 直接遍历 uncompletedTodos 一次，而不是依赖预先 reduce 的 uncompletedTodosByListId
+    for (const todo of uncompletedTodos) {
+        if (todo.list_id) {
+            counts[todo.list_id] = (counts[todo.list_id] || 0) + 1;
         }
     }
-    return counts;
-  }, [lists, uncompletedTodosByListId]);
+    
+    const nameCounts: Record<string, number> = {};
+    for (const list of lists) {
+        if (counts[list.id]) {
+            nameCounts[list.name] = counts[list.id];
+        }
+    }
+    return nameCounts;
+  }, [lists, uncompletedTodos]);
   
   const recycleBinCount = useMemo(() => recycledTodos.length, [recycledTodos]);
 
+  // ... (剩余的所有事件处理函数和 JSX 保持不变)
   const handleEditSlogan = () => {
     setOriginalSlogan(slogan);
     setIsEditingSlogan(true);
@@ -251,7 +268,6 @@ export default function TodoListPage() {
   const handleUpdateSlogan = useCallback(debounce(async () => {
     setIsEditingSlogan(false);
     if (slogan === originalSlogan) return;
-    // 重新启用 meta 表操作
     await pg.sql`INSERT INTO meta (key, value) VALUES ('slogan', ${slogan}) ON CONFLICT(key) DO UPDATE SET value = ${slogan}`;
   }, 500), [pg, slogan, originalSlogan]);
 
@@ -279,7 +295,6 @@ export default function TodoListPage() {
     const createdTime = new Date().toISOString();
     
     try {
-      // 使用 ON CONFLICT 处理主键冲突
       await pg.sql`
         INSERT INTO todos (id, title, list_id, due_date, start_date, created_time) 
         VALUES (${todoId}, ${newTodoTitle.trim()}, ${listId}, ${dueDateUTC}, ${dueDateUTC}, ${createdTime})
@@ -291,7 +306,6 @@ export default function TodoListPage() {
           created_time = EXCLUDED.created_time
       `;
 
-      // 重新启用手动推送，但添加延迟避免冲突
       setTimeout(async () => {
         try {
           await sendChangesToServer({
@@ -307,7 +321,7 @@ export default function TodoListPage() {
         } catch (error) {
           console.error('Failed to sync new todo:', error);
         }
-      }, 1000); // 延迟1秒推送
+      }, 1000);
 
       setNewTodoTitle('');
       setNewTodoDate(null);
@@ -327,7 +341,6 @@ export default function TodoListPage() {
       const query = `UPDATE todos SET ${setClauses} WHERE id = $1`;
       await pg.query(query, params);
 
-      // 重新启用手动推送，但添加延迟避免冲突
       setTimeout(async () => {
         try {
           await sendChangesToServer({
@@ -337,7 +350,7 @@ export default function TodoListPage() {
         } catch (error) {
           console.error('Failed to sync todo update:', error);
         }
-      }, 1000); // 延迟1秒推送
+      }, 1000);
   }, [pg]);
   
   const handleToggleComplete = async (todo: Todo) => {
@@ -356,7 +369,6 @@ export default function TodoListPage() {
     }
     await pg.sql`UPDATE todos SET deleted = true WHERE id = ${todoId}`;
 
-    // 推送变化到服务器
     try {
       await sendChangesToServer({
         lists: [],
@@ -368,7 +380,7 @@ export default function TodoListPage() {
   };
   
   const handleRestoreTodo = async (todoId: string) => {
-    const todoToRestore = recycled.find((t: Todo) => t.id === todoId);
+    const todoToRestore = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToRestore) return;
     setLastAction({ type: 'restore', data: todoToRestore });
     if (selectedTodo && selectedTodo.id === todoId) {
@@ -376,7 +388,6 @@ export default function TodoListPage() {
     }
     await pg.sql`UPDATE todos SET deleted = false WHERE id = ${todoId}`;
 
-    // 推送变化到服务器
     try {
       await sendChangesToServer({
         lists: [],
@@ -388,13 +399,12 @@ export default function TodoListPage() {
   };
   
   const handlePermanentDeleteTodo = async (todoId: string) => {
-    const todoToDelete = recycled.find((t: Todo) => t.id === todoId);
+    const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToDelete) return;
     const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`);
     if (confirmed) {
       await pg.sql`DELETE FROM todos WHERE id = ${todoId}`;
       
-      // 推送变化到服务器
       try {
         await sendChangesToServer({
           lists: [],
@@ -421,7 +431,6 @@ export default function TodoListPage() {
     try {
       const newList = { id: uuid(), name, sort_order: lists.length, is_hidden: false };
       
-      // 使用 ON CONFLICT 处理主键冲突
       await pg.sql`
         INSERT INTO lists (id, name, sort_order, is_hidden) 
         VALUES (${newList.id}, ${newList.name}, ${newList.sort_order}, ${newList.is_hidden})
@@ -431,7 +440,6 @@ export default function TodoListPage() {
           is_hidden = EXCLUDED.is_hidden
       `;
       
-      // 重新启用手动推送，但添加延迟避免冲突
       setTimeout(async () => {
         try {
           await sendChangesToServer({
@@ -445,7 +453,7 @@ export default function TodoListPage() {
         } catch (error) {
           console.error('Failed to sync new list:', error);
         }
-      }, 1000); // 延迟1秒推送
+      }, 1000);
       
       return newList;
     } catch (error) {
@@ -461,7 +469,6 @@ export default function TodoListPage() {
     const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`);
     if (!confirmed) return;
 
-    // 获取将要被修改的 todo
     const todosToUpdateQuery = await pg.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
     const todosToUpdate = todosToUpdateQuery.rows;
     
@@ -470,7 +477,6 @@ export default function TodoListPage() {
         await tx.sql`DELETE FROM lists WHERE id = ${listId}`;
     });
     
-    // 推送变化到服务器
     try {
       const todoChanges = todosToUpdate.map(todo => createTodoChange(todo.id, { list_id: null }));
       await sendChangesToServer({
@@ -494,7 +500,6 @@ export default function TodoListPage() {
     const query = `UPDATE lists SET ${setClauses} WHERE id = $1`;
     await pg.query(query, params);
 
-    // 推送变化到服务器
     try {
       await sendChangesToServer({
         lists: [createListChange(listId, updates)],
@@ -512,7 +517,6 @@ export default function TodoListPage() {
           }
       });
 
-      // 推送变化到服务器
       setTimeout(async () => {
         try {
           await sendChangesToServer({
@@ -558,7 +562,6 @@ export default function TodoListPage() {
             }
           });
 
-          // 推送变化到服务器
           setTimeout(async () => {
             try {
               await sendChangesToServer({
@@ -597,7 +600,6 @@ export default function TodoListPage() {
     
     await pg.sql`UPDATE todos SET completed = TRUE, completed_time = ${newCompletedTime} WHERE id = ANY(${idsToUpdate}::uuid[])`;
 
-    // 重新启用手动推送，但添加延迟避免冲突
     setTimeout(async () => {
       try {
         await sendChangesToServer({
@@ -610,7 +612,7 @@ export default function TodoListPage() {
       } catch (error) {
         console.error('Failed to sync batch completion:', error);
       }
-    }, 1000); // 延迟1秒推送
+    }, 1000);
   };
   
   const handleImport = async (file: File) => {
@@ -623,7 +625,6 @@ export default function TodoListPage() {
         let todosToImport: Partial<Todo>[] = [];
         if (file.name.endsWith('.csv')) {
           const { todos, removedTodos } = parseDidaCsv(content);
-          // Manually map 'removed' property to 'deleted'
           todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as any).removed}));
         } else {
           const data = JSON.parse(content);
@@ -696,10 +697,8 @@ export default function TodoListPage() {
         if (createdLists.length > 0 || createdTodos.length > 0) {
           setTimeout(async () => {
             try {
-              // 分批发送大量数据，避免超时
-              const batchSize = 100; // 每批100条数据
+              const batchSize = 100;
               
-              // 先发送lists
               if (createdLists.length > 0) {
                 await sendChangesToServer({
                   lists: createdLists,
@@ -707,7 +706,6 @@ export default function TodoListPage() {
                 });
               }
               
-              // 分批发送todos
               if (createdTodos.length > 0) {
                 for (let i = 0; i < createdTodos.length; i += batchSize) {
                   const batch = createdTodos.slice(i, i + batchSize);
@@ -716,7 +714,6 @@ export default function TodoListPage() {
                     todos: batch
                   });
                   
-                  // 添加延迟避免请求过于频繁
                   if (i + batchSize < createdTodos.length) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                   }
@@ -803,7 +800,7 @@ export default function TodoListPage() {
                 </button>
                 {lists.filter((l: List) => !l.is_hidden).map((list: List) => (
                     <button key={list.id} onClick={() => setCurrentView(list.name)} className={currentView === list.name ? 'active' : ''}>
-                        {list.name} {(todosByList[list.id] || 0) > 0 && <span className="badge">{todosByList[list.id]}</span>}
+                        {list.name} {(todosByList[list.name] || 0) > 0 && <span className="badge">{todosByList[list.name]}</span>}
                     </button>
                 ))}
             </div>
@@ -840,7 +837,7 @@ export default function TodoListPage() {
                                   <div className={`todo-content ${todo.completed ? "completed" : ""}`}>
                                       {todo.deleted ? (
                                           <button className="todo-btn btn-restore" onClick={(e) => { e.stopPropagation(); handleRestoreTodo(todo.id);}}>
-                                              <Image src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkiIGhlaWdodD0iMTkiIHZpZXdCb3g9IjAgMCAxOSAxOSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMzQ3OTggMi42NTc5MkM3LjcxMTM0IDEuOTEzNDQgNy40MDIzOCAxLjAxNTM1IDYuNjU3OSAwLjY1MTk4OEM1LjkxMzQxIDAuMjg4NjI3IDUuMDE1MzIgMC41OTc1OSA0LjY1MTk2IDEuMzQyMDhMNy4zNDc5OCAyLjY1NzkyWk0xLjUyNiA5LjA4MzMzTDAuMzc1NTcxIDguMTIwNzhDMC4wNzc5NTE2IDguNDc2NDkgLTAuMDM4MzgyIDguOTQ5ODcgMC4wNjA0NjEyIDkuNDAzMDFDMC4xNTkzMDQgOS44NTYxNSAwLjQ2MjIwNiAxMC4yMzgxIDAuODgwOTI0IDEwLjQzNzVMMS41MjYgOS4wODMzM1pNMTQuNTcyNCAxNi41ODkzQzE0LjM0NTYgMTcuMzg2IDE0LjgwNzYgMTguMjE1OCAxNS42MDQ0IDE4LjQ0MjZDMTYuNDAxMiAxOC42Njk0IDE3LjIzMSAxOC4yMDczIDE3LjQ1NzggMTcuNDEwNkwxNC41NzI0IDE2LjU4OTNaTTYuMjUxOTIgMTQuMzMyMUM2LjcxMTE1IDE1LjAyMTMgNy42NDI3NiAxNS4yMDc2IDguMzMyMDUgMTQuNzQ4MUM5LjAyMTM0IDE0LjI4ODUgOS4yMDc2IDEzLjM1NzIgOC43NDgwOCAxMi42Njc5TDYuMjUxOTIgMTQuMzMyMVpNNC42NTE5NiAxLjM0MjA4QzMuNjc2NiAzLjM0MDQ3IDIuNjAwMzMgNS4wNDUyNSAxLjc2NjU4IDYuMjUxMDhDMS4zNTA1OSA2Ljg1MjcyIDAuOTk3MjYzIDcuMzI2ODUgMC43NTAzODQgNy42NDc3MkMwLjYyNzAwNSA3LjgwNzkzIDAuNTMwMzkyIDcuOTI5NyAwLjQ2NjA0NyA4LjAwOTY5QzAuNDMzODggOC4wNDk2NyAwLjQwOTc5NiA4LjA3OTIgMC4zOTQ0ODIgOC4wOTc4NkMwLjM4NjgyNiA4LjEwNzE4IDAuMzgxMzY0IDguMTEzNzkgMC4zNzgxODMgOC4xMTc2M0MwLjM3NjU5MiA4LjExOTU1IDAuMzc1NTcyIDguMTIwNzcgMC4zNzUxMzMgOC4xMjEzQzAuMzc0OTE0IDguMTIxNTcgMC4zNzQ4NCA4LjEyMTY1IDAuMzc0OTEyIDguMTIxNTdDMC4zNzQ5NDggOC4xMjE1MiAwLjM3NTAyMSA4LjEyMTQ0IDAuMzc1MTMxIDguMTIxM0MwLjM3NTE4NiA4LjEyMTI0IDAuMzc1Mjk2IDguMTIxMTEgMC4zNzUzMjMgOC4xMjEwN0MwLjM3NTQ0MiA4LjEyMDkzIDAuMzc1NTcxIDguMTIwNzggMS41MjYgOS4wODMzM0MyLjY3NjQzIDEwLjA0NTkgMi42NzY1OCAxMC4wNDU3IDIuNjc2NzMgMTAuMDQ1NUMyLjY3NjggMTAuMDQ1NCAyLjY3Njk2IDEwLjA0NTIgMi42NzcwOSAxMC4wNDUxQzIuNjc3MzUgMTAuMDQ0OCAyLjY3NzY1IDEwLjA0NDQgMi42Nzc5OCAxMC4wNDRDMi42Nzg2NSAxMC4wNDMyIDIuNjc5NDYgMTAuMDQyMyAyLjY4MDQyIDEwLjA0MTFDMi42ODIzNCAxMC4wMzg4IDIuNjg0ODYgMTAuMDM1OCAyLjY4Nzk0IDEwLjAzMkMyLjY5NDEyIDEwLjAyNDYgMi43MDI2MSAxMC4wMTQzIDIuNzEzMzMgMTAuMDAxM0MyLjczNDc1IDkuOTc1MTYgMi43NjUwOCA5LjkzNzk1IDIuODAzNjIgOS44OTAwNUMyLjg4MDY3IDkuNzk0MjYgMi45OTA2IDkuNjU1NjEgMy4xMjc3OCA5LjQ3NzM4QzMuNDAyMDEgOS4xMjEwNiAzLjc4NTg3IDguNjA1NjIgNC4yMzQxNyA3Ljk1NzI1QzUuMTI5IDYuNjYzMDggNi4yODk3MiA0LjgyNjIgNy4zNDc5OCAyLjY1NzkyTDQuNjUxOTYgMS4zNDIwOFpNMi4wNDcwNCAxMC40ODk5QzMuNzc2MTcgOS44NDk0MiA1LjczMzE5IDkuMTcyMzEgNy42MzggOC43MjEzN0M5LjU3MDA4IDguMjY1OTkgMTEuMzAyNSA4LjA3NjMxIDEyLjYyODggOC4zMDE3QzEzLjg3NTIgOC41MTM1MiAxNC42Mjg0IDkuMDUwMDggMTUuMDE2MyAxMC4wNDA1QzE1LjQ2MjggMTEuMTgwNyAxNS41MzgzIDEzLjE5NTYgMTQuNTcyNCAxNi41ODkzTDE3LjQ1NzggMTcuNDEwNkMxOC4wODQzIDEzLjgwNDIgMTguNjE2NiAxMS4wMDY3IDE3LjgwOTcgOC45NDY0NkMxNi45NDQyIDYuNzM2MzQgMTUuMTMzNyA1LjY4NDM3IDEzLjEzMTQgNS4zNDQxMUMxMS4yMDkyIDUuMDE3NDMgOS4wMDc5OSA1LjMxNDEzIDYuOTQ2OSA1LjgwMjA2QzQuODU4NTYgNi4yOTY0NCAyLjc2MjgzIDcuMDI1NTggMS4wMDQ5NiA3LjY3NjczTDIuMDQ3MDQgMTAuNDg5OVpNOC43NDgwOCAxMi42Njc5QzcuNTIzMTIgMTAuODMwNSA1LjIyOTM0IDkuMTg1OTMgMi4xNzEwOCA3LjcyOTEzTDAuODgwOTI0IDEwLjQzNzVDMy43NzA2NiAxMS44MTQxIDUuNDc2ODggMTMuMTY5NSA2LjI1MTkyIDE0LjMzMjFMOC43NDgwOCAxMi42Njc5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" alt="还原" draggable={false} width={16} height={16}/>
+                                              <Image src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkiIGhlaWdodD0iMTkiIHZpZXdCb3g9IjAgMCAxOSAxOSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMzQ3OTggMi42NTc5MkM3LjcxMTM0IDEuOTEzNDQgNy40MDIzOCAxLjAxNTM1IDYuNjU3OSAwLjY1MTk4OEM1LjkxMzQxIDAuMjg4NjI3IDUuMDE1MzIgMC41OTc1OSA0LjY1MTk2IDEuMzQyMDhMNy4zNDc5OCAyLjY1NzkyWk0xLjUyNiA5LjA4MzMzTDAuMzc1NTcxIDguMTIwNzhDMC4wNzc5NTE2IDguNDc2NDkgLTAuMDM4MzgyIDguOTQ5ODcgMC4wNjA0NjEyIDkuNDAzMDFDMC4xNTkzMDQgOS44NTYxNSAwLjQ2MjIwNiAxMC4yMzgxIDAuODgwOTI0IDEwLjQzNzVMMS41MjYgOS4wODMzM1pNMTQuNTcyNCAxNi41ODkzQzE0LjM0NTYgMTcuMzg2IDE0LjgwNzYgMTguMjE1OCAxNS42MDQ0IDE4LjQ0MjZDMTYuNDAxMiAxOC42Njk0IDE3LjIzMSAxOC4yMDczIDE3LjQ1NzggMTcuNDEwNkwxNC41NzI0IDE2LjU4OTNaTTYuMjUxOTIgMTQuMzMyMUM2LjcxMTE1IDE1LjAyMTMgNy42NDI3NiAxNS4yMDc2IDguMzMyMDUgMTQuNzQ4MUM5LjAyMTM0IDE0LjI4ODUgOS4yMDc2IDEzLjM1NzIgOC43NDgwOCAxMi42Njc5TDYuMjUxOTIgMTQuMzMyMVpNNC42NTE5NiAxLjM0MjA4QzMuNjc2NiAzLjM0MDQ3IDIuNjAwMzMgNS4wNDUyNSAxLjc2NjU4IDYuMjUxMDhDMS4zNTA1OSA2Ljg1MjcyIDAuOTk3MjYzIDcuMzI2ODUgMC43NTAzODQgNy42NDc3MkMwLjYyNzAwNSA3Ljc4MDkzIDAuNTMwMzkyIDcuOTI5NyAwLjQ2NjA0NyA4LjAwOTY5QzAuNDMzODggOC4wNDk2NyAwLjQwOTc5NiA4LjA3OTIgMC4zOTQ0ODIgOC4wOTc4NkMwLjM4NjgyNiA4LjEwNzE4IDAuMzgxMzY0IDguMTEzNzkgMC4zNzgxODMgOC4xMTc2M0MwLjM3NjU5MiA4LjExOTU1IDAuMzc1NTcyIDguMTIwNzcgMC4zNzUxMzMgOC4xMjEzQzAuMzc0OTE0IDguMTIxNTcgMC4zNzQ4NCA4LjEyMTY1IDAuMzc0OTEyIDguMTIxNTdDMC4zNzQ5NDggOC4xMjE1MiAwLjM3NTAyMSA4LjEyMTQ0IDAuMzc1MTMxIDguMTIxM0MwLjM3NTE4NiA4LjEyMTI0IDAuMzc1Mjk2IDguMTIxMTEgMC4zNzUzMjMgOC4xMjEwN0MwLjM3NTQ0MiA4LjEyMDkzIDAuMzc1NTcxIDguMTIwNzggMS41MjYgOS4wODMzM0MyLjY3NjQzIDEwLjA0NTkgMi42NzY1OCAxMC4wNDU3IDIuNjc2NzMgMTAuMDQ1NUMyLjY3NjggMTAuMDQ1NCAyLjY3Njk2IDEwLjA0NTIgMi42NzcwOSAxMC4wNDUxQzIuNjc3MzUgMTAuMDQ0OCAyLjY3NzY1IDEwLjA0NDQgMi42Nzc5OCAxMC4wNDRDMi42Nzg2NSAxMC4wNDMyIDIuNjc5NDYgMTAuMDQyMyAyLjY4MDQyIDEwLjA0MTFDMi42ODIzNCAxMC4wMzg4IDIuNjg0ODYgMTAuMDM1OCAyLjY4Nzk0IDEwLjAzMkMyLjY5NDEyIDEwLjAyNDYgMi43MDI2MSAxMC4wMTQzIDIuNzEzMzMgMTAuMDAxM0MyLjczNDc1IDkuOTc1MTYgMi43NjUwOCA5LjkzNzk1IDIuODAzNjIgOS44OTAwNUMyLjg4MDY3IDkuNzk0MjYgMi45OTA2IDkuNjU1NjEgMy4xMjc3OCA5LjQ3NzM4QzMuNDAyMDEgOS4xMjEwNiAzLjc4NTg3IDguNjA1NjIgNC4yMzQxNyA3Ljk1NzI1QzUuMTI5IDYuNjYzMDggNi4yODk3MiA0LjgyNjIgNy4zNDc5OCAyLjY1NzkyTDQuNjUxOTYgMS4zNDIwOFpNMi4wNDcwNCAxMC40ODk5QzMuNzc2MTcgOS44NDk0MiA1LjczMzE5IDkuMTcyMzEgNy42MzggOC43MjEzN0M5LjU3MDA4IDguMjY1OTkgMTEuMzAyNSA4LjA3NjMxIDEyLjYyODggOC4zMDE3QzEzLjg3NTIgOC41MTM1MiAxNC42Mjg0IDkuMDUwMDggMTUuMDE2MyAxMC4wNDA1QzE1LjQ2MjggMTEuMTgwNyAxNS41MzgzIDEzLjE5NTYgMTQuNTcyNCAxNi41ODkzTDE3LjQ1NzggMTcuNDEwNkMxOC4wODQzIDEzLjgwNDIgMTguNjE2NiAxMS4wMDY3IDE3LjgwOTcgOC45NDY0NkMxNi45NDQyIDYuNzM2MzQgMTUuMTMzNyA1LjY4NDM3IDEzLjEzMTQgNS4zNDQxMUMxMS4yMDkyIDUuMDE3NDMgOS4wMDc5OSA1LjMxNDEzIDYuOTQ2OSA1LjgwMjA2QzQuODU4NTYgNi4yOTY0NCAyLjc2MjgzIDcuMDI1NTggMS4wMDQ5NiA3LjY3NjczTDIuMDQ3MDQgMTAuNDg5OVpNOC43NDgwOCAxMi42Njc5QzcuNTIzMTIgMTAuODMwNSA1LjIyOTM0IDkuMTg1OTMgMi4xNzEwOCA3LjcyOTEzTDAuODgwOTI0IDEwLjQzNzVDMy43NzA2NiAxMS44MTQxIDUuNDc2ODggMTMuMTY5NSA2LjI1MTkyIDE0LjMzMjFMOC43NDgwOCAxMi42Njc5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" alt="还原" draggable={false} width={16} height={16}/>
                                           </button>
                                       ) : (
                                           <button
@@ -863,7 +860,7 @@ export default function TodoListPage() {
                               </li>
                           ))}
                       </ul>
-                  ) : currentView === 'recycle' && recycled.length === 0 ? (
+                  ) : currentView === 'recycle' && recycledTodos.length === 0 ? (
                       <div className="todo-list">
                           <div className="empty-tips"><div>回收站是空的！🗑️</div></div>
                       </div>
