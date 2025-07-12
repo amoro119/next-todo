@@ -17,6 +17,38 @@ import QuickActions from "../components/QuickActions";
 import { ViewSwitcher } from "../components/ViewSwitcher"; // New Import
 import { TodoList } from "../components/TodoList"; // New Import
 
+// 高性能缓存系统
+class DateCache {
+  private dateCache = new Map<string, string>();
+  private todayCache: { date: string; timestamp: number } | null = null;
+  private readonly CACHE_DURATION = 60000; // 1分钟缓存
+
+  getTodayString(): string {
+    const now = Date.now();
+    if (!this.todayCache || (now - this.todayCache.timestamp) > this.CACHE_DURATION) {
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
+      this.todayCache = { date: todayStr, timestamp: now };
+    }
+    return this.todayCache.date;
+  }
+
+  getDateCache(utcDate: string | null | undefined): string {
+    if (!utcDate) return '';
+    return this.dateCache.get(utcDate) || '';
+  }
+
+  setDateCache(utcDate: string, result: string): void {
+    this.dateCache.set(utcDate, result);
+  }
+
+  clear(): void {
+    this.dateCache.clear();
+    this.todayCache = null;
+  }
+}
+
+// 全局缓存实例
+const dateCache = new DateCache();
 
 const TodoDetailsModal = dynamic(() => import('../components/TodoDetailsModal'), {
   ssr: false,
@@ -25,18 +57,28 @@ const TodoDetailsModal = dynamic(() => import('../components/TodoDetailsModal'),
 // Helper functions
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   if (!utcDate) return '';
+  
+  // 检查缓存
+  const cached = dateCache.getDateCache(utcDate);
+  if (cached) return cached;
+  
   try {
     const date = new Date(utcDate);
     if (isNaN(date.getTime())) {
       const dateOnlyMatch = utcDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dateOnlyMatch) return utcDate;
+      if (dateOnlyMatch) {
+        dateCache.setDateCache(utcDate, utcDate);
+        return utcDate;
+      }
       return '';
     }
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Shanghai',
       year: 'numeric', month: '2-digit', day: '2-digit'
     });
-    return formatter.format(date);
+    const result = formatter.format(date);
+    dateCache.setDateCache(utcDate, result);
+    return result;
   } catch (e) {
     console.error("Error formatting date:", utcDate, e);
     return '';
@@ -95,14 +137,7 @@ export default function TodoListPage() {
   const [originalSlogan, setOriginalSlogan] = useState("");
   const sloganInputRef = useRef<HTMLInputElement>(null);
 
-  if (!pg) {
-    return (
-      <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-        <div className="mt-4 text-gray-600">正在连接数据库...</div>
-      </div>
-    );
-  }
+
 
   // Data fetching
   const todosQuery = useLiveQuery.sql<Todo>`
@@ -115,18 +150,18 @@ export default function TodoListPage() {
   const todos = ((todosQuery as any)?.rows ?? []).map(normalizeTodo);
 
   const listsQuery = useLiveQuery.sql<List>`SELECT id, name, sort_order, is_hidden FROM lists ORDER BY sort_order, name`;
-  const lists = ((listsQuery as any)?.rows ?? []).map(normalizeList);
+  const lists = ((listsQuery as unknown as { rows?: Record<string, unknown>[] })?.rows ?? []).map(normalizeList);
   
   const recycledQuery = useLiveQuery.sql<Todo>`SELECT id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id FROM todos WHERE deleted = true`;
-  const recycledTodos = ((recycledQuery as any)?.rows ?? []).map(normalizeTodo);
+  const recycledTodos = ((recycledQuery as unknown as { rows?: Record<string, unknown>[] })?.rows ?? []).map(normalizeTodo);
   
   const metaQuery = useLiveQuery.sql<{ key: string, value: string }>`SELECT * FROM meta WHERE key = 'slogan'`;
-  const metaResults = (metaQuery as any)?.rows ?? [];
+  const metaResults = (metaQuery as unknown as { rows?: { key: string; value: string }[] })?.rows ?? [];
 
   useEffect(() => {
-    if ((todosQuery as any)?.error) console.error("Todos query error:", (todosQuery as any).error);
-    if ((listsQuery as any)?.error) console.error("Lists query error:", (listsQuery as any).error);
-    if ((recycledQuery as any)?.error) console.error("Recycled query error:", (recycledQuery as any).error);
+    if ((todosQuery as unknown as { error?: unknown })?.error) console.error("Todos query error:", (todosQuery as unknown as { error?: unknown }).error);
+    if ((listsQuery as unknown as { error?: unknown })?.error) console.error("Lists query error:", (listsQuery as unknown as { error?: unknown }).error);
+    if ((recycledQuery as unknown as { error?: unknown })?.error) console.error("Recycled query error:", (recycledQuery as unknown as { error?: unknown }).error);
   }, [todosQuery, listsQuery, recycledQuery]);
   
   useEffect(() => {
@@ -144,6 +179,9 @@ export default function TodoListPage() {
   // Derived data with useMemo
   const activeTodos = useMemo(() => todos.filter((t: Todo) => !t.deleted), [todos]);
   const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
+
+  // 优化的今日日期计算
+  const todayStrInUTC8 = useMemo(() => dateCache.getTodayString(), []);
 
   const calendarVisibleTodos = useMemo(() => {
     if (currentView !== 'calendar') return [];
@@ -172,43 +210,54 @@ export default function TodoListPage() {
     }, {} as Record<string, string>),
   [lists]);
 
+  // 优化的今日待办计算
+  const todayTodos = useMemo(() => {
+    if (currentView !== 'list') return [];
+    return activeTodos.filter((todo: Todo) => {
+      if (!todo.due_date) return false;
+      const todoDueDateStr = utcToLocalDateString(todo.due_date);
+      return todoDueDateStr === todayStrInUTC8;
+    });
+  }, [activeTodos, currentView, todayStrInUTC8]);
+
+  // 优化的收件箱计算
+  const inboxTodos = useMemo(() => {
+    if (currentView !== 'inbox') return [];
+    return uncompletedTodos.filter((todo: Todo) => {
+      const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
+      const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
+      return !todo.list_id || isOverdue;
+    });
+  }, [uncompletedTodos, currentView, todayStrInUTC8]);
+
   const { displayTodos, uncompletedCount } = useMemo(() => {
     if (currentView === 'recycle') {
       return { displayTodos: recycledTodos, uncompletedCount: 0 };
     }
     if (currentView === 'list') {
-      const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-      const filtered = activeTodos.filter((todo: Todo) => todo.due_date && utcToLocalDateString(todo.due_date) === todayStrInUTC8);
       return {
-        displayTodos: filtered,
-        uncompletedCount: filtered.filter((t: Todo) => !t.completed_time).length
+        displayTodos: todayTodos,
+        uncompletedCount: todayTodos.filter((t: Todo) => !t.completed_time).length
       };
     }
     if (currentView === 'inbox') {
-      const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-      const filtered = uncompletedTodos.filter((todo: Todo) => {
-        const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
-        const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
-        return !todo.list_id || isOverdue;
-      });
-      return { displayTodos: filtered, uncompletedCount: filtered.length };
+      return { displayTodos: inboxTodos, uncompletedCount: inboxTodos.length };
     }
     const listId = listNameToIdMap[currentView];
     if (listId) {
-      const listTodos = uncompletedTodos.filter(todo => todo.list_id === listId);
+      const listTodos = uncompletedTodos.filter((todo: Todo) => todo.list_id === listId);
       return { displayTodos: listTodos, uncompletedCount: listTodos.length };
     }
     return { displayTodos: [], uncompletedCount: 0 };
-  }, [currentView, activeTodos, uncompletedTodos, recycledTodos, listNameToIdMap]);
+  }, [currentView, todayTodos, inboxTodos, uncompletedTodos, recycledTodos, listNameToIdMap]);
   
   const inboxCount = useMemo(() => {
-    const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
     return uncompletedTodos.filter((todo: Todo) => {
         const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
         const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
         return !todo.list_id || isOverdue;
     }).length;
-  }, [uncompletedTodos]);
+  }, [uncompletedTodos, todayStrInUTC8]);
   
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -227,6 +276,16 @@ export default function TodoListPage() {
   }, [lists, uncompletedTodos]);
   
   const recycleBinCount = useMemo(() => recycledTodos.length, [recycledTodos]);
+
+  // 清除缓存的副作用
+  useEffect(() => {
+    // 每分钟清除一次缓存，确保日期更新
+    const interval = setInterval(() => {
+      dateCache.clear();
+    }, 60000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Event handlers with useCallback for performance
   const handleEditSlogan = useCallback(() => {
@@ -255,8 +314,7 @@ export default function TodoListPage() {
       const list = lists.find((l: List) => l.name === currentView);
       if (list) listId = list.id;
     }
-    const todayInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-    const dueDateString = newTodoDate || (currentView === 'list' ? todayInUTC8 : null);
+    const dueDateString = newTodoDate || (currentView === 'list' ? todayStrInUTC8 : null);
     const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
     const todoId = uuid();
     const createdTime = new Date().toISOString();
@@ -279,7 +337,7 @@ export default function TodoListPage() {
       setNewTodoTitle('');
       setNewTodoDate(null);
     } catch (error) { console.error('Failed to add todo:', error); alert('添加待办事项失败，请重试'); }
-  }, [pg, newTodoTitle, newTodoDate, currentView, lists]);
+  }, [pg, newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8]);
   
   const handleUpdateTodo = useCallback(async (todoId: string, updates: Partial<Omit<Todo, 'id' | 'list_name'>>) => {
       const keys = Object.keys(updates);
@@ -462,7 +520,7 @@ export default function TodoListPage() {
         let todosToImport: Partial<Todo>[] = [];
         if (file.name.endsWith('.csv')) {
           const { todos, removedTodos } = parseDidaCsv(content);
-          todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as any).removed}));
+          todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as unknown as { removed?: boolean }).removed}));
         } else {
           const data = JSON.parse(content);
           const importedTodos = data.todos || (Array.isArray(data) ? data : []);
@@ -531,6 +589,16 @@ export default function TodoListPage() {
     }
     return '新增待办事项...';
   }, [newTodoDate, currentView]);
+
+  // 数据库连接检查
+  if (!pg) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+        <div className="mt-4 text-gray-600">正在连接数据库...</div>
+      </div>
+    );
+  }
 
   return (
     <>
