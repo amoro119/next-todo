@@ -1,26 +1,28 @@
 // app/page.tsx
 "use client";
 
-import { useEffect, useState, useMemo, useRef, MouseEvent, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useLiveQuery, usePGlite } from "@electric-sql/pglite-react";
 import type { Todo, List } from "../lib/types";
 import Image from "next/image";
 import dynamic from 'next/dynamic';
+import debounce from 'lodash.debounce';
+import { v4 as uuid } from 'uuid';
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
+import { sendChangesToServer, createTodoChange, createListChange, ListChange, TodoChange } from '../lib/changes';
+import { parseDidaCsv } from '../lib/csvParser';
 import ManageListsModal from "../components/ManageListsModal";
 import CalendarView from "../components/CalendarView";
 import QuickActions from "../components/QuickActions";
-import { parseDidaCsv } from '../lib/csvParser';
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
-import { v4 as uuid } from 'uuid';
-import debounce from 'lodash.debounce';
-import { sendChangesToServer, createTodoChange, createListChange, ListChange, TodoChange } from '../lib/changes';
+import { ViewSwitcher } from "../components/ViewSwitcher"; // New Import
+import { TodoList } from "../components/TodoList"; // New Import
 
 
 const TodoDetailsModal = dynamic(() => import('../components/TodoDetailsModal'), {
   ssr: false,
 });
 
-// Helper functions (保持不变)
+// Helper functions
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   if (!utcDate) return '';
   try {
@@ -52,7 +54,7 @@ const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | 
   }
 };
 
-// 添加类型转换函数
+// Type conversion functions
 const normalizeTodo = (raw: Record<string, unknown>): Todo => {
   return {
     ...raw,
@@ -77,11 +79,9 @@ type LastAction =
   | { type: 'restore'; data: Todo }
   | { type: 'batch-complete'; data: { id: string; previousCompletedTime: string | null, previousCompleted: boolean }[] };
 
-// 合并后的主组件
 export default function TodoListPage() {
   const pg = usePGlite();
 
-  // 所有 Hooks 必须在早期返回之前调用
   const [slogan, setSlogan] = useState("今日事今日毕，勿将今事待明日!.☕");
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newTodoDate, setNewTodoDate] = useState<string | null>(null);
@@ -91,16 +91,10 @@ export default function TodoListPage() {
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
   const addTodoInputRef = useRef<HTMLInputElement>(null);
   const [lastAction, setLastAction] = useState<LastAction | null>(null);
-  
   const [isEditingSlogan, setIsEditingSlogan] = useState(false);
   const [originalSlogan, setOriginalSlogan] = useState("");
   const sloganInputRef = useRef<HTMLInputElement>(null);
-  const viewSwitcherRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
 
-  // 1. 使用 "提前返回" 模式处理加载状态
   if (!pg) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center bg-white z-50">
@@ -110,7 +104,7 @@ export default function TodoListPage() {
     );
   }
 
-  // 2. 在 pg 实例可用后，安全地调用 useLiveQuery
+  // Data fetching
   const todosQuery = useLiveQuery.sql<Todo>`
     SELECT t.*, l.name as list_name
     FROM todos t
@@ -129,7 +123,6 @@ export default function TodoListPage() {
   const metaQuery = useLiveQuery.sql<{ key: string, value: string }>`SELECT * FROM meta WHERE key = 'slogan'`;
   const metaResults = (metaQuery as any)?.rows ?? [];
 
-  // 添加错误日志，方便调试
   useEffect(() => {
     if ((todosQuery as any)?.error) console.error("Todos query error:", (todosQuery as any).error);
     if ((listsQuery as any)?.error) console.error("Lists query error:", (listsQuery as any).error);
@@ -148,25 +141,19 @@ export default function TodoListPage() {
     }
   }, [isEditingSlogan]);
 
-  // ========= 性能优化点 =========
-  // 基础的派生数据，这些计算开销较小，可以保留
+  // Derived data with useMemo
   const activeTodos = useMemo(() => todos.filter((t: Todo) => !t.deleted), [todos]);
   const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
 
-  // 优化点 1: 仅在日历视图激活时才进行复杂的日期过滤
   const calendarVisibleTodos = useMemo(() => {
-    if (currentView !== 'calendar') {
-      return []; // 如果不是日历视图，直接返回空数组，避免不必要的计算
-    }
+    if (currentView !== 'calendar') return [];
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(currentDate);
     const viewStart = startOfWeek(monthStart, { weekStartsOn: 0 });
     const viewEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
 
     return activeTodos.filter((todo: Todo) => {
-      if (!todo.start_date && !todo.due_date) {
-        return false;
-      }
+      if (!todo.start_date && !todo.due_date) return false;
       const todoStartDateStr = utcToLocalDateString(todo.start_date);
       const todoDueDateStr = utcToLocalDateString(todo.due_date);
       if (!todoStartDateStr && !todoDueDateStr) return false;
@@ -176,7 +163,7 @@ export default function TodoListPage() {
       const effectiveEnd = todoStart > todoEnd ? todoStart : todoEnd;
       return effectiveStart <= viewEnd && effectiveEnd >= viewStart;
     });
-  }, [activeTodos, currentDate, currentView]); // 添加 currentView 作为依赖
+  }, [activeTodos, currentDate, currentView]);
 
   const listNameToIdMap = useMemo(() => 
     lists.reduce((acc: Record<string, string>, list: List) => {
@@ -185,15 +172,10 @@ export default function TodoListPage() {
     }, {} as Record<string, string>),
   [lists]);
 
-  // 优化点 2: 将所有视图的待办事项计算逻辑合并到一个 useMemo 中
-  // 这个 useMemo 依赖于 currentView，因此只会为当前视图计算数据
   const { displayTodos, uncompletedCount } = useMemo(() => {
-    // 回收站视图
     if (currentView === 'recycle') {
       return { displayTodos: recycledTodos, uncompletedCount: 0 };
     }
-
-    // “今日待办”视图
     if (currentView === 'list') {
       const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
       const filtered = activeTodos.filter((todo: Todo) => todo.due_date && utcToLocalDateString(todo.due_date) === todayStrInUTC8);
@@ -202,11 +184,8 @@ export default function TodoListPage() {
         uncompletedCount: filtered.filter((t: Todo) => !t.completed_time).length
       };
     }
-
-    // “收件箱”视图
     if (currentView === 'inbox') {
       const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-      // 注意: 收件箱只显示未完成的
       const filtered = uncompletedTodos.filter((todo: Todo) => {
         const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
         const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
@@ -214,21 +193,14 @@ export default function TodoListPage() {
       });
       return { displayTodos: filtered, uncompletedCount: filtered.length };
     }
-    
-    // 自定义清单视图
     const listId = listNameToIdMap[currentView];
     if (listId) {
-      // 注意: 自定义清单只显示未完成的
       const listTodos = uncompletedTodos.filter(todo => todo.list_id === listId);
       return { displayTodos: listTodos, uncompletedCount: listTodos.length };
     }
-
-    // 默认情况或日历视图（日历有自己的渲染逻辑，这里返回空）
     return { displayTodos: [], uncompletedCount: 0 };
   }, [currentView, activeTodos, uncompletedTodos, recycledTodos, listNameToIdMap]);
   
-  // 优化点 3: 为UI上必须一直显示的计数创建独立的、轻量的 useMemo
-  // 收件箱计数 (用于按钮徽章)
   const inboxCount = useMemo(() => {
     const todayStrInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
     return uncompletedTodos.filter((todo: Todo) => {
@@ -238,16 +210,13 @@ export default function TodoListPage() {
     }).length;
   }, [uncompletedTodos]);
   
-  // 各个清单的未完成计数 (用于按钮徽章)
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {};
-    // 直接遍历 uncompletedTodos 一次，而不是依赖预先 reduce 的 uncompletedTodosByListId
     for (const todo of uncompletedTodos) {
         if (todo.list_id) {
             counts[todo.list_id] = (counts[todo.list_id] || 0) + 1;
         }
     }
-    
     const nameCounts: Record<string, number> = {};
     for (const list of lists) {
         if (counts[list.id]) {
@@ -259,11 +228,11 @@ export default function TodoListPage() {
   
   const recycleBinCount = useMemo(() => recycledTodos.length, [recycledTodos]);
 
-  // ... (剩余的所有事件处理函数和 JSX 保持不变)
-  const handleEditSlogan = () => {
+  // Event handlers with useCallback for performance
+  const handleEditSlogan = useCallback(() => {
     setOriginalSlogan(slogan);
     setIsEditingSlogan(true);
-  };
+  }, [slogan]);
   
   const handleUpdateSlogan = useCallback(debounce(async () => {
     setIsEditingSlogan(false);
@@ -271,282 +240,175 @@ export default function TodoListPage() {
     await pg.sql`INSERT INTO meta (key, value) VALUES ('slogan', ${slogan}) ON CONFLICT(key) DO UPDATE SET value = ${slogan}`;
   }, 500), [pg, slogan, originalSlogan]);
 
-  const handleSloganKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleSloganKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleUpdateSlogan();
     else if (e.key === 'Escape') {
       setSlogan(originalSlogan);
       setIsEditingSlogan(false);
     }
-  };
+  }, [handleUpdateSlogan, originalSlogan]);
 
-  const handleAddTodo = async () => {
+  const handleAddTodo = useCallback(async () => {
     if (!newTodoTitle.trim()) return;
-
     let listId = null;
     if (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') {
       const list = lists.find((l: List) => l.name === currentView);
       if (list) listId = list.id;
     }
-    
     const todayInUTC8 = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
     const dueDateString = newTodoDate || (currentView === 'list' ? todayInUTC8 : null);
     const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
     const todoId = uuid();
     const createdTime = new Date().toISOString();
-    
     try {
       await pg.sql`
         INSERT INTO todos (id, title, list_id, due_date, start_date, created_time) 
         VALUES (${todoId}, ${newTodoTitle.trim()}, ${listId}, ${dueDateUTC}, ${dueDateUTC}, ${createdTime})
         ON CONFLICT (id) DO UPDATE SET
-          title = EXCLUDED.title,
-          list_id = EXCLUDED.list_id,
-          due_date = EXCLUDED.due_date,
-          start_date = EXCLUDED.start_date,
-          created_time = EXCLUDED.created_time
+          title = EXCLUDED.title, list_id = EXCLUDED.list_id, due_date = EXCLUDED.due_date,
+          start_date = EXCLUDED.start_date, created_time = EXCLUDED.created_time
       `;
-
       setTimeout(async () => {
         try {
-          await sendChangesToServer({
-            lists: [],
-            todos: [createTodoChange(todoId, {
-              title: newTodoTitle.trim(),
-              list_id: listId,
-              due_date: dueDateUTC,
-              start_date: dueDateUTC,
-              created_time: createdTime,
-            }, true)]
-          });
-        } catch (error) {
-          console.error('Failed to sync new todo:', error);
-        }
+          await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, {
+            title: newTodoTitle.trim(), list_id: listId, due_date: dueDateUTC,
+            start_date: dueDateUTC, created_time: createdTime,
+          }, true)] });
+        } catch (error) { console.error('Failed to sync new todo:', error); }
       }, 1000);
-
       setNewTodoTitle('');
       setNewTodoDate(null);
-    } catch (error) {
-      console.error('Failed to add todo:', error);
-      alert('添加待办事项失败，请重试');
-    }
-  };
+    } catch (error) { console.error('Failed to add todo:', error); alert('添加待办事项失败，请重试'); }
+  }, [pg, newTodoTitle, newTodoDate, currentView, lists]);
   
   const handleUpdateTodo = useCallback(async (todoId: string, updates: Partial<Omit<Todo, 'id' | 'list_name'>>) => {
       const keys = Object.keys(updates);
       if (keys.length === 0) return;
-      
       const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
       const params = [todoId, ...Object.values(updates)];
-      
       const query = `UPDATE todos SET ${setClauses} WHERE id = $1`;
       await pg.query(query, params);
-
       setTimeout(async () => {
-        try {
-          await sendChangesToServer({
-            lists: [],
-            todos: [createTodoChange(todoId, updates)]
-          });
-        } catch (error) {
-          console.error('Failed to sync todo update:', error);
-        }
+        try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, updates)] });
+        } catch (error) { console.error('Failed to sync todo update:', error); }
       }, 1000);
   }, [pg]);
   
-  const handleToggleComplete = async (todo: Todo) => {
+  const handleToggleComplete = useCallback(async (todo: Todo) => {
     setLastAction({ type: 'toggle-complete', data: { id: todo.id, previousCompletedTime: todo.completed_time, previousCompleted: !!todo.completed } });
     const newCompletedTime = todo.completed_time ? null : new Date().toISOString();
     const newCompletedFlag = !todo.completed;
     await handleUpdateTodo(todo.id, { completed_time: newCompletedTime, completed: newCompletedFlag });
-  };
+  }, [handleUpdateTodo]);
   
-  const handleDeleteTodo = async (todoId: string) => {
+  const handleDeleteTodo = useCallback(async (todoId: string) => {
     const todoToDelete = todos.find((t: Todo) => t.id === todoId);
     if (!todoToDelete) return;
     setLastAction({ type: 'delete', data: todoToDelete });
-    if (selectedTodo && selectedTodo.id === todoId) {
-        setSelectedTodo(null);
-    }
+    if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     await pg.sql`UPDATE todos SET deleted = true WHERE id = ${todoId}`;
-
-    try {
-      await sendChangesToServer({
-        lists: [],
-        todos: [createTodoChange(todoId, { deleted: true })]
-      });
-    } catch (error) {
-      console.error('Failed to sync todo deletion:', error);
-    }
-  };
+    try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: true })] });
+    } catch (error) { console.error('Failed to sync todo deletion:', error); }
+  }, [pg, todos, selectedTodo]);
   
-  const handleRestoreTodo = async (todoId: string) => {
+  const handleRestoreTodo = useCallback(async (todoId: string) => {
     const todoToRestore = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToRestore) return;
     setLastAction({ type: 'restore', data: todoToRestore });
-    if (selectedTodo && selectedTodo.id === todoId) {
-        setSelectedTodo(null);
-    }
+    if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     await pg.sql`UPDATE todos SET deleted = false WHERE id = ${todoId}`;
-
-    try {
-      await sendChangesToServer({
-        lists: [],
-        todos: [createTodoChange(todoId, { deleted: false })]
-      });
-    } catch (error) {
-      console.error('Failed to sync todo restoration:', error);
-    }
-  };
+    try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: false })] });
+    } catch (error) { console.error('Failed to sync todo restoration:', error); }
+  }, [pg, recycledTodos, selectedTodo]);
   
-  const handlePermanentDeleteTodo = async (todoId: string) => {
+  const handlePermanentDeleteTodo = useCallback(async (todoId: string) => {
     const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToDelete) return;
     const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`);
     if (confirmed) {
       await pg.sql`DELETE FROM todos WHERE id = ${todoId}`;
-      
-      try {
-        await sendChangesToServer({
-          lists: [],
-          todos: [createTodoChange(todoId, {}, false, true)]
-        });
-      } catch (error) {
-        console.error('Failed to sync permanent todo deletion:', error);
-      }
-
-      if (selectedTodo && selectedTodo.id === todoId) {
-        setSelectedTodo(null);
-      }
+      try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, {}, false, true)] });
+      } catch (error) { console.error('Failed to sync permanent todo deletion:', error); }
+      if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     }
-  }
+  }, [pg, recycledTodos, selectedTodo]);
 
-  const handleSaveTodoDetails = async (updatedTodo: Todo) => {
+  const handleSaveTodoDetails = useCallback(async (updatedTodo: Todo) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { list_name: _, ...updateData } = updatedTodo;
       await handleUpdateTodo(updatedTodo.id, updateData);
       setSelectedTodo(null);
-  };
+  }, [handleUpdateTodo]);
 
-  const handleAddList = async (name: string): Promise<List | null> => {
+  const handleAddList = useCallback(async (name: string): Promise<List | null> => {
     try {
       const newList = { id: uuid(), name, sort_order: lists.length, is_hidden: false };
-      
       await pg.sql`
-        INSERT INTO lists (id, name, sort_order, is_hidden) 
-        VALUES (${newList.id}, ${newList.name}, ${newList.sort_order}, ${newList.is_hidden})
-        ON CONFLICT (id) DO UPDATE SET
-          name = EXCLUDED.name,
-          sort_order = EXCLUDED.sort_order,
-          is_hidden = EXCLUDED.is_hidden
+        INSERT INTO lists (id, name, sort_order, is_hidden) VALUES (${newList.id}, ${newList.name}, ${newList.sort_order}, ${newList.is_hidden})
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, sort_order = EXCLUDED.sort_order, is_hidden = EXCLUDED.is_hidden
       `;
-      
       setTimeout(async () => {
-        try {
-          await sendChangesToServer({
-            lists: [createListChange(newList.id, {
-              name: newList.name,
-              sort_order: newList.sort_order,
-              is_hidden: newList.is_hidden,
-            }, true)],
-            todos: []
-          });
-        } catch (error) {
-          console.error('Failed to sync new list:', error);
-        }
+        try { await sendChangesToServer({ lists: [createListChange(newList.id, {
+              name: newList.name, sort_order: newList.sort_order, is_hidden: newList.is_hidden,
+            }, true)], todos: [] });
+        } catch (error) { console.error('Failed to sync new list:', error); }
       }, 1000);
-      
       return newList;
-    } catch (error) {
-      console.error("Failed to add list:", error);
-      alert(`添加清单失败: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return null;
-    }
-  };
+    } catch (error) { console.error("Failed to add list:", error); alert(`添加清单失败: ${error instanceof Error ? error.message : 'Unknown error'}`); return null; }
+  }, [pg, lists.length]);
 
-  const handleDeleteList = async (listId: string) => {
+  const handleDeleteList = useCallback(async (listId: string) => {
     const listToDelete = lists.find((l: List) => l.id === listId);
     if (!listToDelete) return;
     const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`);
     if (!confirmed) return;
-
     const todosToUpdateQuery = await pg.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
     const todosToUpdate = todosToUpdateQuery.rows;
-    
     await pg.transaction(async tx => {
         await tx.sql`UPDATE todos SET list_id = NULL WHERE list_id = ${listId}`;
         await tx.sql`DELETE FROM lists WHERE id = ${listId}`;
     });
-    
     try {
       const todoChanges = todosToUpdate.map(todo => createTodoChange(todo.id, { list_id: null }));
-      await sendChangesToServer({
-        lists: [createListChange(listId, {}, false)],
-        todos: todoChanges,
-      });
-    } catch (error) {
-      console.error('Failed to sync list deletion:', error);
-    }
-    
+      await sendChangesToServer({ lists: [createListChange(listId, {}, false)], todos: todoChanges });
+    } catch (error) { console.error('Failed to sync list deletion:', error); }
     if (currentView === listToDelete.name) setCurrentView('inbox');
-  };
+  }, [pg, lists, currentView]);
 
-  const handleUpdateList = async (listId: string, updates: Partial<Omit<List, 'id'>>) => {
+  const handleUpdateList = useCallback(async (listId: string, updates: Partial<Omit<List, 'id'>>) => {
     const keys = Object.keys(updates);
     if (keys.length === 0) return;
-    
     const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
     const params = [listId, ...Object.values(updates)];
-    
     const query = `UPDATE lists SET ${setClauses} WHERE id = $1`;
     await pg.query(query, params);
+    try { await sendChangesToServer({ lists: [createListChange(listId, updates)], todos: [] });
+    } catch (error) { console.error('Failed to sync list update:', error); }
+  }, [pg]);
 
-    try {
-      await sendChangesToServer({
-        lists: [createListChange(listId, updates)],
-        todos: []
-      });
-    } catch (error) {
-      console.error('Failed to sync list update:', error);
-    }
-  };
-
-  const handleUpdateListsOrder = async (reorderedLists: List[]) => {
+  const handleUpdateListsOrder = useCallback(async (reorderedLists: List[]) => {
       await pg.transaction(async tx => {
           for(const [index, list] of reorderedLists.entries()) {
               await tx.sql`UPDATE lists SET sort_order = ${index} WHERE id = ${list.id}`;
           }
       });
-
       setTimeout(async () => {
-        try {
-          await sendChangesToServer({
-            lists: reorderedLists.map((list, index) => createListChange(list.id, { sort_order: index })),
-            todos: []
-          });
-        } catch (error) {
-          console.error('Failed to sync lists order update:', error);
-        }
+        try { await sendChangesToServer({ lists: reorderedLists.map((list, index) => createListChange(list.id, { sort_order: index })), todos: [] });
+        } catch (error) { console.error('Failed to sync lists order update:', error); }
       }, 1000);
-  };
+  }, [pg]);
   
-  const handleAddTodoFromCalendar = (date: string) => {
+  const handleAddTodoFromCalendar = useCallback((date: string) => {
       setNewTodoDate(date);
       addTodoInputRef.current?.focus();
-  };
+  }, []);
 
-  const handleUndo = async () => {
-    if (!lastAction) {
-      alert("没有可撤销的操作");
-      return;
-    }
-
+  const handleUndo = useCallback(async () => {
+    if (!lastAction) { alert("没有可撤销的操作"); return; }
     try {
       switch (lastAction.type) {
         case 'toggle-complete':
-          await handleUpdateTodo(lastAction.data.id, { 
-            completed_time: lastAction.data.previousCompletedTime, 
-            completed: lastAction.data.previousCompleted
-          });
+          await handleUpdateTodo(lastAction.data.id, { completed_time: lastAction.data.previousCompletedTime, completed: lastAction.data.previousCompleted });
           break;
         case 'delete':
           await handleUpdateTodo(lastAction.data.id, { deleted: false });
@@ -561,66 +423,41 @@ export default function TodoListPage() {
                 await tx.sql`UPDATE todos SET completed_time = ${d.previousCompletedTime}, completed = ${d.previousCompleted} WHERE id = ${d.id}`;
             }
           });
-
           setTimeout(async () => {
-            try {
-              await sendChangesToServer({
-                lists: [],
-                todos: lastActionData.map(d => createTodoChange(d.id, {
-                  completed_time: d.previousCompletedTime,
-                  completed: d.previousCompleted,
-                }))
-              });
-            } catch (error) {
-              console.error('Failed to sync undo batch completion:', error);
-            }
+            try { await sendChangesToServer({ lists: [], todos: lastActionData.map(d => createTodoChange(d.id, {
+                  completed_time: d.previousCompletedTime, completed: d.previousCompleted,
+                })) });
+            } catch (error) { console.error('Failed to sync undo batch completion:', error); }
           }, 1000);
           break;
         }
       }
-    } catch (error) {
-        alert(`撤销操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
-    }
+    } catch (error) { alert(`撤销操作失败: ${error instanceof Error ? error.message : '未知错误'}`); }
     setLastAction(null);
-  };
+  }, [lastAction, pg, handleUpdateTodo]);
   
-  const handleMarkAllCompleted = async () => {
+  const handleMarkAllCompleted = useCallback(async () => {
     const todosToUpdate = displayTodos.filter((t: Todo) => !t.completed_time);
     if (todosToUpdate.length === 0) return;
     const confirmed = await window.confirm(`确认将当前视图的 ${todosToUpdate.length} 项全部标记为完成吗？`);
     if (!confirmed) return;
-
     const idsToUpdate = todosToUpdate.map((t: Todo) => t.id);
     const newCompletedTime = new Date().toISOString();
-    
-    setLastAction({
-        type: 'batch-complete',
-        data: todosToUpdate.map((t: Todo) => ({ id: t.id, previousCompletedTime: t.completed_time, previousCompleted: !!t.completed }))
-    });
-    
+    setLastAction({ type: 'batch-complete', data: todosToUpdate.map((t: Todo) => ({ id: t.id, previousCompletedTime: t.completed_time, previousCompleted: !!t.completed })) });
     await pg.sql`UPDATE todos SET completed = TRUE, completed_time = ${newCompletedTime} WHERE id = ANY(${idsToUpdate}::uuid[])`;
-
     setTimeout(async () => {
-      try {
-        await sendChangesToServer({
-          lists: [],
-          todos: todosToUpdate.map((t: Todo) => createTodoChange(t.id, {
-            completed: true,
-            completed_time: newCompletedTime
-          }))
-        });
-      } catch (error) {
-        console.error('Failed to sync batch completion:', error);
-      }
+      try { await sendChangesToServer({ lists: [], todos: todosToUpdate.map((t: Todo) => createTodoChange(t.id, {
+            completed: true, completed_time: newCompletedTime
+          })) });
+      } catch (error) { console.error('Failed to sync batch completion:', error); }
     }, 1000);
-  };
+  }, [pg, displayTodos]);
   
-  const handleImport = async (file: File) => {
+  const handleImport = useCallback(async (file: File) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       const content = e.target?.result as string;
       if (!content) return;
-      
       try {
         let todosToImport: Partial<Todo>[] = [];
         if (file.name.endsWith('.csv')) {
@@ -632,18 +469,12 @@ export default function TodoListPage() {
           const importedRecycleBin = data.recycleBin || [];
           todosToImport = [...importedTodos, ...importedRecycleBin];
         }
-
-        if (todosToImport.length === 0) {
-          alert('没有找到可导入的事项。'); return;
-        }
-
+        if (todosToImport.length === 0) { alert('没有找到可导入的事项。'); return; }
         const listNames = new Set(todosToImport.map(t => t.list_name).filter((s): s is string => !!s));
         const existingListNames = new Set(lists.map((l: List) => l.name));
         const newListsToCreate = [...listNames].filter(name => !existingListNames.has(name));
-        
         const createdLists: ListChange[] = [];
         const createdTodos: TodoChange[] = [];
-
         await pg.transaction(async tx => {
           if (newListsToCreate.length > 0) {
               let sortOrder = lists.length;
@@ -654,85 +485,44 @@ export default function TodoListPage() {
               }
           }
         });
-        
         const currentLists = await pg.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
         const listNameToIdMap = new Map<string, string>();
         currentLists.rows.forEach((list: List) => listNameToIdMap.set(list.name, list.id));
-
         await pg.transaction(async tx => {
             for (const todo of todosToImport) {
                 const listId = todo.list_name ? listNameToIdMap.get(todo.list_name) || null : null;
                 const newTodoData = {
-                  id: uuid(),
-                  title: todo.title || '',
-                  completed: !!todo.completed,
-                  deleted: !!todo.deleted,
-                  sort_order: todo.sort_order || 0,
-                  due_date: todo.due_date || null,
-                  content: todo.content || null,
-                  tags: todo.tags || null,
-                  priority: todo.priority === undefined ? 0 : todo.priority,
-                  created_time: todo.created_time || new Date().toISOString(),
-                  completed_time: todo.completed_time || null,
-                  start_date: todo.start_date || null,
-                  list_id: listId,
+                  id: uuid(), title: todo.title || '', completed: !!todo.completed, deleted: !!todo.deleted, sort_order: todo.sort_order || 0,
+                  due_date: todo.due_date || null, content: todo.content || null, tags: todo.tags || null, priority: todo.priority === undefined ? 0 : todo.priority,
+                  created_time: todo.created_time || new Date().toISOString(), completed_time: todo.completed_time || null, start_date: todo.start_date || null, list_id: listId,
                 };
-
-                await tx.sql`
-                    INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                await tx.sql`INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
                     VALUES (${newTodoData.id}, ${newTodoData.title}, ${newTodoData.completed}, ${newTodoData.deleted}, ${newTodoData.sort_order},
-                            ${newTodoData.due_date}, ${newTodoData.content}, ${newTodoData.tags},
-                            ${newTodoData.priority},
-                            ${newTodoData.created_time},
-                            ${newTodoData.completed_time},
-                            ${newTodoData.start_date},
-                            ${newTodoData.list_id}
-                    );
-                `;
+                            ${newTodoData.due_date}, ${newTodoData.content}, ${newTodoData.tags}, ${newTodoData.priority}, ${newTodoData.created_time},
+                            ${newTodoData.completed_time}, ${newTodoData.start_date}, ${newTodoData.list_id});`;
                 createdTodos.push(createTodoChange(newTodoData.id, newTodoData, true));
             }
         });
         alert(`成功导入 ${todosToImport.length} 个事项！`);
-        
         if (createdLists.length > 0 || createdTodos.length > 0) {
           setTimeout(async () => {
             try {
               const batchSize = 100;
-              
-              if (createdLists.length > 0) {
-                await sendChangesToServer({
-                  lists: createdLists,
-                  todos: []
-                });
-              }
-              
+              if (createdLists.length > 0) { await sendChangesToServer({ lists: createdLists, todos: [] }); }
               if (createdTodos.length > 0) {
                 for (let i = 0; i < createdTodos.length; i += batchSize) {
                   const batch = createdTodos.slice(i, i + batchSize);
-                  await sendChangesToServer({
-                    lists: [],
-                    todos: batch
-                  });
-                  
-                  if (i + batchSize < createdTodos.length) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                  }
+                  await sendChangesToServer({ lists: [], todos: batch });
+                  if (i + batchSize < createdTodos.length) { await new Promise(resolve => setTimeout(resolve, 500)); }
                 }
               }
-            } catch (error) {
-              console.error('Failed to sync imported data:', error);
-              alert('本地数据导入成功，但同步到服务器失败。');
-            }
+            } catch (error) { console.error('Failed to sync imported data:', error); alert('本地数据导入成功，但同步到服务器失败。'); }
           }, 1000);
         }
-
-      } catch (error) {
-        console.error("Import failed:", error);
-        alert(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      }
+      } catch (error) { console.error("Import failed:", error); alert(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`); }
     };
     reader.readAsText(file, 'UTF-8');
-  };
+  }, [pg, lists]);
 
   const newTodoPlaceholder = useMemo(() => {
     if (newTodoDate) return `为 ${newTodoDate} 添加新事项...`;
@@ -742,28 +532,12 @@ export default function TodoListPage() {
     return '新增待办事项...';
   }, [newTodoDate, currentView]);
 
-  const handleMouseDown = (e: MouseEvent<HTMLDivElement>) => {
-    if (!viewSwitcherRef.current) return;
-    setIsDragging(true);
-    setStartX(e.pageX - viewSwitcherRef.current.offsetLeft);
-    setScrollLeft(viewSwitcherRef.current.scrollLeft);
-  };
-
-  const handleMouseLeaveOrUp = () => { setIsDragging(false); };
-
-  const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!isDragging || !viewSwitcherRef.current) return;
-    e.preventDefault();
-    const x = e.pageX - viewSwitcherRef.current.offsetLeft;
-    const walk = (x - startX) * 2;
-    viewSwitcherRef.current.scrollLeft = scrollLeft - walk;
-  };
-
   return (
     <>
       <div className="bg-pattern"></div>
       <div className="todo-wrapper">
         <div id="todo-app" className="todo-app">
+          {/* Header remains the same */}
           <div className="container header">
             <div className="todo-input">
               <h1 className="title">
@@ -771,11 +545,8 @@ export default function TodoListPage() {
               </h1>
               <div className="add-content-wrapper">
                 <input
-                  ref={addTodoInputRef}
-                  type="text"
-                  className="add-content"
-                  placeholder={newTodoPlaceholder}
-                  value={newTodoTitle}
+                  ref={addTodoInputRef} type="text" className="add-content"
+                  placeholder={newTodoPlaceholder} value={newTodoTitle}
                   onChange={(e) => setNewTodoTitle(e.target.value)}
                   onKeyUp={(e) => e.key === 'Enter' && handleAddTodo()}
                 />
@@ -785,25 +556,14 @@ export default function TodoListPage() {
           </div>
 
           <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}>
-            <div 
-                className={`view-switcher ${isDragging ? 'active-drag' : ''}`}
-                ref={viewSwitcherRef}
-                onMouseDown={handleMouseDown}
-                onMouseLeave={handleMouseLeaveOrUp}
-                onMouseUp={handleMouseLeaveOrUp}
-                onMouseMove={handleMouseMove}
-            >
-                <button onClick={() => setCurrentView('list')} className={currentView === 'list' ? 'active' : ''}>今日待办</button>
-                <button onClick={() => setCurrentView('calendar')} className={currentView === 'calendar' ? 'active' : ''}>日历视图</button>
-                <button onClick={() => setCurrentView('inbox')} className={currentView === 'inbox' ? 'active' : ''}>
-                    收件箱 {inboxCount > 0 && <span className="badge">{inboxCount}</span>}
-                </button>
-                {lists.filter((l: List) => !l.is_hidden).map((list: List) => (
-                    <button key={list.id} onClick={() => setCurrentView(list.name)} className={currentView === list.name ? 'active' : ''}>
-                        {list.name} {(todosByList[list.name] || 0) > 0 && <span className="badge">{todosByList[list.name]}</span>}
-                    </button>
-                ))}
-            </div>
+            {/* RENDER VIEW-SWITCHER COMPONENT */}
+            <ViewSwitcher
+                currentView={currentView}
+                setCurrentView={setCurrentView}
+                lists={lists}
+                inboxCount={inboxCount}
+                todosByList={todosByList}
+            />
 
             {currentView !== 'calendar' ? (
                 <div className="todo-list-box">
@@ -821,50 +581,16 @@ export default function TodoListPage() {
                       <div className="bar-message-text" onDoubleClick={handleEditSlogan}>{slogan}</div>
                     )}
                   </div>
-
-                  {displayTodos.length === 0 && currentView !== 'recycle' ? (
-                      <div className="todo-list">
-                          <div className="empty-tips">
-                            {currentView === 'list' && <div>今日无待办事项！🎉</div>}
-                            {currentView === 'inbox' && <div>收件箱是空的！👍</div>}
-                            {currentView !== 'list' && currentView !== 'inbox' && <div>此清单中没有待办事项！📝</div>}
-                          </div>
-                      </div>
-                  ) : displayTodos.length > 0 ? (
-                      <ul className="todo-list">
-                          {displayTodos.map((todo: Todo) => (
-                              <li key={todo.id} className={`todo-item ${todo.deleted ? 'deleted' : ''}`} onClick={() => setSelectedTodo(todo)}>
-                                  <div className={`todo-content ${todo.completed ? "completed" : ""}`}>
-                                      {todo.deleted ? (
-                                          <button className="todo-btn btn-restore" onClick={(e) => { e.stopPropagation(); handleRestoreTodo(todo.id);}}>
-                                              <Image src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkiIGhlaWdodD0iMTkiIHZpZXdCb3g9IjAgMCAxOSAxOSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTcuMzQ3OTggMi42NTc5MkM3LjcxMTM0IDEuOTEzNDQgNy40MDIzOCAxLjAxNTM1IDYuNjU3OSAwLjY1MTk4OEM1LjkxMzQxIDAuMjg4NjI3IDUuMDE1MzIgMC41OTc1OSA0LjY1MTk2IDEuMzQyMDhMNy4zNDc5OCAyLjY1NzkyWk0xLjUyNiA5LjA4MzMzTDAuMzc1NTcxIDguMTIwNzhDMC4wNzc5NTE2IDguNDc2NDkgLTAuMDM4MzgyIDguOTQ5ODcgMC4wNjA0NjEyIDkuNDAzMDFDMC4xNTkzMDQgOS44NTYxNSAwLjQ2MjIwNiAxMC4yMzgxIDAuODgwOTI0IDEwLjQzNzVMMS41MjYgOS4wODMzM1pNMTQuNTcyNCAxNi41ODkzQzE0LjM0NTYgMTcuMzg2IDE0LjgwNzYgMTguMjE1OCAxNS42MDQ0IDE4LjQ0MjZDMTYuNDAxMiAxOC42Njk0IDE3LjIzMSAxOC4yMDczIDE3LjQ1NzggMTcuNDEwNkwxNC41NzI0IDE2LjU4OTNaTTYuMjUxOTIgMTQuMzMyMUM2LjcxMTE1IDE1LjAyMTMgNy42NDI3NiAxNS4yMDc2IDguMzMyMDUgMTQuNzQ4MUM5LjAyMTM0IDE0LjI4ODUgOS4yMDc2IDEzLjM1NzIgOC43NDgwOCAxMi42Njc5TDYuMjUxOTIgMTQuMzMyMVpNNC42NTE5NiAxLjM0MjA4QzMuNjc2NiAzLjM0MDQ3IDIuNjAwMzMgNS4wNDUyNSAxLjc2NjU4IDYuMjUxMDhDMS4zNTA1OSA2Ljg1MjcyIDAuOTk3MjYzIDcuMzI2ODUgMC43NTAzODQgNy42NDc3MkMwLjYyNzAwNSA3Ljc4MDkzIDAuNTMwMzkyIDcuOTI5NyAwLjQ2NjA0NyA4LjAwOTY5QzAuNDMzODggOC4wNDk2NyAwLjQwOTc5NiA4LjA3OTIgMC4zOTQ0ODIgOC4wOTc4NkMwLjM4NjgyNiA4LjEwNzE4IDAuMzgxMzY0IDguMTEzNzkgMC4zNzgxODMgOC4xMTc2M0MwLjM3NjU5MiA4LjExOTU1IDAuMzc1NTcyIDguMTIwNzcgMC4zNzUxMzMgOC4xMjEzQzAuMzc0OTE0IDguMTIxNTcgMC4zNzQ4NCA4LjEyMTY1IDAuMzc0OTEyIDguMTIxNTdDMC4zNzQ5NDggOC4xMjE1MiAwLjM3NTAyMSA4LjEyMTQ0IDAuMzc1MTMxIDguMTIxM0MwLjM3NTE4NiA4LjEyMTI0IDAuMzc1Mjk2IDguMTIxMTEgMC4zNzUzMjMgOC4xMjEwN0MwLjM3NTQ0MiA4LjEyMDkzIDAuMzc1NTcxIDguMTIwNzggMS41MjYgOS4wODMzM0MyLjY3NjQzIDEwLjA0NTkgMi42NzY1OCAxMC4wNDU3IDIuNjc2NzMgMTAuMDQ1NUMyLjY3NjggMTAuMDQ1NCAyLjY3Njk2IDEwLjA0NTIgMi42NzcwOSAxMC4wNDUxQzIuNjc3MzUgMTAuMDQ0OCAyLjY3NzY1IDEwLjA0NDQgMi42Nzc5OCAxMC4wNDRDMi42Nzg2NSAxMC4wNDMyIDIuNjc5NDYgMTAuMDQyMyAyLjY4MDQyIDEwLjA0MTFDMi42ODIzNCAxMC4wMzg4IDIuNjg0ODYgMTAuMDM1OCAyLjY4Nzk0IDEwLjAzMkMyLjY5NDEyIDEwLjAyNDYgMi43MDI2MSAxMC4wMTQzIDIuNzEzMzMgMTAuMDAxM0MyLjczNDc1IDkuOTc1MTYgMi43NjUwOCA5LjkzNzk1IDIuODAzNjIgOS44OTAwNUMyLjg4MDY3IDkuNzk0MjYgMi45OTA2IDkuNjU1NjEgMy4xMjc3OCA5LjQ3NzM4QzMuNDAyMDEgOS4xMjEwNiAzLjc4NTg3IDguNjA1NjIgNC4yMzQxNyA3Ljk1NzI1QzUuMTI5IDYuNjYzMDggNi4yODk3MiA0LjgyNjIgNy4zNDc5OCAyLjY1NzkyTDQuNjUxOTYgMS4zNDIwOFpNMi4wNDcwNCAxMC40ODk5QzMuNzc2MTcgOS44NDk0MiA1LjczMzE5IDkuMTcyMzEgNy42MzggOC43MjEzN0M5LjU3MDA4IDguMjY1OTkgMTEuMzAyNSA4LjA3NjMxIDEyLjYyODggOC4zMDE3QzEzLjg3NTIgOC41MTM1MiAxNC42Mjg0IDkuMDUwMDggMTUuMDE2MyAxMC4wNDA1QzE1LjQ2MjggMTEuMTgwNyAxNS41MzgzIDEzLjE5NTYgMTQuNTcyNCAxNi41ODkzTDE3LjQ1NzggMTcuNDEwNkMxOC4wODQzIDEzLjgwNDIgMTguNjE2NiAxMS4wMDY3IDE3LjgwOTcgOC45NDY0NkMxNi45NDQyIDYuNzM2MzQgMTUuMTMzNyA1LjY4NDM3IDEzLjEzMTQgNS4zNDQxMUMxMS4yMDkyIDUuMDE3NDMgOS4wMDc5OSA1LjMxNDEzIDYuOTQ2OSA1LjgwMjA2QzQuODU4NTYgNi4yOTY0NCAyLjc2MjgzIDcuMDI1NTggMS4wMDQ5NiA3LjY3NjczTDIuMDQ3MDQgMTAuNDg5OVpNOC43NDgwOCAxMi42Njc5QzcuNTIzMTIgMTAuODMwNSA1LjIyOTM0IDkuMTg1OTMgMi4xNzEwOCA3LjcyOTEzTDAuODgwOTI0IDEwLjQzNzVDMy43NzA2NiAxMS44MTQxIDUuNDc2ODggMTMuMTY5NSA2LjI1MTkyIDE0LjMzMjFMOC43NDgwOCAxMi42Njc5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" alt="还原" draggable={false} width={16} height={16}/>
-                                          </button>
-                                      ) : (
-                                          <button
-                                              className={`todo-btn ${todo.completed ? 'btn-unfinish' : 'btn-finish'}`}
-                                              onClick={(e) => { e.stopPropagation(); handleToggleComplete(todo); }}>
-                                              {todo.completed && <Image src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" alt="标为未完成" className="icon-finish" draggable={false} width={24} height={18} />}
-                                          </button>
-                                      )}
-                                      
-                                      {todo.list_name && <span className="todo-list-name">[{todo.list_name}] </span>}
-                                      {todo.title}
-                                      {todo.due_date && currentView !== 'list' && !todo.deleted && <span className="todo-due-date">{utcToLocalDateString(todo.due_date)}</span>}
-                                      
-                                      {!todo.deleted && (
-                                          <button className="todo-btn btn-delete" onClick={(e) => { e.stopPropagation(); handleDeleteTodo(todo.id);}}>
-                                              <Image src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNS4wOTkzIDE3Ljc1OTdDMTUuNzk0OSAxOC4yMDk4IDE2LjcyMzUgMTguMDEwOCAxNy4xNzM2IDE3LjMxNTJDMTcuNjIzNiAxNi42MTk3IDE3LjQyNDYgMTUuNjkxMSAxNi43MjkxIDE1LjI0MUMxMy4zMDc5IDEzLjAyNzMgMTAuODIwOSAxMC45OTU5IDguOTIyNTEgOS4wMzczOUM5LjA5NzQyIDguODQ5ODIgOS4yNzI5MSA4LjY2NTcxIDkuNDQ4ODggOC40ODUzNEMxMS44ODY0IDUuOTg2OTIgMTQuMjQ3MiA0LjM4MDY2IDE2LjI5NDQgMy45NzEyMkMxNy4xMDY3IDMuODA4NzUgMTcuNjMzNSAzLjAxODUyIDE3LjQ3MTEgMi4yMDYxOEMxNy4zMDg2IDEuMzkzODQgMTYuNTE4NCAwLjg2NzAxMyAxNS4wNjYgMS4wMjk0OEMxMi4yNTMyIDEuNjIwMDUgOS44NjQwNiAzLjc2Mzc5IDcuMzAxNTQgNi4zOTA0N0M3LjE4MTUxIDYuNTEzNCA3LjA2MTgxIDYuNjM3ODkgNi45NDI0OSA2Ljc2Mzc1QzUuNDIwMDEgNC44MDQzMyA0LjM3MDU4IDIuODc2MzIgMy40MjU5MSAwLjg2MzE2NEMzLjA3Mzk5IDAuMTEzMjAyIDIuMTgwNzMgLTAuMjA5NDc1IDEuNDMwNzcgMC4xNDI0NDVDMC42ODA4MDkgMC40OTQzNjUgMC4zNTgxMzIgMS4zODc2MiAwLjcxMDA1MSAyLjEzNzU4QzEuODIwODggNC41MDQ4MSAzLjA3ODk5IDYuNzY1MTEgNC45MjkzMiA5LjA1MzA2QzMuMjIyMDYgMTEuMTM0MSAxLjYyNjY5IDEzLjQzMjggMC4yMjI3MjMgMTUuNzE0MkMtMC4yMTE0NTMgMTYuNDE5NyAwLjAwODUyNzUyIDE3LjM0MzcgMC43MTQwNjQgMTcuNzc3OEMxLjQxOTYgMTguMjEyIDIuMzQzNTIgMTcuOTkyIDIuNzc3NyAxNy4yODY1QzQuMDQ4MTkgMTUuMjIyIDUuNDY0MDUgMTMuMTcyNiA2Ljk1NTU5IDExLjMxNjhDOC45ODUgMTMuMzc2NSAxMS41OTU5IDE1LjQ5MjggMTUuMDk5MyAxNy43NTk3WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" alt="删除" draggable={false} width={18} height={18}/>
-                                          </button>
-                                      )}
-                                  </div>
-                              </li>
-                          ))}
-                      </ul>
-                  ) : currentView === 'recycle' && recycledTodos.length === 0 ? (
-                      <div className="todo-list">
-                          <div className="empty-tips"><div>回收站是空的！🗑️</div></div>
-                      </div>
-                  ) : null}
+                  
+                  {/* RENDER TODOLIST COMPONENT */}
+                  <TodoList
+                    todos={displayTodos}
+                    currentView={currentView}
+                    onToggleComplete={handleToggleComplete}
+                    onDelete={handleDeleteTodo}
+                    onRestore={handleRestoreTodo}
+                    onSelectTodo={setSelectedTodo}
+                  />
 
                   <div className="bar-message bar-bottom">
                     <div className="bar-message-text">
@@ -897,6 +623,8 @@ export default function TodoListPage() {
           </div>
         </div>
       </div>
+      
+      {/* Modals remain the same */}
       {showManageListsModal && (
         <ManageListsModal 
             lists={lists} onClose={() => setShowManageListsModal(false)}

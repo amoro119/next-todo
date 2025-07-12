@@ -240,7 +240,7 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
             console.warn(`⚠️ ${shapeName} ElectricSQL 实时同步流建立失败，但不影响初始同步:`, electricError);
           }
           
-        } else {
+            } else {
           console.log(`⚠️ ${shapeName} 没有数据需要同步`);
           success = true; // 没有数据也算成功
         }
@@ -255,9 +255,9 @@ async function startSyncToDatabase(pg: PGliteWithExtensions) {
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
           throw new Error(`同步 ${shapeName} 失败，已重试 ${MAX_RETRIES} 次: ${error instanceof Error ? error.message : String(error)}`);
+          }
         }
       }
-    }
   }
 
   console.log('🎉 所有数据同步完成！');
