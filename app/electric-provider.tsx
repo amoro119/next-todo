@@ -52,7 +52,8 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
       if (typeof window !== 'undefined') {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).pg = db;
-        console.log('PGlite 实例已暴露到 window.pg');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).pg = db;
       }
 
       // 立即启动同步，不等待leader选举

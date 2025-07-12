@@ -110,6 +110,14 @@ export default function QuickActions({
               <li>
                 <input value="导入(csv)" type="button" className="btn-small action-import" onClick={() => csvInputRef.current?.click()} />
               </li>
+              <li>
+                <input 
+                  value="数据库REPL" 
+                  type="button" 
+                  className="btn-small action-repl" 
+                  onClick={() => window.open('/pg-repl-standalone.html', '_blank')} 
+                />
+              </li>
             </ul>
           </div>
         )}

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGlite REPL - 独立模式</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #2563eb;
+            color: white;
+            padding: 12px 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 4px 0 0 0;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .content {
+            flex: 1;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            flex-direction: column;
+        }
+        .spinner {
+            border: 2px solid #e5e7eb;
+            border-top: 2px solid #2563eb;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .error {
+            text-align: center;
+            color: #dc2626;
+            padding: 20px;
+        }
+        #repl-container {
+            height: 100%;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .simple-repl {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .repl-input {
+            flex: 1;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border: none;
+            outline: none;
+            resize: none;
+            background: #1e1e1e;
+            color: #ffffff;
+        }
+        .repl-output {
+            height: 200px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: #2d2d2d;
+            color: #ffffff;
+            overflow-y: auto;
+            border-top: 1px solid #444;
+        }
+        .repl-controls {
+            padding: 10px;
+            background: #333;
+            border-top: 1px solid #444;
+        }
+        .repl-button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 8px;
+        }
+        .repl-button:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PGlite REPL</h1>
+            <p>PostgreSQL 浏览器交互式环境 - 独立模式</p>
+        </div>
+        <div class="content">
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 12px; color: #6b7280;">正在初始化 PGlite...</p>
+            </div>
+            <div id="error" class="error" style="display: none;">
+                <div style="font-size: 24px; margin-bottom: 8px;">❌</div>
+                <p>PGlite 初始化失败</p>
+                <p id="error-message" style="font-size: 12px; color: #9ca3af; margin-top: 8px;"></p>
+            </div>
+            <div id="repl-container" style="display: none;">
+                <div class="simple-repl">
+                    <textarea id="sql-input" class="repl-input" placeholder="输入 SQL 查询..."></textarea>
+                    <div class="repl-controls">
+                        <button id="execute-btn" class="repl-button">执行查询</button>
+                        <button id="clear-btn" class="repl-button">清空输出</button>
+                    </div>
+                    <div id="sql-output" class="repl-output"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        let pg = null;
+
+        async function initPGliteRepl() {
+            try {
+                // 等待接收主应用的PGlite实例
+                let receivedPg = null;
+                let connectionDiagnostics = [];
+                
+                // 监听postMessage
+                window.addEventListener('message', (event) => {
+                    if (event.data.type === 'PGLITE_INSTANCE') {
+                        console.log('接收到主应用的PGlite实例');
+                        receivedPg = event.data.pg;
+                        // 如果已经初始化完成，直接使用接收到的实例
+                        if (pg === null) {
+                            pg = receivedPg;
+                            initSimpleRepl();
+                        }
+                    }
+                });
+
+                // 诊断连接问题
+                console.log('开始诊断连接问题...');
+                
+                // 检查是否在iframe中
+                if (window.self !== window.top) {
+                    connectionDiagnostics.push('✓ 当前在iframe中运行');
+                } else {
+                    connectionDiagnostics.push('✗ 不在iframe中运行');
+                }
+                
+                // 检查父窗口是否存在
+                if (window.parent && window.parent !== window) {
+                    connectionDiagnostics.push('✓ 父窗口存在');
+                } else {
+                    connectionDiagnostics.push('✗ 父窗口不存在');
+                }
+                
+                // 检查opener窗口
+                if (window.opener) {
+                    connectionDiagnostics.push('✓ opener窗口存在');
+                } else {
+                    connectionDiagnostics.push('✗ opener窗口不存在');
+                }
+                
+                // 尝试直接获取PGlite实例（当直接访问HTML文件时）
+                if (window.self === window.top) {
+                    console.log('直接访问HTML文件，尝试获取主应用PGlite实例...');
+                    
+                    // 检查当前窗口是否有PGlite实例
+                    if (window.pg) {
+                        console.log('在当前窗口找到PGlite实例');
+                        receivedPg = window.pg;
+                        connectionDiagnostics.push('✓ 在当前窗口找到PGlite实例');
+                        
+
+                    } else {
+                        console.log('在当前窗口未找到PGlite实例');
+                        connectionDiagnostics.push('✗ 在当前窗口未找到PGlite实例');
+                        
+                        // 检查globalThis
+                        if (globalThis.pg) {
+                            console.log('在globalThis中找到PGlite实例');
+                            receivedPg = globalThis.pg;
+                            connectionDiagnostics.push('✓ 在globalThis中找到PGlite实例');
+                            
+
+                        } else {
+                            connectionDiagnostics.push('✗ 在globalThis中未找到PGlite实例');
+                            
+                            // 尝试从opener窗口获取
+                            if (window.opener && window.opener.pg) {
+                                console.log('在opener窗口找到PGlite实例');
+                                receivedPg = window.opener.pg;
+                                connectionDiagnostics.push('✓ 在opener窗口找到PGlite实例');
+                                
+
+                            } else {
+                                connectionDiagnostics.push('✗ 在opener窗口未找到PGlite实例');
+                            }
+                        }
+                    }
+                }
+                
+                // 等待一段时间，看是否接收到主应用的PGlite实例
+                console.log('等待主应用PGlite实例...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                if (receivedPg) {
+                    console.log('使用主应用的PGlite实例');
+                    pg = receivedPg;
+                    
+                    // 隐藏加载状态
+                    document.getElementById('loading').style.display = 'none';
+                    
+                    // 显示REPL容器
+                    document.getElementById('repl-container').style.display = 'block';
+                    
+                    // 初始化简单的REPL界面
+                    initSimpleRepl();
+                    
+                } else {
+                    console.error('无法获取主应用的PGlite实例');
+                    connectionDiagnostics.push('✗ 未接收到PGlite实例');
+                    
+                    // 隐藏加载状态
+                    document.getElementById('loading').style.display = 'none';
+                    
+                    // 显示错误状态
+                    const errorDiv = document.getElementById('error');
+                    const errorMessage = document.getElementById('error-message');
+                    
+                    // 构建详细的错误信息
+                    let detailedError = '无法连接到主应用的数据库实例。\n\n';
+                    detailedError += '诊断信息:\n';
+                    connectionDiagnostics.forEach(diagnostic => {
+                        detailedError += `• ${diagnostic}\n`;
+                    });
+                    detailedError += '\n可能的原因:\n';
+                    detailedError += '• 主应用未启动或未正确加载\n';
+                    detailedError += '• 主应用的PGlite实例未暴露到window.pg\n';
+                    detailedError += '• postMessage通信失败\n';
+                    detailedError += '• 跨域访问限制\n';
+                    detailedError += '\n建议:\n';
+                    detailedError += '• 确保主应用已启动并正常运行\n';
+                    detailedError += '• 检查浏览器控制台是否有错误信息\n';
+                    detailedError += '• 尝试刷新页面重新加载\n';
+                    detailedError += '• 或者通过主应用页面访问此REPL';
+                    
+                    errorMessage.textContent = detailedError;
+                    errorDiv.style.display = 'block';
+                    
+                    // 在控制台输出详细信息
+                    console.log('连接诊断信息:', connectionDiagnostics);
+                    console.log('详细错误信息:', detailedError);
+                }
+                
+            } catch (error) {
+                console.error('Failed to initialize PGlite REPL:', error);
+                
+                // 隐藏加载状态
+                document.getElementById('loading').style.display = 'none';
+                
+                // 显示错误状态
+                const errorDiv = document.getElementById('error');
+                const errorMessage = document.getElementById('error-message');
+                errorMessage.textContent = `初始化失败: ${error.message}\n\n错误堆栈:\n${error.stack}`;
+                errorDiv.style.display = 'block';
+            }
+        }
+
+        function initSimpleRepl() {
+            const input = document.getElementById('sql-input');
+            const output = document.getElementById('sql-output');
+            const executeBtn = document.getElementById('execute-btn');
+            const clearBtn = document.getElementById('clear-btn');
+
+            // 处理PostgreSQL元命令
+            async function handleMetaCommand(command) {
+                const cmd = command.trim().toLowerCase();
+                
+                try {
+                    if (cmd === '\\dt' || cmd === '\\dt+') {
+                        // 列出所有表
+                        const result = await pg.query(`
+                            SELECT 
+                                schemaname,
+                                tablename,
+                                tableowner,
+                                tablespace,
+                                hasindexes,
+                                hasrules,
+                                hastriggers,
+                                rowsecurity
+                            FROM pg_tables 
+                            WHERE schemaname = 'public' 
+                            ORDER BY tablename;
+                        `);
+                        
+                        if (result.rows && result.rows.length > 0) {
+                            let tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+                            tableHtml += '<tr style="background: #444;"><th style="padding: 8px; border: 1px solid #666; text-align: left;">Schema</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">Name</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">Owner</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">Tablespace</th></tr>';
+                            
+                            result.rows.forEach(row => {
+                                tableHtml += '<tr>';
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.schemaname}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.tablename}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.tableowner}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.tablespace || ''}</td>`;
+                                tableHtml += '</tr>';
+                            });
+                            
+                            tableHtml += '</table>';
+                            output.innerHTML += tableHtml;
+                        } else {
+                            output.innerHTML += `<div style="color: #60a5fa;">没有找到表</div>`;
+                        }
+                        
+                    } else if (cmd.startsWith('\\d ')) {
+                        // 描述表结构
+                        const tableName = command.substring(3).trim();
+                        if (!tableName) {
+                            output.innerHTML += `<div style="color: #f87171;">错误: 请指定表名</div>`;
+                            return;
+                        }
+                        
+                        // 获取表结构
+                        const result = await pg.query(`
+                            SELECT 
+                                column_name,
+                                data_type,
+                                is_nullable,
+                                column_default,
+                                character_maximum_length
+                            FROM information_schema.columns 
+                            WHERE table_name = $1 AND table_schema = 'public'
+                            ORDER BY ordinal_position;
+                        `, [tableName]);
+                        
+                        if (result.rows && result.rows.length > 0) {
+                            let tableHtml = `<div style="color: #4ade80; margin-bottom: 10px;">表 "${tableName}" 的结构:</div>`;
+                            tableHtml += '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+                            tableHtml += '<tr style="background: #444;"><th style="padding: 8px; border: 1px solid #666; text-align: left;">列名</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">类型</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">可空</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">默认值</th></tr>';
+                            
+                            result.rows.forEach(row => {
+                                tableHtml += '<tr>';
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.column_name}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.data_type}${row.character_maximum_length ? `(${row.character_maximum_length})` : ''}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.is_nullable === 'YES' ? 'YES' : 'NO'}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.column_default || ''}</td>`;
+                                tableHtml += '</tr>';
+                            });
+                            
+                            tableHtml += '</table>';
+                            output.innerHTML += tableHtml;
+                        } else {
+                            output.innerHTML += `<div style="color: #f87171;">错误: 表 "${tableName}" 不存在</div>`;
+                        }
+                        
+                    } else if (cmd === '\\l' || cmd === '\\list') {
+                        // 列出数据库
+                        const result = await pg.query(`
+                            SELECT 
+                                datname as "Name",
+                                pg_catalog.pg_get_userbyid(datdba) as "Owner",
+                                pg_catalog.pg_encoding_to_char(encoding) as "Encoding",
+                                datcollate as "Collate",
+                                datctype as "Ctype",
+                                pg_catalog.array_to_string(datacl, E'\n') AS "Access privileges"
+                            FROM pg_catalog.pg_database
+                            ORDER BY 1;
+                        `);
+                        
+                        if (result.rows && result.rows.length > 0) {
+                            let tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+                            tableHtml += '<tr style="background: #444;"><th style="padding: 8px; border: 1px solid #666; text-align: left;">Name</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">Owner</th><th style="padding: 8px; border: 1px solid #666; text-align: left;">Encoding</th></tr>';
+                            
+                            result.rows.forEach(row => {
+                                tableHtml += '<tr>';
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.Name}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.Owner}</td>`;
+                                tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row.Encoding}</td>`;
+                                tableHtml += '</tr>';
+                            });
+                            
+                            tableHtml += '</table>';
+                            output.innerHTML += tableHtml;
+                        }
+                        
+                    } else if (cmd === '\\?') {
+                        // 显示帮助信息
+                        output.innerHTML += `
+                            <div style="color: #4ade80; margin-bottom: 10px;">PostgreSQL 元命令帮助:</div>
+                            <div style="color: #ffffff; font-family: monospace; line-height: 1.5;">
+                                \\dt          - 列出所有表<br>
+                                \\d 表名      - 描述表结构<br>
+                                \\l           - 列出数据库<br>
+                                \\?           - 显示此帮助信息<br>
+                                Ctrl+Enter   - 执行查询
+                            </div>
+                        `;
+                        
+                    } else {
+                        output.innerHTML += `<div style="color: #f87171;">错误: 未知的元命令 "${command}"</div>`;
+                    }
+                    
+                } catch (error) {
+                    output.innerHTML += `<div style="color: #f87171;">错误: ${error.message}</div>`;
+                }
+            }
+
+            executeBtn.addEventListener('click', async () => {
+                const sql = input.value.trim();
+                if (!sql) return;
+
+                try {
+                    output.innerHTML += `<div style="color: #4ade80;">> ${sql}</div>`;
+                    
+                    // 检查是否是元命令
+                    if (sql.startsWith('\\')) {
+                        await handleMetaCommand(sql);
+                    } else {
+                        // 执行普通SQL查询
+                        const result = await pg.query(sql);
+                        
+                        if (result.rows && result.rows.length > 0) {
+                            // 显示表格数据
+                            let tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 10px 0;">';
+                            
+                            // 表头
+                            const headers = Object.keys(result.rows[0]);
+                            tableHtml += '<tr style="background: #444;">';
+                            headers.forEach(header => {
+                                tableHtml += `<th style="padding: 8px; border: 1px solid #666; text-align: left;">${header}</th>`;
+                            });
+                            tableHtml += '</tr>';
+                            
+                            // 数据行
+                            result.rows.forEach(row => {
+                                tableHtml += '<tr>';
+                                headers.forEach(header => {
+                                    tableHtml += `<td style="padding: 8px; border: 1px solid #666;">${row[header] || ''}</td>`;
+                                });
+                                tableHtml += '</tr>';
+                            });
+                            
+                            tableHtml += '</table>';
+                            output.innerHTML += tableHtml;
+                        } else {
+                            output.innerHTML += `<div style="color: #60a5fa;">查询执行成功，无返回数据</div>`;
+                        }
+                    }
+                    
+                    output.innerHTML += '<hr style="border: none; border-top: 1px solid #444; margin: 10px 0;">';
+                    
+                } catch (error) {
+                    output.innerHTML += `<div style="color: #f87171;">错误: ${error.message}</div>`;
+                    output.innerHTML += '<hr style="border: none; border-top: 1px solid #444; margin: 10px 0;">';
+                }
+                
+                output.scrollTop = output.scrollHeight;
+            });
+
+            clearBtn.addEventListener('click', () => {
+                output.innerHTML = '';
+            });
+
+            // 支持回车键执行
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    executeBtn.click();
+                }
+            });
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', initPGliteRepl);
+    </script>
+</body>
+</html> 
