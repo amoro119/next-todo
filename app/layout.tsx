@@ -1,11 +1,11 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
-import ElectricClientProvider from "./electric-client-provider"; // 确认此路径
+import DbProvider from "./electric-client-provider"; // 现在导入的是 DbProvider
 
 export const metadata: Metadata = {
   title: "Todo List Local-First",
-  description: "A simple local-first todo app built with Next.js and ElectricSQL",
+  description: "A simple local-first todo app built with Next.js and a main-process database",
   icons: {
     icon: "/favicon.png",
   },
@@ -19,9 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ElectricClientProvider>
+        <DbProvider>
           {children}
-        </ElectricClientProvider>
+        </DbProvider>
       </body>
     </html>
   );

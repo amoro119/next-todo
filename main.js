@@ -5,9 +5,10 @@ const { fork } = require('child_process');
 const fs = require('fs');
 const treeKill = require('tree-kill');
 const portfinder = require('portfinder');
+const { setupDatabaseHandlers } = require('./electron/database-handler'); // 引入数据库处理器
 
 let serverProcess;
-let writeServerProcess; // 新增：用于跟踪 write-server 进程
+let writeServerProcess; // 用于跟踪 write-server 进程
 let mainWindow;
 
 const isDev = !app.isPackaged;
@@ -79,10 +80,9 @@ function startNextServer() {
   });
 }
 
-// 新增函数：启动 write-server
 function startWriteServer() {
   return new Promise((resolve, reject) => {
-    portfinder.basePort = 3001; // `server.ts` 中的默认端口
+    portfinder.basePort = 3001;
     portfinder.getPort((err, port) => {
       if (err) {
         return reject(err);
@@ -100,9 +100,6 @@ function startWriteServer() {
         return reject(new Error(`FATAL: write-server (server.js) not found at: ${serverPath}`));
       }
 
-      // 注意：在打包后的应用中，.env 文件可能不可用。
-      // 这里的 DATABASE_URL 应该通过一种更健壮的方式来配置。
-      // 对于本地开发，它会从你的 docker-compose.yml 获取。
       const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:54321/next_todo';
 
       writeServerProcess = fork(
@@ -114,7 +111,7 @@ function startWriteServer() {
           env: {
             ...process.env,
             PORT: port.toString(),
-            DATABASE_URL: DATABASE_URL, // 确保进程能获取数据库连接
+            DATABASE_URL: DATABASE_URL,
             NODE_ENV: isDev ? 'development' : 'production'
           }
         }
@@ -127,10 +124,9 @@ function startWriteServer() {
       writeServerProcess.stdout.on('data', (data) => {
         const output = data.toString();
         console.log('[Write Server STDOUT]:', output);
-        // 等待 server.ts 中的启动日志
         if (output.includes('is running on port')) {
           console.log(`[Write Server] Ready on port ${port}`);
-          resolve(); // 解决 Promise 表示服务器已启动
+          resolve();
         }
       });
 
@@ -156,10 +152,8 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      webSecurity: false,
-      nodeIntegrationInWorker: true,
+      contextIsolation: true,
+      nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
     },
     icon: path.join(__dirname, 'public', 'favicon.png'),
@@ -176,13 +170,12 @@ function createWindow() {
     mainWindow.loadURL(startUrl);
     mainWindow.webContents.openDevTools();
   } else {
-    // 在生产模式下，同时启动两个服务器
-    Promise.all([startNextServer(), startWriteServer()])
-      .then(([nextServerUrl]) => {
+    startNextServer()
+      .then((nextServerUrl) => {
         mainWindow.loadURL(nextServerUrl);
       })
       .catch((err) => {
-        console.error("Failed to start production servers", err);
+        console.error("Failed to start production server", err);
         app.quit();
       });
   }
@@ -197,13 +190,15 @@ app.on('ready', () => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
+        // **修复**: 在 script-src 中添加 'unsafe-inline'
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' data:; connect-src 'self' http://localhost:*;"
+          "default-src 'self' http://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; img-src 'self' data:; connect-src 'self' http://localhost:* ws://localhost:*;"
         ]
       }
     });
   });
 
+  setupDatabaseHandlers();
   createWindow();
 });
 
@@ -220,7 +215,6 @@ app.on('activate', () => {
 });
 
 app.on('will-quit', () => {
-  // 确保两个进程都被正确关闭
   if (serverProcess) {
     console.log(`[Electron] Killing Next server process with PID: ${serverProcess.pid}`);
     treeKill(serverProcess.pid, 'SIGKILL');

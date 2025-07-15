@@ -35,6 +35,8 @@
       "preload.js",
       ".next/standalone/**/*",
       "public",
+      "electron/**/*",
+      "db/**/*",
       ".next/static/**/*",
       "package.json"
     ],
