@@ -1,36 +1,29 @@
 // preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
-console.log('✅ Preload script loaded. Setting up context bridge.');
+console.log('✅ Preload script loaded. Setting up context bridge for DB sync.');
 
-// 在主世界（渲染进程的window对象）中暴露一个名为'electron'的对象
 contextBridge.exposeInMainWorld('electron', {
   db: {
-    /**
-     * 执行一个带参数的SQL查询，并返回结果。
-     * @param {string} sql - SQL查询语句 (例如, "SELECT * FROM todos WHERE id = $1")
-     * @param {Array<any>} [params] - 查询参数数组
-     * @returns {Promise<QueryResult>}
-     */
+    // 只读操作
     query: (sql, params) => ipcRenderer.invoke('db:query', sql, params),
+    dump: () => ipcRenderer.invoke('db:dump'),
 
-    /**
-     * 执行一个或多个不返回结果的SQL命令。
-     * @param {string} sql - 一个或多个SQL命令
-     * @returns {Promise<QueryResult[]>}
-     */
-    exec: (sql) => ipcRenderer.invoke('db:exec', sql),
-
-    /**
-     * 在一个事务中执行多个查询。
-     * @param {Array<{sql: string, params: Array<any>}>} queries - 要在事务中执行的查询数组
-     * @returns {Promise<QueryResult[]>}
-     */
+    // 写操作
+    write: (sql, params) => ipcRenderer.invoke('db:write', sql, params),
     transaction: (queries) => ipcRenderer.invoke('db:transaction', queries),
-  },
-  // 如果未来需要其他主进程功能，可以在这里添加
-  // 例如:
-  // fs: {
-  //   readFile: (path) => ipcRenderer.invoke('fs:readFile', path)
-  // }
+    
+    // 监听来自主进程的变更通知
+    onChange: (callback) => {
+      const channel = 'db:changed';
+      // 使用箭头函数确保 'this' 上下文正确
+      const subscription = (event, ...args) => callback(...args);
+      ipcRenderer.on(channel, subscription);
+      
+      // 返回一个取消订阅的函数，以便在组件卸载时清理
+      return () => {
+        ipcRenderer.removeListener(channel, subscription);
+      };
+    }
+  }
 });

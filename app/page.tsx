@@ -2,8 +2,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-// 删除了 pglite-react 的导入，引入了我们自己的 useDb
-import { useDb } from "./electric-client-provider";
+import { useLiveQuery } from "@electric-sql/pglite-react";
 import type { Todo, List } from "../lib/types";
 import Image from "next/image";
 import dynamic from 'next/dynamic';
@@ -18,9 +17,8 @@ import QuickActions from "../components/QuickActions";
 import { ViewSwitcher } from "../components/ViewSwitcher";
 import { TodoList } from "../components/TodoList";
 
-// 高性能缓存系统 (保持不变)
+// 高性能缓存系统
 class DateCache {
-  // ... (代码无变化)
   private dateCache = new Map<string, string>();
   private todayCache: { date: string; timestamp: number } | null = null;
   private readonly CACHE_DURATION = 60000; // 1分钟缓存
@@ -48,18 +46,18 @@ class DateCache {
     this.todayCache = null;
   }
 }
+
+// 全局缓存实例
 const dateCache = new DateCache();
 
 const TodoDetailsModal = dynamic(() => import('../components/TodoDetailsModal'), {
   ssr: false,
 });
 
-// Helper functions (保持不变)
+// Helper functions
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
-  // ... (代码无变化)
   if (!utcDate) return '';
   
-  // 检查缓存
   const cached = dateCache.getDateCache(utcDate);
   if (cached) return cached;
   
@@ -87,7 +85,6 @@ const utcToLocalDateString = (utcDate: string | null | undefined): string => {
 };
 
 const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | null => {
-  // ... (代码无变化)
   if (!localDate || !/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return null;
   try {
     const dateInUTC8 = new Date(`${localDate}T23:59:59.999+08:00`);
@@ -98,21 +95,36 @@ const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | 
   }
 };
 
+// Type conversion functions
+const normalizeTodo = (raw: Record<string, unknown>): Todo => {
+  return {
+    ...raw,
+    completed: raw.completed === true || raw.completed === 'true' || raw.completed === 1 || raw.completed === '1',
+    deleted: raw.deleted === true || raw.deleted === 'true' || raw.deleted === 1 || raw.deleted === '1',
+    priority: typeof raw.priority === 'string' ? parseInt(raw.priority, 10) : (raw.priority as number) ?? 0,
+    sort_order: typeof raw.sort_order === 'string' ? parseInt(raw.sort_order, 10) : (raw.sort_order as number) ?? 0,
+  } as Todo;
+};
+
+const normalizeList = (raw: Record<string, unknown>): List => {
+  return {
+    ...raw,
+    is_hidden: raw.is_hidden === true || raw.is_hidden === 'true' || raw.is_hidden === 1 || raw.is_hidden === '1',
+    sort_order: typeof raw.sort_order === 'string' ? parseInt(raw.sort_order, 10) : (raw.sort_order as number) ?? 0,
+  } as List;
+};
+
 type LastAction =
   | { type: 'toggle-complete'; data: { id: string; previousCompletedTime: string | null, previousCompleted: boolean } }
   | { type: 'delete'; data: Todo }
   | { type: 'restore'; data: Todo }
   | { type: 'batch-complete'; data: { id: string; previousCompletedTime: string | null, previousCompleted: boolean }[] };
 
-export default function TodoListPage() {
-  const db = useDb(); // 使用新的 useDb hook 获取数据库代理
+const camelToSnake = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 
-  // 使用 useState 替代 useLiveQuery
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [lists, setLists] = useState<List[]>([]);
-  const [recycledTodos, setRecycledTodos] = useState<Todo[]>([]);
+
+export default function TodoListPage() {
   const [slogan, setSlogan] = useState("今日事今日毕，勿将今事待明日!.☕");
-  
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newTodoDate, setNewTodoDate] = useState<string | null>(null);
   const [showManageListsModal, setShowManageListsModal] = useState(false);
@@ -125,47 +137,43 @@ export default function TodoListPage() {
   const [originalSlogan, setOriginalSlogan] = useState("");
   const sloganInputRef = useRef<HTMLInputElement>(null);
 
-  // 创建一个函数来获取所有数据
-  const fetchAllData = useCallback(async () => {
-    try {
-      const [todosRes, listsRes, recycledRes, metaRes] = await Promise.all([
-        db.query<Todo>(`
-          SELECT t.*, l.name as list_name
-          FROM todos t
-          LEFT JOIN lists l ON t.list_id = l.id
-          WHERE t.deleted = false
-          ORDER BY t.sort_order, t.created_time DESC
-        `),
-        db.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists ORDER BY sort_order, name`),
-        db.query<Todo>(`SELECT id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id FROM todos WHERE deleted = true`),
-        db.query<{ key: string, value: string }>(`SELECT * FROM meta WHERE key = 'slogan'`)
-      ]);
+  // 1. 所有 hooks 顶层无条件调用
+  const todosQuery = useLiveQuery<Todo>(
+    `SELECT t.*, l.name as list_name
+     FROM todos t
+     LEFT JOIN lists l ON t.list_id = l.id
+     WHERE t.deleted = false
+     ORDER BY t.sort_order, t.created_time DESC`
+  );
+  const todos = ((todosQuery?.rows as Record<string, unknown>[] | undefined) || []).map(normalizeTodo);
 
-      setTodos(todosRes.rows || []);
-      setLists(listsRes.rows || []);
-      setRecycledTodos(recycledRes.rows || []);
-      if (metaRes.rows?.[0]?.value) {
-        setSlogan(metaRes.rows[0].value);
-      }
-    } catch (error) {
-      console.error("Failed to fetch data:", error);
-      // 可以在这里设置一个错误状态来通知用户
-    }
-  }, [db]);
+  const listsQuery = useLiveQuery<List>(
+    `SELECT id, name, sort_order, is_hidden FROM lists ORDER BY sort_order, name`
+  );
+  const lists = ((listsQuery?.rows as Record<string, unknown>[] | undefined) || []).map(normalizeList);
+  
+  const recycledQuery = useLiveQuery<Todo>(
+    `SELECT id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id FROM todos WHERE deleted = true`
+  );
+  const recycledTodos = ((recycledQuery?.rows as Record<string, unknown>[] | undefined) || []).map(normalizeTodo);
+  
+  const metaQuery = useLiveQuery<{ key: string, value: string }>(
+    `SELECT * FROM meta WHERE key = 'slogan'`
+  );
 
-  // 使用 useEffect 在组件加载时获取数据
   useEffect(() => {
-    fetchAllData();
-  }, [fetchAllData]);
+    if (metaQuery && metaQuery.rows && metaQuery.rows[0]?.value) {
+      setSlogan(metaQuery.rows[0].value);
+    }
+  }, [metaQuery?.rows]);
 
-  // 其他 Hooks 和逻辑
   useEffect(() => {
     if (isEditingSlogan && sloganInputRef.current) {
         sloganInputRef.current.focus();
     }
   }, [isEditingSlogan]);
 
-  // Derived data with useMemo (这部分逻辑基本不变)
+  // Derived data with useMemo
   const activeTodos = useMemo(() => todos.filter((t: Todo) => !t.deleted), [todos]);
   const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
   const todayStrInUTC8 = useMemo(() => dateCache.getTodayString(), []);
@@ -189,8 +197,7 @@ export default function TodoListPage() {
       return effectiveStart <= viewEnd && effectiveEnd >= viewStart;
     });
   }, [activeTodos, currentDate, currentView]);
-  
-  // ... 其他 useMemo 计算逻辑保持不变 ...
+
   const listNameToIdMap = useMemo(() => 
     lists.reduce((acc: Record<string, string>, list: List) => {
       acc[list.name] = list.id;
@@ -262,7 +269,7 @@ export default function TodoListPage() {
   }, [lists, uncompletedTodos]);
   
   const recycleBinCount = useMemo(() => recycledTodos.length, [recycledTodos]);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       dateCache.clear();
@@ -270,18 +277,19 @@ export default function TodoListPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Event Handlers - 需要修改以使用新的db代理
   const handleEditSlogan = useCallback(() => {
     setOriginalSlogan(slogan);
     setIsEditingSlogan(true);
   }, [slogan]);
-
+  
   const handleUpdateSlogan = useCallback(debounce(async () => {
     setIsEditingSlogan(false);
     if (slogan === originalSlogan) return;
-    // 使用 db.exec
-    await db.exec(`INSERT INTO meta (key, value) VALUES ('slogan', '${slogan.replace(/'/g, "''")}') ON CONFLICT(key) DO UPDATE SET value = excluded.value;`);
-  }, 500), [db, slogan, originalSlogan]);
+    await window.electron.db.write(
+      `INSERT INTO meta (key, value) VALUES ('slogan', $1) ON CONFLICT(key) DO UPDATE SET value = $1`,
+      [slogan]
+    );
+  }, 500), [slogan, originalSlogan]);
 
   const handleSloganKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleUpdateSlogan();
@@ -302,116 +310,75 @@ export default function TodoListPage() {
     const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
     const todoId = uuid();
     const createdTime = new Date().toISOString();
-    try {
-      await db.query(
-        `INSERT INTO todos (id, title, list_id, due_date, start_date, created_time) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [todoId, newTodoTitle.trim(), listId, dueDateUTC, dueDateUTC, createdTime]
-      );
-      // 手动刷新数据
-      fetchAllData();
-      
-      setTimeout(async () => {
-        try {
-          await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, {
-            title: newTodoTitle.trim(), list_id: listId, due_date: dueDateUTC,
-            start_date: dueDateUTC, created_time: createdTime,
-          }, true)] });
-        } catch (error) { console.error('Failed to sync new todo:', error); }
-      }, 1000);
-      setNewTodoTitle('');
-      setNewTodoDate(null);
-    } catch (error) { console.error('Failed to add todo:', error); alert('添加待办事项失败，请重试'); }
-  }, [db, newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8, fetchAllData]);
+    
+    await window.electron.db.write(
+      `INSERT INTO todos (id, title, list_id, due_date, start_date, created_time) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [todoId, newTodoTitle.trim(), listId, dueDateUTC, dueDateUTC, createdTime]
+    );
+    
+    setTimeout(async () => {
+      try {
+        await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, {
+          title: newTodoTitle.trim(), list_id: listId, due_date: dueDateUTC,
+          start_date: dueDateUTC, created_time: createdTime,
+        }, true)] });
+      } catch (error) { console.error('Failed to sync new todo:', error); }
+    }, 1000);
+    setNewTodoTitle('');
+    setNewTodoDate(null);
+  }, [newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8]);
   
   const handleUpdateTodo = useCallback(async (todoId: string, updates: Partial<Omit<Todo, 'id' | 'list_name'>>) => {
       const keys = Object.keys(updates);
       if (keys.length === 0) return;
-      const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
+      const setClauses = keys.map((key, i) => `"${camelToSnake(key)}" = $${i + 2}`).join(', ');
       const params = [todoId, ...Object.values(updates)];
-      await db.query(`UPDATE todos SET ${setClauses} WHERE id = $1`, params);
-      fetchAllData(); // 手动刷新
+      await window.electron.db.write(`UPDATE todos SET ${setClauses} WHERE id = $1`, params);
+      
       setTimeout(async () => {
         try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, updates)] });
         } catch (error) { console.error('Failed to sync todo update:', error); }
       }, 1000);
-  }, [db, fetchAllData]);
+  }, []);
   
-  const handleDeleteTodo = useCallback(async (todoId: string) => {
-    const todoToDelete = todos.find((t: Todo) => t.id === todoId);
-    if (!todoToDelete) return;
-    setLastAction({ type: 'delete', data: todoToDelete });
-    if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-    await db.query(`UPDATE todos SET deleted = true WHERE id = $1`, [todoId]);
-    fetchAllData(); // 手动刷新
-    try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: true })] });
-    } catch (error) { console.error('Failed to sync todo deletion:', error); }
-  }, [db, todos, selectedTodo, fetchAllData]);
-
-  const handleAddList = useCallback(async (name: string): Promise<List | null> => {
-    try {
-      const newList = { id: uuid(), name, sort_order: lists.length, is_hidden: false };
-      await db.query(
-        `INSERT INTO lists (id, name, sort_order, is_hidden) VALUES ($1, $2, $3, $4)`,
-        [newList.id, newList.name, newList.sort_order, newList.is_hidden]
-      );
-      fetchAllData();
-      setTimeout(async () => {
-        try { await sendChangesToServer({ lists: [createListChange(newList.id, {
-              name: newList.name, sort_order: newList.sort_order, is_hidden: newList.is_hidden,
-            }, true)], todos: [] });
-        } catch (error) { console.error('Failed to sync new list:', error); }
-      }, 1000);
-      return newList;
-    } catch (error) { console.error("Failed to add list:", error); alert(`添加清单失败: ${error instanceof Error ? error.message : 'Unknown error'}`); return null; }
-  }, [db, lists.length, fetchAllData]);
-
-  const handleUpdateListsOrder = useCallback(async (reorderedLists: List[]) => {
-      const queries = reorderedLists.map((list, index) => ({
-          sql: 'UPDATE lists SET sort_order = $1 WHERE id = $2',
-          params: [index, list.id]
-      }));
-      await db.transaction(queries);
-      fetchAllData();
-      setTimeout(async () => {
-        try { await sendChangesToServer({ lists: reorderedLists.map((list, index) => createListChange(list.id, { sort_order: index })), todos: [] });
-        } catch (error) { console.error('Failed to sync lists order update:', error); }
-      }, 1000);
-  }, [db, fetchAllData]);
-
-  // ... 其余的 Handler 函数也需要类似修改，在数据库操作后调用 fetchAllData() ...
-  // 为简洁起见，这里不再一一列出，但修改模式是相同的：
-  // 1. 使用 `db.query` 或 `db.exec`
-  // 2. 在操作成功后调用 `fetchAllData()`
   const handleToggleComplete = useCallback(async (todo: Todo) => {
     setLastAction({ type: 'toggle-complete', data: { id: todo.id, previousCompletedTime: todo.completed_time, previousCompleted: !!todo.completed } });
     const newCompletedTime = todo.completed_time ? null : new Date().toISOString();
     const newCompletedFlag = !todo.completed;
     await handleUpdateTodo(todo.id, { completed_time: newCompletedTime, completed: newCompletedFlag });
   }, [handleUpdateTodo]);
-
+  
+  const handleDeleteTodo = useCallback(async (todoId: string) => {
+    const todoToDelete = todos.find((t: Todo) => t.id === todoId);
+    if (!todoToDelete) return;
+    setLastAction({ type: 'delete', data: todoToDelete });
+    if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
+    await window.electron.db.write(`UPDATE todos SET deleted = true WHERE id = $1`, [todoId]);
+    try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: true })] });
+    } catch (error) { console.error('Failed to sync todo deletion:', error); }
+  }, [todos, selectedTodo]);
+  
   const handleRestoreTodo = useCallback(async (todoId: string) => {
     const todoToRestore = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToRestore) return;
     setLastAction({ type: 'restore', data: todoToRestore });
     if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-    await db.query(`UPDATE todos SET deleted = false WHERE id = $1`, [todoId]);
-    fetchAllData(); // 手动刷新
+    await window.electron.db.write(`UPDATE todos SET deleted = false WHERE id = $1`, [todoId]);
     try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: false })] });
     } catch (error) { console.error('Failed to sync todo restoration:', error); }
-  }, [db, recycledTodos, selectedTodo, fetchAllData]);
-
+  }, [recycledTodos, selectedTodo]);
+  
   const handlePermanentDeleteTodo = useCallback(async (todoId: string) => {
     const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToDelete) return;
     const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`);
     if (confirmed) {
-      await db.query(`DELETE FROM todos WHERE id = $1`, [todoId]);
-      fetchAllData();
+      await window.electron.db.write(`DELETE FROM todos WHERE id = $1`, [todoId]);
       try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, {}, false, true)] });
       } catch (error) { console.error('Failed to sync permanent todo deletion:', error); }
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     }
-  }, [db, recycledTodos, selectedTodo, fetchAllData]);
+  }, [recycledTodos, selectedTodo]);
 
   const handleSaveTodoDetails = useCallback(async (updatedTodo: Todo) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -420,37 +387,63 @@ export default function TodoListPage() {
       setSelectedTodo(null);
   }, [handleUpdateTodo]);
 
+  const handleAddList = useCallback(async (name: string): Promise<List | null> => {
+    try {
+      const newList = { id: uuid(), name, sort_order: lists.length, is_hidden: false };
+      await window.electron.db.write(
+        `INSERT INTO lists (id, name, sort_order, is_hidden) VALUES ($1, $2, $3, $4)`,
+        [newList.id, newList.name, newList.sort_order, newList.is_hidden]
+      );
+      setTimeout(async () => {
+        try { await sendChangesToServer({ lists: [createListChange(newList.id, {
+              name: newList.name, sort_order: newList.sort_order, is_hidden: newList.is_hidden,
+            }, true)], todos: [] });
+        } catch (error) { console.error('Failed to sync new list:', error); }
+      }, 1000);
+      return newList;
+    } catch (error) { console.error("Failed to add list:", error); alert(`添加清单失败: ${error instanceof Error ? error.message : 'Unknown error'}`); return null; }
+  }, [lists.length]);
+
   const handleDeleteList = useCallback(async (listId: string) => {
     const listToDelete = lists.find((l: List) => l.id === listId);
     if (!listToDelete) return;
     const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`);
     if (!confirmed) return;
-    const todosToUpdateQuery = await db.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
+    const todosToUpdateQuery = await window.electron.db.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
     const todosToUpdate = todosToUpdateQuery.rows;
-    
-    await db.transaction([
-      { sql: 'UPDATE todos SET list_id = NULL WHERE list_id = $1', params: [listId] },
-      { sql: 'DELETE FROM lists WHERE id = $1', params: [listId] }
+    await window.electron.db.transaction([
+      { sql: `UPDATE todos SET list_id = NULL WHERE list_id = $1`, params: [listId] },
+      { sql: `DELETE FROM lists WHERE id = $1`, params: [listId] },
     ]);
-    fetchAllData();
     try {
       const todoChanges = todosToUpdate.map(todo => createTodoChange(todo.id, { list_id: null }));
       await sendChangesToServer({ lists: [createListChange(listId, {}, false)], todos: todoChanges });
     } catch (error) { console.error('Failed to sync list deletion:', error); }
     if (currentView === listToDelete.name) setCurrentView('inbox');
-  }, [db, lists, currentView, fetchAllData]);
+  }, [lists, currentView]);
 
   const handleUpdateList = useCallback(async (listId: string, updates: Partial<Omit<List, 'id'>>) => {
     const keys = Object.keys(updates);
     if (keys.length === 0) return;
     const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
     const params = [listId, ...Object.values(updates)];
-    await db.query(`UPDATE lists SET ${setClauses} WHERE id = $1`, params);
-    fetchAllData();
+    await window.electron.db.write(`UPDATE lists SET ${setClauses} WHERE id = $1`, params);
     try { await sendChangesToServer({ lists: [createListChange(listId, updates)], todos: [] });
     } catch (error) { console.error('Failed to sync list update:', error); }
-  }, [db, fetchAllData]);
+  }, []);
 
+  const handleUpdateListsOrder = useCallback(async (reorderedLists: List[]) => {
+      const queries = reorderedLists.map((list, index) => ({
+        sql: 'UPDATE lists SET sort_order = $1 WHERE id = $2',
+        params: [index, list.id]
+      }));
+      await window.electron.db.transaction(queries);
+      setTimeout(async () => {
+        try { await sendChangesToServer({ lists: reorderedLists.map((list, index) => createListChange(list.id, { sort_order: index })), todos: [] });
+        } catch (error) { console.error('Failed to sync lists order update:', error); }
+      }, 1000);
+  }, []);
+  
   const handleAddTodoFromCalendar = useCallback((date: string) => {
       setNewTodoDate(date);
       addTodoInputRef.current?.focus();
@@ -475,8 +468,7 @@ export default function TodoListPage() {
             sql: 'UPDATE todos SET completed_time = $1, completed = $2 WHERE id = $3',
             params: [d.previousCompletedTime, d.previousCompleted, d.id]
           }));
-          await db.transaction(queries);
-          fetchAllData();
+          await window.electron.db.transaction(queries);
           setTimeout(async () => {
             try { await sendChangesToServer({ lists: [], todos: lastActionData.map(d => createTodoChange(d.id, {
                   completed_time: d.previousCompletedTime, completed: d.previousCompleted,
@@ -488,7 +480,7 @@ export default function TodoListPage() {
       }
     } catch (error) { alert(`撤销操作失败: ${error instanceof Error ? error.message : '未知错误'}`); }
     setLastAction(null);
-  }, [lastAction, handleUpdateTodo, db, fetchAllData]);
+  }, [lastAction, handleUpdateTodo]);
   
   const handleMarkAllCompleted = useCallback(async () => {
     const todosToUpdate = displayTodos.filter((t: Todo) => !t.completed_time);
@@ -498,95 +490,98 @@ export default function TodoListPage() {
     const idsToUpdate = todosToUpdate.map((t: Todo) => t.id);
     const newCompletedTime = new Date().toISOString();
     setLastAction({ type: 'batch-complete', data: todosToUpdate.map((t: Todo) => ({ id: t.id, previousCompletedTime: t.completed_time, previousCompleted: !!t.completed })) });
-    await db.query(`UPDATE todos SET completed = TRUE, completed_time = $1 WHERE id = ANY($2::uuid[])`, [newCompletedTime, idsToUpdate]);
-    fetchAllData();
+    await window.electron.db.write(`UPDATE todos SET completed = TRUE, completed_time = $1 WHERE id = ANY($2::uuid[])`, [newCompletedTime, idsToUpdate]);
     setTimeout(async () => {
       try { await sendChangesToServer({ lists: [], todos: todosToUpdate.map((t: Todo) => createTodoChange(t.id, {
             completed: true, completed_time: newCompletedTime
           })) });
       } catch (error) { console.error('Failed to sync batch completion:', error); }
     }, 1000);
-  }, [db, displayTodos, fetchAllData]);
-
-  // handleImport 逻辑需要使用 db.transaction
+  }, [displayTodos]);
+  
   const handleImport = useCallback(async (file: File) => {
-    // ... file reading logic remains the same ...
     const reader = new FileReader();
     reader.onload = async (e) => {
       const content = e.target?.result as string;
       if (!content) return;
-
       try {
-          let todosToImport: Partial<Todo>[] = [];
-          if (file.name.endsWith('.csv')) {
-              const { todos, removedTodos } = parseDidaCsv(content);
-              todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as any).removed}));
-          } else {
-              const data = JSON.parse(content);
-              const importedTodos = data.todos || (Array.isArray(data) ? data : []);
-              const importedRecycleBin = data.recycleBin || [];
-              todosToImport = [...importedTodos, ...importedRecycleBin];
-          }
+        let todosToImport: Partial<Todo>[] = [];
+        if (file.name.endsWith('.csv')) {
+          const { todos, removedTodos } = parseDidaCsv(content);
+          todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as unknown as { removed?: boolean }).removed}));
+        } else {
+          const data = JSON.parse(content);
+          const importedTodos = data.todos || (Array.isArray(data) ? data : []);
+          const importedRecycleBin = data.recycleBin || [];
+          todosToImport = [...importedTodos, ...importedRecycleBin];
+        }
+        if (todosToImport.length === 0) { alert('没有找到可导入的事项。'); return; }
+        const listNames = new Set(todosToImport.map(t => t.list_name).filter((s): s is string => !!s));
+        const existingListNames = new Set(lists.map((l: List) => l.name));
+        const newListsToCreate = [...listNames].filter(name => !existingListNames.has(name));
+        
+        const createdLists: ListChange[] = [];
+        const newListsQueries = newListsToCreate.map((listName, i) => {
+          const newListData = { id: uuid(), name: listName, is_hidden: false, sort_order: lists.length + i };
+          createdLists.push(createListChange(newListData.id, newListData, true));
+          return {
+            sql: 'INSERT INTO lists (id, name, is_hidden, sort_order) VALUES ($1, $2, $3, $4)',
+            params: [newListData.id, newListData.name, newListData.is_hidden, newListData.sort_order]
+          };
+        });
+        
+        if(newListsQueries.length > 0) {
+          await window.electron.db.transaction(newListsQueries);
+        }
 
-          if (todosToImport.length === 0) { alert('没有找到可导入的事项。'); return; }
+        const currentListsRes = await window.electron.db.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
+        const listNameToIdMap = new Map<string, string>();
+        currentListsRes.rows.forEach((list: List) => listNameToIdMap.set(list.name, list.id));
+        
+        const createdTodos: TodoChange[] = [];
+        const newTodoQueries = todosToImport.map(todo => {
+            const listId = todo.list_name ? listNameToIdMap.get(todo.list_name) || null : null;
+            const newTodoData = {
+              id: uuid(), title: todo.title || '', completed: !!todo.completed, deleted: !!todo.deleted, sort_order: todo.sort_order || 0,
+              due_date: todo.due_date || null, content: todo.content || null, tags: todo.tags || null, priority: todo.priority === undefined ? 0 : todo.priority,
+              created_time: todo.created_time || new Date().toISOString(), completed_time: todo.completed_time || null, start_date: todo.start_date || null, list_id: listId,
+            };
+            createdTodos.push(createTodoChange(newTodoData.id, newTodoData, true));
+            return {
+              sql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+              params: [newTodoData.id, newTodoData.title, newTodoData.completed, newTodoData.deleted, newTodoData.sort_order,
+                      newTodoData.due_date, newTodoData.content, newTodoData.tags, newTodoData.priority, newTodoData.created_time,
+                      newTodoData.completed_time, newTodoData.start_date, newTodoData.list_id]
+            };
+        });
 
-          const listNames = new Set(todosToImport.map(t => t.list_name).filter((s): s is string => !!s));
-          const existingListNames = new Set(lists.map((l: List) => l.name));
-          const newListsToCreate = [...listNames].filter(name => !existingListNames.has(name));
-          const createdLists: ListChange[] = [];
-          
-          if (newListsToCreate.length > 0) {
-              let sortOrder = lists.length;
-              const newListQueries = newListsToCreate.map(listName => {
-                  const newListData = { id: uuid(), name: listName, is_hidden: false, sort_order: sortOrder++ };
-                  createdLists.push(createListChange(newListData.id, { ...newListData }, true));
-                  return {
-                      sql: 'INSERT INTO lists (id, name, is_hidden, sort_order) VALUES ($1, $2, $3, $4)',
-                      params: [newListData.id, newListData.name, newListData.is_hidden, newListData.sort_order]
-                  };
-              });
-              await db.transaction(newListQueries);
-          }
+        if (newTodoQueries.length > 0) {
+          await window.electron.db.transaction(newTodoQueries);
+        }
 
-          const currentListsRes = await db.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
-          const listNameToIdMap = new Map<string, string>();
-          currentListsRes.rows.forEach((list: List) => listNameToIdMap.set(list.name, list.id));
-
-          const createdTodos: TodoChange[] = [];
-          const newTodoQueries = todosToImport.map(todo => {
-              const listId = todo.list_name ? listNameToIdMap.get(todo.list_name) || null : null;
-              const newTodoData = {
-                  id: uuid(), title: todo.title || '', completed: !!todo.completed, deleted: !!todo.deleted, sort_order: todo.sort_order || 0,
-                  due_date: todo.due_date || null, content: todo.content || null, tags: todo.tags || null, priority: todo.priority === undefined ? 0 : todo.priority,
-                  created_time: todo.created_time || new Date().toISOString(), completed_time: todo.completed_time || null, start_date: todo.start_date || null, list_id: listId,
-              };
-              createdTodos.push(createTodoChange(newTodoData.id, { ...newTodoData }, true));
-              return {
-                  sql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-                  params: Object.values(newTodoData)
-              };
-          });
-          
-          if (newTodoQueries.length > 0) {
-            await db.transaction(newTodoQueries);
-          }
-          
-          fetchAllData();
-          alert(`成功导入 ${todosToImport.length} 个事项！`);
-
-          if (createdLists.length > 0 || createdTodos.length > 0) {
-              // ... sync logic remains the same
-          }
-
-      } catch (error) {
-          console.error("Import failed:", error);
-          alert(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`);
-      }
+        alert(`成功导入 ${todosToImport.length} 个事项！`);
+        
+        if (createdLists.length > 0 || createdTodos.length > 0) {
+          setTimeout(async () => {
+            try {
+              const batchSize = 100;
+              if (createdLists.length > 0) { await sendChangesToServer({ lists: createdLists, todos: [] }); }
+              if (createdTodos.length > 0) {
+                for (let i = 0; i < createdTodos.length; i += batchSize) {
+                  const batch = createdTodos.slice(i, i + batchSize);
+                  await sendChangesToServer({ lists: [], todos: batch });
+                  if (i + batchSize < createdTodos.length) { await new Promise(resolve => setTimeout(resolve, 500)); }
+                }
+              }
+            } catch (error) { console.error('Failed to sync imported data:', error); alert('本地数据导入成功，但同步到服务器失败。'); }
+          }, 1000);
+        }
+      } catch (error) { console.error("Import failed:", error); alert(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`); }
     };
     reader.readAsText(file, 'UTF-8');
-  }, [db, lists, fetchAllData]);
-  
+  }, [lists]);
+
   const newTodoPlaceholder = useMemo(() => {
     if (newTodoDate) return `为 ${newTodoDate} 添加新事项...`;
     if (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') {
@@ -595,13 +590,20 @@ export default function TodoListPage() {
     return '新增待办事项...';
   }, [newTodoDate, currentView]);
 
+  // 2. 错误兜底渲染放在所有 hooks 之后
+  const hasError = typeof todosQuery === 'object' && todosQuery !== null && 'error' in todosQuery && (todosQuery as { error?: { message?: string } }).error;
+  if (!todosQuery) {
+    return <div>数据库未就绪或查询失败，请稍后重试。</div>;
+  }
+  if (hasError) {
+    return <div>数据库查询出错：{hasError.message}</div>;
+  }
+
   return (
     <>
       <div className="bg-pattern"></div>
-      {/* ... The rest of the JSX remains the same as it's just presentation ... */}
       <div className="todo-wrapper">
         <div id="todo-app" className="todo-app">
-          {/* Header remains the same */}
           <div className="container header">
             <div className="todo-input">
               <h1 className="title">
@@ -620,7 +622,6 @@ export default function TodoListPage() {
           </div>
 
           <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}>
-            {/* RENDER VIEW-SWITCHER COMPONENT */}
             <ViewSwitcher
                 currentView={currentView}
                 setCurrentView={setCurrentView}
@@ -646,7 +647,6 @@ export default function TodoListPage() {
                     )}
                   </div>
                   
-                  {/* RENDER TODOLIST COMPONENT */}
                   <TodoList
                     todos={displayTodos}
                     currentView={currentView}
@@ -688,7 +688,6 @@ export default function TodoListPage() {
         </div>
       </div>
       
-      {/* Modals remain the same */}
       {showManageListsModal && (
         <ManageListsModal 
             lists={lists} onClose={() => setShowManageListsModal(false)}
@@ -707,4 +706,11 @@ export default function TodoListPage() {
       )}
     </>
   );
+}
+
+// 在文件顶部添加类型声明
+declare global {
+  interface Window {
+    electron: any;
+  }
 }
