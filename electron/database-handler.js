@@ -63,6 +63,12 @@ async function getDb() {
  * @param {Electron.BrowserWindow} win - 主窗口实例，用于将更新推送回渲染器
  */
 function setupDatabaseHandlers(win) {
+  // 防止重复注册，先移除已有 handler
+  ipcMain.removeHandler('db:query');
+  ipcMain.removeHandler('db:write');
+  ipcMain.removeHandler('db:transaction');
+  ipcMain.removeHandler('db:dump');
+
   // 单次查询
   ipcMain.handle('db:query', async (_event, sql, params) => {
     try {
