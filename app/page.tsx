@@ -1,23 +1,68 @@
 // app/page.tsx
-"use client";
+'use client'
 
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { useLiveQuery } from "@electric-sql/pglite-react";
-import type { Todo, List } from "../lib/types";
-import Image from "next/image";
-import dynamic from 'next/dynamic';
-import debounce from 'lodash.debounce';
-import { v4 as uuid } from 'uuid';
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
-import { sendChangesToServer, createTodoChange, createListChange, ListChange, TodoChange } from '../lib/changes';
-import { parseDidaCsv } from '../lib/csvParser';
-import ManageListsModal from "../components/ManageListsModal";
-import CalendarView from "../components/CalendarView";
-import QuickActions from "../components/QuickActions";
-import { ViewSwitcher } from "../components/ViewSwitcher";
-import { TodoList } from "../components/TodoList";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { v4 as uuid } from 'uuid'
+import { useLiveQuery } from '@electric-sql/pglite-react'
+import debounce from 'lodash.debounce'
+import { parseDidaCsv } from '../lib/csvParser'
+import { sendChangesToServer, createTodoChange, createListChange, type TodoChange, type ListChange } from '../lib/changes'
+import { TodoList } from '../components/TodoList'
+import { ViewSwitcher } from '../components/ViewSwitcher'
+import QuickActions from '../components/QuickActions'
+import TodoDetailsModal from '../components/TodoDetailsModal'
+import ManageListsModal from '../components/ManageListsModal'
+import CalendarView from '../components/CalendarView'
+import type { Todo, List } from '../lib/types'
 
-// 高性能缓存系统
+// --- 统一的数据库API层 ---
+interface DatabaseAPI {
+  query: <T = any>(sql: string, params?: any[]) => Promise<{ rows: T[] }>
+  write: (sql: string, params?: any[]) => Promise<void>
+  transaction: (queries: { sql: string; params?: any[] }[]) => Promise<void>
+}
+
+function getDatabaseAPI(): DatabaseAPI {
+  // 检查是否在Electron环境中
+  if (typeof window !== 'undefined' && (window as any).electron?.db) {
+    // Electron环境
+    return {
+      query: async (sql: string, params?: any[]) => {
+        const result = await (window as any).electron.db.query(sql, params);
+        return result;
+      },
+      write: async (sql: string, params?: any[]) => {
+        await (window as any).electron.db.write(sql, params);
+      },
+      transaction: async (queries: { sql: string; params?: any[] }[]) => {
+        await (window as any).electron.db.transaction(queries);
+      }
+    };
+  } else if (typeof window !== 'undefined' && (window as any).pg) {
+    // Web环境 - 使用PGlite
+    const pg = (window as any).pg;
+    return {
+      query: async (sql: string, params?: any[]) => {
+        return await pg.query(sql, params);
+      },
+      write: async (sql: string, params?: any[]) => {
+        await pg.query(sql, params);
+      },
+      transaction: async (queries: { sql: string; params?: any[] }[]) => {
+        await pg.transaction(async (tx: any) => {
+          for (const { sql, params } of queries) {
+            await tx.query(sql, params);
+          }
+        });
+      }
+    };
+  } else {
+    // 环境不可用
+    throw new Error('Database API not available. Please ensure the application is properly initialized.');
+  }
+}
+
+// --- 日期缓存类 ---
 class DateCache {
   private dateCache = new Map<string, string>();
   private todayCache: { date: string; timestamp: number } | null = null;
@@ -25,9 +70,12 @@ class DateCache {
 
   getTodayString(): string {
     const now = Date.now();
-    if (!this.todayCache || (now - this.todayCache.timestamp) > this.CACHE_DURATION) {
-      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(new Date());
-      this.todayCache = { date: todayStr, timestamp: now };
+    if (!this.todayCache || now - this.todayCache.timestamp > this.CACHE_DURATION) {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      this.todayCache = { date: `${year}-${month}-${day}`, timestamp: now };
     }
     return this.todayCache.date;
   }
@@ -47,14 +95,9 @@ class DateCache {
   }
 }
 
-// 全局缓存实例
 const dateCache = new DateCache();
 
-const TodoDetailsModal = dynamic(() => import('../components/TodoDetailsModal'), {
-  ssr: false,
-});
-
-// Helper functions
+// --- 日期转换函数 ---
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   if (!utcDate) return '';
   
@@ -63,56 +106,56 @@ const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   
   try {
     const date = new Date(utcDate);
-    if (isNaN(date.getTime())) {
-      const dateOnlyMatch = utcDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dateOnlyMatch) {
-        dateCache.setDateCache(utcDate, utcDate);
-        return utcDate;
-      }
-      return '';
-    }
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric', month: '2-digit', day: '2-digit'
-    });
-    const result = formatter.format(date);
+    if (isNaN(date.getTime())) return '';
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const result = `${year}-${month}-${day}`;
+    
     dateCache.setDateCache(utcDate, result);
     return result;
-  } catch (e) {
-    console.error("Error formatting date:", utcDate, e);
+  } catch {
     return '';
   }
 };
 
 const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | null => {
-  if (!localDate || !/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return null;
+  if (!localDate) return null;
   try {
-    const dateInUTC8 = new Date(`${localDate}T23:59:59.999+08:00`);
-    return dateInUTC8.toISOString();
-  } catch (e) {
-    console.error("Error converting date to UTC:", localDate, e);
+    const [year, month, day] = localDate.split('-').map(Number);
+    const date = new Date(year, month - 1, day, 23, 59, 59, 999);
+    return date.toISOString();
+  } catch {
     return null;
   }
 };
 
-// Type conversion functions
-const normalizeTodo = (raw: Record<string, unknown>): Todo => {
-  return {
-    ...raw,
-    completed: raw.completed === true || raw.completed === 'true' || raw.completed === 1 || raw.completed === '1',
-    deleted: raw.deleted === true || raw.deleted === 'true' || raw.deleted === 1 || raw.deleted === '1',
-    priority: typeof raw.priority === 'string' ? parseInt(raw.priority, 10) : (raw.priority as number) ?? 0,
-    sort_order: typeof raw.sort_order === 'string' ? parseInt(raw.sort_order, 10) : (raw.sort_order as number) ?? 0,
-  } as Todo;
-};
+// --- 数据标准化函数 ---
+const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
+  id: String(raw.id),
+  title: String(raw.title || ''),
+  completed: Boolean(raw.completed),
+  deleted: Boolean(raw.deleted),
+  sort_order: Number(raw.sort_order) || 0,
+  due_date: raw.due_date ? String(raw.due_date) : null,
+  content: raw.content ? String(raw.content) : null,
+  tags: raw.tags ? String(raw.tags) : null,
+  priority: Number(raw.priority) || 0,
+  created_time: raw.created_time ? String(raw.created_time) : new Date().toISOString(),
+  completed_time: raw.completed_time ? String(raw.completed_time) : null,
+  start_date: raw.start_date ? String(raw.start_date) : null,
+  list_id: raw.list_id ? String(raw.list_id) : null,
+  list_name: raw.list_name ? String(raw.list_name) : null,
+});
 
-const normalizeList = (raw: Record<string, unknown>): List => {
-  return {
-    ...raw,
-    is_hidden: raw.is_hidden === true || raw.is_hidden === 'true' || raw.is_hidden === 1 || raw.is_hidden === '1',
-    sort_order: typeof raw.sort_order === 'string' ? parseInt(raw.sort_order, 10) : (raw.sort_order as number) ?? 0,
-  } as List;
-};
+const normalizeList = (raw: Record<string, unknown>): List => ({
+  id: String(raw.id),
+  name: String(raw.name || ''),
+  sort_order: Number(raw.sort_order) || 0,
+  is_hidden: Boolean(raw.is_hidden),
+  modified: raw.modified ? String(raw.modified) : new Date().toISOString(),
+});
 
 type LastAction =
   | { type: 'toggle-complete'; data: { id: string; previousCompletedTime: string | null, previousCompleted: boolean } }
@@ -122,136 +165,76 @@ type LastAction =
 
 const camelToSnake = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 
-
 export default function TodoListPage() {
-  const [slogan, setSlogan] = useState("今日事今日毕，勿将今事待明日!.☕");
-  const [newTodoTitle, setNewTodoTitle] = useState("");
-  const [newTodoDate, setNewTodoDate] = useState<string | null>(null);
-  const [showManageListsModal, setShowManageListsModal] = useState(false);
-  const [currentView, setCurrentView] = useState("list");
+  // 获取数据库API
+  const db = getDatabaseAPI();
+  
+  // --- 状态管理 ---
+  const [currentView, setCurrentView] = useState<string>('inbox')
+  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
+  const [isManageListsOpen, setIsManageListsOpen] = useState(false)
+  const [newTodoTitle, setNewTodoTitle] = useState('')
+  const [newTodoDate, setNewTodoDate] = useState<string | null>(null)
+  const [lastAction, setLastAction] = useState<LastAction | null>(null)
+  const [isEditingSlogan, setIsEditingSlogan] = useState(false)
+  const [originalSlogan, setOriginalSlogan] = useState('')
+  const [slogan, setSlogan] = useState('今日事今日毕，勿将今事待明日!.☕')
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
-  const addTodoInputRef = useRef<HTMLInputElement>(null);
-  const [lastAction, setLastAction] = useState<LastAction | null>(null);
-  const [isEditingSlogan, setIsEditingSlogan] = useState(false);
-  const [originalSlogan, setOriginalSlogan] = useState("");
-  const sloganInputRef = useRef<HTMLInputElement>(null);
+  const addTodoInputRef = useRef<HTMLInputElement>(null)
 
-  // 1. 所有 hooks 顶层无条件调用
-  const todosQuery = useLiveQuery<Todo>(
-    `SELECT t.*, l.name as list_name
-     FROM todos t
-     LEFT JOIN lists l ON t.list_id = l.id
-     WHERE t.deleted = false
-     ORDER BY t.sort_order, t.created_time DESC`
-  );
-  const todos = ((todosQuery?.rows as Record<string, unknown>[] | undefined) || []).map(normalizeTodo);
+  // --- 数据查询 ---
+  const todosResult = useLiveQuery('SELECT * FROM todos ORDER BY sort_order, created_time DESC')
+  const listsResult = useLiveQuery('SELECT * FROM lists WHERE is_hidden = false ORDER BY sort_order')
+  const sloganResult = useLiveQuery('SELECT value FROM meta WHERE key = \'slogan\'')
 
-  const listsQuery = useLiveQuery<List>(
-    `SELECT id, name, sort_order, is_hidden FROM lists ORDER BY sort_order, name`
-  );
-  const lists = ((listsQuery?.rows as Record<string, unknown>[] | undefined) || []).map(normalizeList);
-  
-  const recycledQuery = useLiveQuery<Todo>(
-    `SELECT id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id FROM todos WHERE deleted = true`
-  );
-  const recycledTodos = ((recycledQuery?.rows as Record<string, unknown>[] | undefined) || []).map(normalizeTodo);
-  
-  const metaQuery = useLiveQuery<{ key: string, value: string }>(
-    `SELECT * FROM meta WHERE key = 'slogan'`
-  );
+  // --- 数据标准化 ---
+  const todos = useMemo(() => {
+    if (!todosResult?.rows) return []
+    return todosResult.rows.map(normalizeTodo)
+  }, [todosResult?.rows])
 
+  const lists = useMemo(() => {
+    if (!listsResult?.rows) return []
+    return listsResult.rows.map(normalizeList)
+  }, [listsResult?.rows])
+
+  // 从数据库更新slogan
   useEffect(() => {
-    if (metaQuery && metaQuery.rows && metaQuery.rows[0]?.value) {
-      setSlogan(metaQuery.rows[0].value);
+    if (sloganResult?.rows?.[0]?.value) {
+      setSlogan(String(sloganResult.rows[0].value))
     }
-  }, [metaQuery?.rows]);
+  }, [sloganResult?.rows])
 
-  useEffect(() => {
-    if (isEditingSlogan && sloganInputRef.current) {
-        sloganInputRef.current.focus();
-    }
-  }, [isEditingSlogan]);
-
-  // Derived data with useMemo
-  const activeTodos = useMemo(() => todos.filter((t: Todo) => !t.deleted), [todos]);
-  const uncompletedTodos = useMemo(() => activeTodos.filter((t: Todo) => !t.completed_time), [activeTodos]);
-  const todayStrInUTC8 = useMemo(() => dateCache.getTodayString(), []);
-
-  const calendarVisibleTodos = useMemo(() => {
-    if (currentView !== 'calendar') return [];
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
-    const viewStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-    const viewEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
-
-    return activeTodos.filter((todo: Todo) => {
-      if (!todo.start_date && !todo.due_date) return false;
-      const todoStartDateStr = utcToLocalDateString(todo.start_date);
-      const todoDueDateStr = utcToLocalDateString(todo.due_date);
-      if (!todoStartDateStr && !todoDueDateStr) return false;
-      const todoStart = todoStartDateStr ? new Date(todoStartDateStr) : new Date(todoDueDateStr!);
-      const todoEnd = todoDueDateStr ? new Date(todoDueDateStr) : new Date(todoStartDateStr!);
-      const effectiveStart = todoStart < todoEnd ? todoStart : todoEnd;
-      const effectiveEnd = todoStart > todoEnd ? todoStart : todoEnd;
-      return effectiveStart <= viewEnd && effectiveEnd >= viewStart;
-    });
-  }, [activeTodos, currentDate, currentView]);
-
-  const listNameToIdMap = useMemo(() => 
-    lists.reduce((acc: Record<string, string>, list: List) => {
-      acc[list.name] = list.id;
-      return acc;
-    }, {} as Record<string, string>),
-  [lists]);
-
-  const todayTodos = useMemo(() => {
-    if (currentView !== 'list') return [];
-    return activeTodos.filter((todo: Todo) => {
-      if (!todo.due_date) return false;
-      const todoDueDateStr = utcToLocalDateString(todo.due_date);
-      return todoDueDateStr === todayStrInUTC8;
-    });
-  }, [activeTodos, currentView, todayStrInUTC8]);
-
-  const inboxTodos = useMemo(() => {
-    if (currentView !== 'inbox') return [];
-    return uncompletedTodos.filter((todo: Todo) => {
-      const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
-      const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
-      return !todo.list_id || isOverdue;
-    });
-  }, [uncompletedTodos, currentView, todayStrInUTC8]);
-
-  const { displayTodos, uncompletedCount } = useMemo(() => {
-    if (currentView === 'recycle') {
-      return { displayTodos: recycledTodos, uncompletedCount: 0 };
-    }
-    if (currentView === 'list') {
-      return {
-        displayTodos: todayTodos,
-        uncompletedCount: todayTodos.filter((t: Todo) => !t.completed_time).length
-      };
-    }
-    if (currentView === 'inbox') {
-      return { displayTodos: inboxTodos, uncompletedCount: inboxTodos.length };
-    }
-    const listId = listNameToIdMap[currentView];
-    if (listId) {
-      const listTodos = uncompletedTodos.filter((todo: Todo) => todo.list_id === listId);
-      return { displayTodos: listTodos, uncompletedCount: listTodos.length };
-    }
-    return { displayTodos: [], uncompletedCount: 0 };
-  }, [currentView, todayTodos, inboxTodos, uncompletedTodos, recycledTodos, listNameToIdMap]);
+  // --- 计算属性 ---
+  const todayStrInUTC8 = useMemo(() => dateCache.getTodayString(), [])
   
-  const inboxCount = useMemo(() => {
-    return uncompletedTodos.filter((todo: Todo) => {
-        const todoDueDateStr = todo.due_date ? utcToLocalDateString(todo.due_date) : '';
-        const isOverdue = todoDueDateStr && todoDueDateStr < todayStrInUTC8;
-        return !todo.list_id || isOverdue;
-    }).length;
-  }, [uncompletedTodos, todayStrInUTC8]);
+  const uncompletedTodos = useMemo(() => 
+    todos.filter((t: Todo) => !t.completed && !t.deleted), [todos])
   
+  const completedTodos = useMemo(() => 
+    todos.filter((t: Todo) => t.completed && !t.deleted), [todos])
+  
+  const recycledTodos = useMemo(() => 
+    todos.filter((t: Todo) => t.deleted), [todos])
+
+  const displayTodos = useMemo(() => {
+    switch (currentView) {
+      case 'inbox':
+        return uncompletedTodos.filter((t: Todo) => !t.list_id)
+      case 'completed':
+        return completedTodos
+      case 'recycle':
+        return recycledTodos
+      case 'list':
+        return uncompletedTodos.filter((t: Todo) => t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
+      case 'calendar':
+        return uncompletedTodos
+      default:
+        const list = lists.find((l: List) => l.name === currentView)
+        return list ? uncompletedTodos.filter((t: Todo) => t.list_id === list.id) : uncompletedTodos
+    }
+  }, [currentView, uncompletedTodos, completedTodos, recycledTodos, lists, todayStrInUTC8])
+
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const todo of uncompletedTodos) {
@@ -277,6 +260,7 @@ export default function TodoListPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // --- 事件处理函数 ---
   const handleEditSlogan = useCallback(() => {
     setOriginalSlogan(slogan);
     setIsEditingSlogan(true);
@@ -285,11 +269,11 @@ export default function TodoListPage() {
   const handleUpdateSlogan = useCallback(debounce(async () => {
     setIsEditingSlogan(false);
     if (slogan === originalSlogan) return;
-    await window.electron.db.write(
+    await db.write(
       `INSERT INTO meta (key, value) VALUES ('slogan', $1) ON CONFLICT(key) DO UPDATE SET value = $1`,
       [slogan]
     );
-  }, 500), [slogan, originalSlogan]);
+  }, 500), [slogan, originalSlogan, db]);
 
   const handleSloganKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleUpdateSlogan();
@@ -311,7 +295,7 @@ export default function TodoListPage() {
     const todoId = uuid();
     const createdTime = new Date().toISOString();
     
-    await window.electron.db.write(
+    await db.write(
       `INSERT INTO todos (id, title, list_id, due_date, start_date, created_time) VALUES ($1, $2, $3, $4, $5, $6)`,
       [todoId, newTodoTitle.trim(), listId, dueDateUTC, dueDateUTC, createdTime]
     );
@@ -326,20 +310,20 @@ export default function TodoListPage() {
     }, 1000);
     setNewTodoTitle('');
     setNewTodoDate(null);
-  }, [newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8]);
+  }, [newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8, db]);
   
   const handleUpdateTodo = useCallback(async (todoId: string, updates: Partial<Omit<Todo, 'id' | 'list_name'>>) => {
       const keys = Object.keys(updates);
       if (keys.length === 0) return;
       const setClauses = keys.map((key, i) => `"${camelToSnake(key)}" = $${i + 2}`).join(', ');
       const params = [todoId, ...Object.values(updates)];
-      await window.electron.db.write(`UPDATE todos SET ${setClauses} WHERE id = $1`, params);
+      await db.write(`UPDATE todos SET ${setClauses} WHERE id = $1`, params);
       
       setTimeout(async () => {
         try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, updates)] });
         } catch (error) { console.error('Failed to sync todo update:', error); }
       }, 1000);
-  }, []);
+  }, [db]);
   
   const handleToggleComplete = useCallback(async (todo: Todo) => {
     setLastAction({ type: 'toggle-complete', data: { id: todo.id, previousCompletedTime: todo.completed_time, previousCompleted: !!todo.completed } });
@@ -353,32 +337,32 @@ export default function TodoListPage() {
     if (!todoToDelete) return;
     setLastAction({ type: 'delete', data: todoToDelete });
     if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-    await window.electron.db.write(`UPDATE todos SET deleted = true WHERE id = $1`, [todoId]);
+    await db.write(`UPDATE todos SET deleted = true WHERE id = $1`, [todoId]);
     try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: true })] });
     } catch (error) { console.error('Failed to sync todo deletion:', error); }
-  }, [todos, selectedTodo]);
+  }, [todos, selectedTodo, db]);
   
   const handleRestoreTodo = useCallback(async (todoId: string) => {
     const todoToRestore = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToRestore) return;
     setLastAction({ type: 'restore', data: todoToRestore });
     if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-    await window.electron.db.write(`UPDATE todos SET deleted = false WHERE id = $1`, [todoId]);
+    await db.write(`UPDATE todos SET deleted = false WHERE id = $1`, [todoId]);
     try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, { deleted: false })] });
     } catch (error) { console.error('Failed to sync todo restoration:', error); }
-  }, [recycledTodos, selectedTodo]);
+  }, [recycledTodos, selectedTodo, db]);
   
   const handlePermanentDeleteTodo = useCallback(async (todoId: string) => {
     const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId);
     if (!todoToDelete) return;
     const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`);
     if (confirmed) {
-      await window.electron.db.write(`DELETE FROM todos WHERE id = $1`, [todoId]);
+      await db.write(`DELETE FROM todos WHERE id = $1`, [todoId]);
       try { await sendChangesToServer({ lists: [], todos: [createTodoChange(todoId, {}, false, true)] });
       } catch (error) { console.error('Failed to sync permanent todo deletion:', error); }
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     }
-  }, [recycledTodos, selectedTodo]);
+  }, [recycledTodos, selectedTodo, db]);
 
   const handleSaveTodoDetails = useCallback(async (updatedTodo: Todo) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -390,7 +374,7 @@ export default function TodoListPage() {
   const handleAddList = useCallback(async (name: string): Promise<List | null> => {
     try {
       const newList = { id: uuid(), name, sort_order: lists.length, is_hidden: false };
-      await window.electron.db.write(
+      await db.write(
         `INSERT INTO lists (id, name, sort_order, is_hidden) VALUES ($1, $2, $3, $4)`,
         [newList.id, newList.name, newList.sort_order, newList.is_hidden]
       );
@@ -402,16 +386,16 @@ export default function TodoListPage() {
       }, 1000);
       return newList;
     } catch (error) { console.error("Failed to add list:", error); alert(`添加清单失败: ${error instanceof Error ? error.message : 'Unknown error'}`); return null; }
-  }, [lists.length]);
+  }, [lists.length, db]);
 
   const handleDeleteList = useCallback(async (listId: string) => {
     const listToDelete = lists.find((l: List) => l.id === listId);
     if (!listToDelete) return;
     const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`);
     if (!confirmed) return;
-    const todosToUpdateQuery = await window.electron.db.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
+    const todosToUpdateQuery = await db.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
     const todosToUpdate = todosToUpdateQuery.rows;
-    await window.electron.db.transaction([
+    await db.transaction([
       { sql: `UPDATE todos SET list_id = NULL WHERE list_id = $1`, params: [listId] },
       { sql: `DELETE FROM lists WHERE id = $1`, params: [listId] },
     ]);
@@ -420,29 +404,29 @@ export default function TodoListPage() {
       await sendChangesToServer({ lists: [createListChange(listId, {}, false)], todos: todoChanges });
     } catch (error) { console.error('Failed to sync list deletion:', error); }
     if (currentView === listToDelete.name) setCurrentView('inbox');
-  }, [lists, currentView]);
+  }, [lists, currentView, db]);
 
   const handleUpdateList = useCallback(async (listId: string, updates: Partial<Omit<List, 'id'>>) => {
     const keys = Object.keys(updates);
     if (keys.length === 0) return;
     const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
     const params = [listId, ...Object.values(updates)];
-    await window.electron.db.write(`UPDATE lists SET ${setClauses} WHERE id = $1`, params);
+    await db.write(`UPDATE lists SET ${setClauses} WHERE id = $1`, params);
     try { await sendChangesToServer({ lists: [createListChange(listId, updates)], todos: [] });
     } catch (error) { console.error('Failed to sync list update:', error); }
-  }, []);
+  }, [db]);
 
   const handleUpdateListsOrder = useCallback(async (reorderedLists: List[]) => {
       const queries = reorderedLists.map((list, index) => ({
         sql: 'UPDATE lists SET sort_order = $1 WHERE id = $2',
         params: [index, list.id]
       }));
-      await window.electron.db.transaction(queries);
+      await db.transaction(queries);
       setTimeout(async () => {
         try { await sendChangesToServer({ lists: reorderedLists.map((list, index) => createListChange(list.id, { sort_order: index })), todos: [] });
         } catch (error) { console.error('Failed to sync lists order update:', error); }
       }, 1000);
-  }, []);
+  }, [db]);
   
   const handleAddTodoFromCalendar = useCallback((date: string) => {
       setNewTodoDate(date);
@@ -468,7 +452,7 @@ export default function TodoListPage() {
             sql: 'UPDATE todos SET completed_time = $1, completed = $2 WHERE id = $3',
             params: [d.previousCompletedTime, d.previousCompleted, d.id]
           }));
-          await window.electron.db.transaction(queries);
+          await db.transaction(queries);
           setTimeout(async () => {
             try { await sendChangesToServer({ lists: [], todos: lastActionData.map(d => createTodoChange(d.id, {
                   completed_time: d.previousCompletedTime, completed: d.previousCompleted,
@@ -480,7 +464,7 @@ export default function TodoListPage() {
       }
     } catch (error) { alert(`撤销操作失败: ${error instanceof Error ? error.message : '未知错误'}`); }
     setLastAction(null);
-  }, [lastAction, handleUpdateTodo]);
+  }, [lastAction, handleUpdateTodo, db]);
   
   const handleMarkAllCompleted = useCallback(async () => {
     const todosToUpdate = displayTodos.filter((t: Todo) => !t.completed_time);
@@ -490,14 +474,14 @@ export default function TodoListPage() {
     const idsToUpdate = todosToUpdate.map((t: Todo) => t.id);
     const newCompletedTime = new Date().toISOString();
     setLastAction({ type: 'batch-complete', data: todosToUpdate.map((t: Todo) => ({ id: t.id, previousCompletedTime: t.completed_time, previousCompleted: !!t.completed })) });
-    await window.electron.db.write(`UPDATE todos SET completed = TRUE, completed_time = $1 WHERE id = ANY($2::uuid[])`, [newCompletedTime, idsToUpdate]);
+    await db.write(`UPDATE todos SET completed = TRUE, completed_time = $1 WHERE id = ANY($2::uuid[])`, [newCompletedTime, idsToUpdate]);
     setTimeout(async () => {
       try { await sendChangesToServer({ lists: [], todos: todosToUpdate.map((t: Todo) => createTodoChange(t.id, {
             completed: true, completed_time: newCompletedTime
           })) });
       } catch (error) { console.error('Failed to sync batch completion:', error); }
     }, 1000);
-  }, [displayTodos]);
+  }, [displayTodos, db]);
   
   const handleImport = useCallback(async (file: File) => {
     const reader = new FileReader();
@@ -531,10 +515,10 @@ export default function TodoListPage() {
         });
         
         if(newListsQueries.length > 0) {
-          await window.electron.db.transaction(newListsQueries);
+          await db.transaction(newListsQueries);
         }
 
-        const currentListsRes = await window.electron.db.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
+        const currentListsRes = await db.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
         const listNameToIdMap = new Map<string, string>();
         currentListsRes.rows.forEach((list: List) => listNameToIdMap.set(list.name, list.id));
         
@@ -557,48 +541,36 @@ export default function TodoListPage() {
         });
 
         if (newTodoQueries.length > 0) {
-          await window.electron.db.transaction(newTodoQueries);
+          await db.transaction(newTodoQueries);
         }
 
         alert(`成功导入 ${todosToImport.length} 个事项！`);
-        
-        if (createdLists.length > 0 || createdTodos.length > 0) {
-          setTimeout(async () => {
-            try {
-              const batchSize = 100;
-              if (createdLists.length > 0) { await sendChangesToServer({ lists: createdLists, todos: [] }); }
-              if (createdTodos.length > 0) {
-                for (let i = 0; i < createdTodos.length; i += batchSize) {
-                  const batch = createdTodos.slice(i, i + batchSize);
-                  await sendChangesToServer({ lists: [], todos: batch });
-                  if (i + batchSize < createdTodos.length) { await new Promise(resolve => setTimeout(resolve, 500)); }
-                }
-              }
-            } catch (error) { console.error('Failed to sync imported data:', error); alert('本地数据导入成功，但同步到服务器失败。'); }
-          }, 1000);
-        }
-      } catch (error) { console.error("Import failed:", error); alert(`导入失败: ${error instanceof Error ? error.message : '未知错误'}`); }
+      } catch (error) {
+        console.error('Import failed:', error);
+        alert(`导入失败: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     };
-    reader.readAsText(file, 'UTF-8');
-  }, [lists]);
+    reader.readAsText(file);
+  }, [lists, db]);
 
-  const newTodoPlaceholder = useMemo(() => {
-    if (newTodoDate) return `为 ${newTodoDate} 添加新事项...`;
-    if (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') {
-        return `在"${currentView}"中新增待办...`;
-    }
-    return '新增待办事项...';
-  }, [newTodoDate, currentView]);
+  const handleExport = useCallback(() => {
+    const data = {
+      todos: todos.filter((t: Todo) => !t.deleted),
+      recycleBin: recycledTodos,
+      exportDate: new Date().toISOString()
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `todos-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [todos, recycledTodos]);
 
-  // 2. 错误兜底渲染放在所有 hooks 之后
-  const hasError = typeof todosQuery === 'object' && todosQuery !== null && 'error' in todosQuery && (todosQuery as { error?: { message?: string } }).error;
-  if (!todosQuery) {
-    return <div>数据库未就绪或查询失败，请稍后重试。</div>;
-  }
-  if (hasError) {
-    return <div>数据库查询出错：{hasError.message}</div>;
-  }
-
+  // --- 渲染逻辑 ---
   return (
     <>
       <div className="bg-pattern"></div>
@@ -607,12 +579,15 @@ export default function TodoListPage() {
           <div className="container header">
             <div className="todo-input">
               <h1 className="title">
-                <Image src="/img/todo.svg" alt="Todo" width={180} height={52} draggable={false} />
+                <img src="/img/todo.svg" alt="Todo" width={180} height={52} draggable={false} />
               </h1>
               <div className="add-content-wrapper">
                 <input
-                  ref={addTodoInputRef} type="text" className="add-content"
-                  placeholder={newTodoPlaceholder} value={newTodoTitle}
+                  ref={addTodoInputRef}
+                  type="text"
+                  className="add-content"
+                  placeholder={newTodoDate ? `为 ${newTodoDate} 添加新事项...` : (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') ? `在"${currentView}"中新增待办...` : '新增待办事项...'}
+                  value={newTodoTitle}
                   onChange={(e) => setNewTodoTitle(e.target.value)}
                   onKeyUp={(e) => e.key === 'Enter' && handleAddTodo()}
                 />
@@ -621,94 +596,104 @@ export default function TodoListPage() {
             </div>
           </div>
 
-          <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}>
+          <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}> 
             <ViewSwitcher
-                currentView={currentView}
-                setCurrentView={setCurrentView}
-                lists={lists}
-                inboxCount={inboxCount}
-                todosByList={todosByList}
+              currentView={currentView}
+              setCurrentView={setCurrentView}
+              lists={lists}
+              inboxCount={todos.filter(t => !t.list_id && !t.completed && !t.deleted).length}
+              todosByList={todosByList}
             />
 
             {currentView !== 'calendar' ? (
-                <div className="todo-list-box">
-                  <div className="bar-message">
-                    {currentView !== 'recycle' && displayTodos.some((t: Todo) => !t.completed_time) && (
-                      <button className="btn-small completed-all btn-allFinish" onClick={handleMarkAllCompleted}>全部标为完成</button>
-                    )}
-                    {isEditingSlogan ? (
-                      <input 
-                        ref={sloganInputRef} type="text" className="slogan-input"
-                        value={slogan} onChange={(e) => setSlogan(e.target.value)}
-                        onKeyDown={handleSloganKeyDown} onBlur={handleUpdateSlogan}
-                      />
-                    ) : (
-                      <div className="bar-message-text" onDoubleClick={handleEditSlogan}>{slogan}</div>
-                    )}
-                  </div>
-                  
-                  <TodoList
-                    todos={displayTodos}
-                    currentView={currentView}
-                    onToggleComplete={handleToggleComplete}
-                    onDelete={handleDeleteTodo}
-                    onRestore={handleRestoreTodo}
-                    onSelectTodo={setSelectedTodo}
-                  />
+              <div className="todo-list-box">
+                <div className="bar-message">
+                  {currentView !== 'recycle' && displayTodos.some((t: Todo) => !t.completed_time) && (
+                    <button className="btn-small completed-all btn-allFinish" onClick={handleMarkAllCompleted}>全部标为完成</button>
+                  )}
+                  {isEditingSlogan ? (
+                    <input 
+                      type="text"
+                      className="slogan-input"
+                      value={slogan}
+                      onChange={(e) => setSlogan(e.target.value)}
+                      onKeyDown={handleSloganKeyDown}
+                      onBlur={handleUpdateSlogan}
+                    />
+                  ) : (
+                    <div className="bar-message-text" onDoubleClick={handleEditSlogan}>{slogan}</div>
+                  )}
+                </div>
 
-                  <div className="bar-message bar-bottom">
-                    <div className="bar-message-text">
-                        {currentView !== 'recycle' ? <span>{uncompletedCount} 项未完成</span> : <span>共 {recycleBinCount} 项</span>}
-                    </div>
+                <TodoList
+                  todos={displayTodos}
+                  currentView={currentView}
+                  onToggleComplete={handleToggleComplete}
+                  onDelete={handleDeleteTodo}
+                  onRestore={handleRestoreTodo}
+                  onSelectTodo={setSelectedTodo}
+                />
+
+                <div className="bar-message bar-bottom">
+                  <div className="bar-message-text">
+                    {currentView !== 'recycle' ? <span>{displayTodos.filter((t: Todo) => !t.completed_time).length} 项未完成</span> : <span>共 {recycledTodos.length} 项</span>}
                   </div>
                 </div>
+              </div>
             ) : (
-                <CalendarView 
-                    todos={calendarVisibleTodos} 
-                    currentDate={currentDate} 
-                    onDateChange={setCurrentDate}
-                    onUpdateTodo={handleUpdateTodo}
-                    onOpenModal={setSelectedTodo}
-                    onAddTodo={handleAddTodoFromCalendar}
-                />
+              <CalendarView
+                todos={uncompletedTodos}
+                onAddTodo={handleAddTodoFromCalendar}
+                onUpdateTodo={handleUpdateTodo}
+                onOpenModal={setSelectedTodo}
+                currentDate={currentDate}
+                onDateChange={setCurrentDate}
+              />
             )}
-            
-            <QuickActions 
-                currentView={currentView}
-                setCurrentView={setCurrentView}
-                onUndo={handleUndo}
-                canUndo={!!lastAction}
-                recycleBinCount={recycleBinCount}
-                onMarkAllCompleted={handleMarkAllCompleted}
-                showMarkAllCompleted={displayTodos.some((t: Todo) => !t.completed_time)}
-                onManageLists={() => setShowManageListsModal(true)}
-                onImport={handleImport}
+
+            <QuickActions
+              currentView={currentView}
+              setCurrentView={setCurrentView}
+              onUndo={handleUndo}
+              canUndo={!!lastAction}
+              recycleBinCount={recycledTodos.length}
+              onMarkAllCompleted={handleMarkAllCompleted}
+              showMarkAllCompleted={displayTodos.some((t: Todo) => !t.completed_time)}
+              onManageLists={() => setIsManageListsOpen(true)}
+              onImport={handleImport}
             />
           </div>
+
+          {selectedTodo && (
+            <TodoDetailsModal
+              todo={selectedTodo}
+              lists={lists}
+              onSave={handleSaveTodoDetails}
+              onClose={() => setSelectedTodo(null)}
+              onDelete={handleDeleteTodo}
+              onUpdate={handleUpdateTodo}
+              onRestore={handleRestoreTodo}
+              onPermanentDelete={handlePermanentDeleteTodo}
+            />
+          )}
+
+          {isManageListsOpen && (
+            <ManageListsModal
+              lists={lists}
+              onAddList={handleAddList}
+              onDeleteList={handleDeleteList}
+              onUpdateList={handleUpdateList}
+              onUpdateListsOrder={handleUpdateListsOrder}
+              onClose={() => setIsManageListsOpen(false)}
+            />
+          )}
         </div>
       </div>
-      
-      {showManageListsModal && (
-        <ManageListsModal 
-            lists={lists} onClose={() => setShowManageListsModal(false)}
-            onAddList={handleAddList} onDeleteList={handleDeleteList}
-            onUpdateList={handleUpdateList} onUpdateListsOrder={handleUpdateListsOrder}
-        />
-      )}
-      {selectedTodo && (
-        <TodoDetailsModal
-          todo={selectedTodo} lists={lists}
-          onClose={() => setSelectedTodo(null)} onSave={handleSaveTodoDetails}
-          onDelete={handleDeleteTodo} onUpdate={handleUpdateTodo}
-          onRestore={handleRestoreTodo}
-          onPermanentDelete={handlePermanentDeleteTodo}
-        />
-      )}
     </>
-  );
+  )
 }
 
-// 在文件顶部添加类型声明
+// 扩展 Window 接口以包含 electron 属性
 declare global {
   interface Window {
     electron: any;

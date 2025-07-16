@@ -130,50 +130,80 @@ Deno.serve(async (req) => {
   try {
     const table = url.searchParams.get('table');
     const columns = url.searchParams.get('columns')?.split(',') || [];
+    const offset = url.searchParams.get('offset');
+    
+    console.log("Processing request with params:", {
+      table,
+      columns,
+      offset,
+      allParams: Object.fromEntries(url.searchParams.entries())
+    });
     
     // 从 Supabase 数据库获取真实数据
     const supabaseClient = createClient(supabaseUrl!, supabaseAnonKey!);
     
-    const { data, error } = await supabaseClient
-      .from(table!)
-      .select(columns.join(','));
+    let query = supabaseClient.from(table!);
+    
+    // 如果有指定列，则只选择这些列
+    if (columns.length > 0 && columns[0] !== '') {
+      query = query.select(columns.join(','));
+    } else {
+      // 如果没有指定列，选择所有列
+      query = query.select('*');
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       console.error("Database error:", error);
       return new Response("Database error", { status: 500, headers: corsHeaders });
     }
 
+    // 处理offset参数（ElectricSQL的分页机制）
+    const finalData = data || [];
+    let finalOffset = 0;
+    
+    if (offset !== null) {
+      const offsetNum = parseInt(offset);
+      if (!isNaN(offsetNum)) {
+        finalOffset = offsetNum;
+        // 如果offset为-1，表示获取所有数据
+        if (offsetNum === -1) {
+          finalOffset = 0;
+        }
+      }
+    }
+
     const responseData = {
       table,
-      columns,
-      offset: 0,
+      columns: columns.length > 0 ? columns : ['*'],
+      offset: finalOffset,
       handle: `real-handle-${table}-${Date.now()}`,
       schema: {
         table,
-        columns,
+        columns: columns.length > 0 ? columns : ['*'],
         primaryKey: ['id']
       },
       hasMore: false,
-      rows: data || []
+      rows: finalData
     };
-
 
     console.log("Returning ElectricSQL-compatible data:", {
       table,
-      columns,
-      dataCount: data?.length || 0,
-      sampleData: data?.[0] || null,
+      columns: columns.length > 0 ? columns : ['*'],
+      dataCount: finalData.length,
+      sampleData: finalData[0] || null,
       responseFormat: responseData
     });
 
     // 创建响应头
     const headers = new Headers();
     headers.set('Content-Type', 'application/json');
-    headers.set('electric-offset', '0');
+    headers.set('electric-offset', finalOffset.toString());
     headers.set('electric-handle', `real-handle-${table}-${Date.now()}`);
     headers.set('electric-schema', JSON.stringify({
       table: table,
-      columns: columns,
+      columns: columns.length > 0 ? columns : ['*'],
       primaryKey: ['id']
     }));
     
@@ -185,8 +215,8 @@ Deno.serve(async (req) => {
 
     console.log("Returning real data:", {
       table,
-      columns,
-      dataCount: data?.length || 0
+      columns: columns.length > 0 ? columns : ['*'],
+      dataCount: finalData.length
     });
 
     return new Response(JSON.stringify(responseData), {
