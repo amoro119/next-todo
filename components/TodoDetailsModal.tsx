@@ -18,20 +18,18 @@ interface TodoDetailsModalProps {
 // Helper function: Convert UTC timestamp string to local date string (YYYY-MM-DD)
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   if (!utcDate) return '';
+  // 只取日期部分（YYYY-MM-DD），不做时区换算
+  const match = utcDate.match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) return match[0];
   try {
     const date = new Date(utcDate);
-    if (isNaN(date.getTime())) {
-      const dateOnlyMatch = utcDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dateOnlyMatch) return utcDate;
-      return '';
-    }
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric', month: '2-digit', day: '2-digit'
-    });
-    return formatter.format(date);
-  } catch (e) {
-    console.error("Error formatting date:", utcDate, e);
+    if (isNaN(date.getTime())) return '';
+    // 兜底：用本地时间
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch {
     return '';
   }
 };
@@ -48,6 +46,41 @@ const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | 
   }
 };
 
+// 工具函数：清洗 Todo 对象中的日期字段，确保为数据库可接受的 UTC 字符串或 null
+const cleanTodoDates = (todo: Todo): Todo => {
+  const cleanDate = (date: string | null | undefined) => {
+    if (!date) return null;
+    // 已经是 'YYYY-MM-DD 16:00:00+00' 格式
+    if (/^\d{4}-\d{2}-\d{2} 16:00:00\+00$/.test(date)) return date;
+    // 只有日期，转为前一天的 UTC 16:00:00+00
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const [year, month, day] = date.split('-').map(Number);
+      const d = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+      d.setUTCDate(d.getUTCDate() - 1);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 16:00:00+00`;
+    }
+    // 其他情况尝试转为 Date
+    try {
+      const d = new Date(date);
+      if (!isNaN(d.getTime())) {
+        // 转为前一天的 'YYYY-MM-DD 16:00:00+00'
+        d.setUTCDate(d.getUTCDate() - 1);
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 16:00:00+00`;
+      }
+    } catch {}
+    return null;
+  };
+  return {
+    ...todo,
+    start_date: cleanDate(todo.start_date),
+    due_date: cleanDate(todo.due_date),
+    completed_time: cleanDate(todo.completed_time),
+    created_time: cleanDate(todo.created_time),
+  };
+};
+
 export default function TodoDetailsModal({ 
     todo, 
     lists, 
@@ -62,7 +95,7 @@ export default function TodoDetailsModal({
   const isRecycled = !!todo.deleted;
 
   const handleSave = () => {
-    onSave(editableTodo);
+    onSave(cleanTodoDates(editableTodo));
   };
 
   const handleDelete = () => {
@@ -88,10 +121,12 @@ export default function TodoDetailsModal({
 
     if (name === 'start_date' || name === 'due_date') {
       finalValue = localDateToEndOfDayUTC(value);
-    } else if (name === 'priority' || name === 'list_id') {
-      finalValue = value ? Number(value) : null;
+    } else if (name === 'priority') {
+      finalValue = value ? Number(value) : 0;
+    } else if (name === 'list_id') {
+      // list_id 作为字符串处理，空字符串为 null
+      finalValue = value === '' ? null : value;
     }
-    
     setEditableTodo(prev => ({ ...prev, [name]: finalValue }));
   };
 
@@ -152,13 +187,13 @@ export default function TodoDetailsModal({
                     <select
                         id="list_id"
                         name="list_id"
-                        value={editableTodo.list_id || ''}
+                        value={editableTodo.list_id === null || editableTodo.list_id === undefined ? '' : String(editableTodo.list_id)}
                         onChange={handleInputChange}
                         disabled={isRecycled}
                     >
                         <option value="">无清单</option>
                         {lists.map(list => (
-                            <option key={list.id} value={list.id}>{list.name}</option>
+                            <option key={list.id} value={String(list.id)}>{list.name}</option>
                         ))}
                     </select>
                 </div>

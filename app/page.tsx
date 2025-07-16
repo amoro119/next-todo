@@ -100,32 +100,46 @@ const dateCache = new DateCache();
 // --- 日期转换函数 ---
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   if (!utcDate) return '';
-  
-  const cached = dateCache.getDateCache(utcDate);
-  if (cached) return cached;
-  
+  // 只取日期部分（YYYY-MM-DD），不做时区换算
+  const match = utcDate.match(/^(\d{4}-\d{2}-\d{2}) 16:00:00\+00$/);
+  if (match) {
+    // 16:00:00+00 代表北京时间当天 23:59:59，显示为当天
+    return match[1];
+  }
+  // 兼容 15:59:59+00 旧数据
+  const match1599 = utcDate.match(/^(\d{4}-\d{2}-\d{2}) 15:59:59\+00$/);
+  if (match1599) {
+    return match1599[1];
+  }
+  // 兜底：如果是 'YYYY-MM-DD' 直接返回
+  const matchDate = utcDate.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (matchDate) return matchDate[1];
   try {
     const date = new Date(utcDate);
     if (isNaN(date.getTime())) return '';
-    
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const result = `${year}-${month}-${day}`;
-    
-    dateCache.setDateCache(utcDate, result);
-    return result;
+    // 如果是 16:00:00+00，减一天
+    if (date.getUTCHours() === 16 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0) {
+      date.setUTCDate(date.getUTCDate()); // 不减一天，直接取当天
+    }
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   } catch {
     return '';
   }
 };
 
+// 返回 'YYYY-MM-DD 16:00:00+00'，但日期减一天，配合前端+1天逻辑
 const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | null => {
   if (!localDate) return null;
   try {
     const [year, month, day] = localDate.split('-').map(Number);
-    const date = new Date(year, month - 1, day, 23, 59, 59, 999);
-    return date.toISOString();
+    // 日期减一天
+    const date = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+    date.setUTCDate(date.getUTCDate() - 1);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} 16:00:00+00`;
   } catch {
     return null;
   }
@@ -170,7 +184,7 @@ export default function TodoListPage() {
   const db = getDatabaseAPI();
   
   // --- 状态管理 ---
-  const [currentView, setCurrentView] = useState<string>('inbox')
+  const [currentView, setCurrentView] = useState<string>('list')
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
   const [isManageListsOpen, setIsManageListsOpen] = useState(false)
   const [newTodoTitle, setNewTodoTitle] = useState('')
