@@ -8,6 +8,7 @@ interface ViewSwitcherProps {
   lists: List[];
   inboxCount: number;
   todosByList: Record<string, number>;
+  todayCount?: number;
 }
 
 const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
@@ -16,6 +17,7 @@ const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
   lists,
   inboxCount,
   todosByList,
+  todayCount,
 }) => {
   const viewSwitcherRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -56,8 +58,11 @@ const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
       onMouseUp={handleMouseLeaveOrUp}
       onMouseMove={handleMouseMove}
     >
-      <button onClick={() => handleSetCurrentView('list')} className={currentView === 'list' ? 'active' : ''}>
-        今日待办
+      <button
+        className={currentView === 'today' ? 'active' : ''}
+        onClick={() => setCurrentView('today')}
+      >
+        今日待办{todayCount !== undefined ? ` (${todayCount})` : ''}
       </button>
       <button onClick={() => handleSetCurrentView('calendar')} className={currentView === 'calendar' ? 'active' : ''}>
         日历视图
