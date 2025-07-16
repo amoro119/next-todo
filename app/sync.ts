@@ -64,9 +64,18 @@ export async function startSync(pg: PGliteWithExtensions) {
     console.log('Initializing ElectricSQL system tables...')
     await initializeElectricSystemTables(pg)
     
-    // 清理旧的同步订阅（非破坏性）
-    console.log('Cleaning up old sync subscriptions...')
-    await cleanupOldSubscriptions(pg)
+    // 检查本地是否首次同步（无数据时才清理订阅）
+    const listsCountRes = await pg.query('SELECT COUNT(*) as count FROM lists');
+    const todosCountRes = await pg.query('SELECT COUNT(*) as count FROM todos');
+    const listsCount = Number((listsCountRes.rows[0] as { count: string | number })?.count || 0);
+    const todosCount = Number((todosCountRes.rows[0] as { count: string | number })?.count || 0);
+    if (listsCount === 0 && todosCount === 0) {
+      // 仅首次同步时清理旧的同步订阅
+      console.log('首次同步，清理旧的同步订阅...')
+      await cleanupOldSubscriptions(pg)
+    } else {
+      console.log('本地已有数据，跳过订阅清理')
+    }
     
     // 启动非破坏性的双向同步
     console.log('Starting non-destructive bidirectional sync...')
