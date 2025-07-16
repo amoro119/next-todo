@@ -152,26 +152,54 @@ Deno.serve(async (req) => {
       query = query.select('*');
     }
     
-    const { data, error } = await query;
-    
-    if (error) {
-      console.error("Database error:", error);
-      return new Response("Database error", { status: 500, headers: corsHeaders });
-    }
-
-    // 处理offset参数（ElectricSQL的分页机制）
-    const finalData = data || [];
+    // 处理offset和limit参数（ElectricSQL的分页机制）
+    let finalData = [];
     let finalOffset = 0;
-    
+    let finalLimit = 999;
+
     if (offset !== null) {
       const offsetNum = parseInt(offset);
       if (!isNaN(offsetNum)) {
-        finalOffset = offsetNum;
-        // 如果offset为-1，表示获取所有数据
         if (offsetNum === -1) {
+          // 不分页，全部返回
+          const { data, error } = await query;
+          if (error) {
+            console.error("Database error:", error);
+            return new Response("Database error", { status: 500, headers: corsHeaders });
+          }
+          finalData = data || [];
           finalOffset = 0;
+          finalLimit = finalData.length;
+        } else {
+          // 分页
+          finalOffset = offsetNum;
+          const limitParam = url.searchParams.get('limit');
+          finalLimit = limitParam ? parseInt(limitParam) : 999;
+          const { data, error } = await query.range(finalOffset, finalOffset + finalLimit - 1);
+          if (error) {
+            console.error("Database error:", error);
+            return new Response("Database error", { status: 500, headers: corsHeaders });
+          }
+          finalData = data || [];
         }
       }
+    } else {
+      // 默认分页
+      const { data, error } = await query.range(0, 998);
+      if (error) {
+        console.error("Database error:", error);
+        return new Response("Database error", { status: 500, headers: corsHeaders });
+      }
+      finalData = data || [];
+      finalOffset = 0;
+      finalLimit = 999;
+    }
+
+    // 判断是否还有更多数据
+    let hasMore = false;
+    if (offset !== null && parseInt(offset) !== -1) {
+      // 只有分页时才判断
+      hasMore = finalData.length === finalLimit;
     }
 
     const responseData = {
@@ -184,7 +212,7 @@ Deno.serve(async (req) => {
         columns: columns.length > 0 ? columns : ['*'],
         primaryKey: ['id']
       },
-      hasMore: false,
+      hasMore,
       rows: finalData
     };
 

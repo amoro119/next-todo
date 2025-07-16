@@ -141,56 +141,123 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     throw new Error("Authentication token is not available for sync.");
   }
 
-  // 1. 手动拉取 shape 数据并写入本地
+  // 1. 手动拉取 shape 数据并写入本地（支持分页和全量）
   for (const shapeName of shapes) {
     try {
       const columns = shapeName === 'lists'
         ? ['id', 'name', 'sort_order', 'is_hidden', 'modified']
         : ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id'];
-      const shapeUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns.join(',')}`;
-      const resp = await fetch(shapeUrl, {
-        headers: { 'Authorization': `Bearer ${cachedElectricToken}` }
-      });
-      if (!resp.ok) throw new Error(`拉取${shapeName} shape失败: ${resp.status}`);
-      const { rows } = await resp.json();
-      if (Array.isArray(rows)) {
-        for (const row of rows) {
-          if (shapeName === 'lists') {
-            await pg.query(
-              `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-              [
-                row.id ?? null,
-                row.name ?? null,
-                row.sort_order ?? 0,
-                row.is_hidden ?? false,
-                row.modified ?? null
-              ]
-            );
-          } else if (shapeName === 'todos') {
-            await pg.query(
-              `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-              [
-                row.id ?? null,
-                row.title ?? null,
-                row.completed ?? false,
-                row.deleted ?? false,
-                row.sort_order ?? 0,
-                row.due_date ?? null,
-                row.content ?? null,
-                row.tags ?? null,
-                row.priority ?? 0,
-                row.created_time ?? null,
-                row.completed_time ?? null,
-                row.start_date ?? null,
-                row.list_id ?? null
-              ]
-            );
+      let totalRows: unknown[] = [];
+      let offset = 0;
+      const limit = 999;
+      let fetchAll = false;
+      // 判断是否全量拉取
+      if (process.env.NEXT_PUBLIC_SHAPE_FETCH_ALL === 'true') {
+        fetchAll = true;
+      }
+      if (fetchAll) {
+        // offset=-1 全量拉取
+        const shapeUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns.join(',')}&offset=-1`;
+        const resp = await fetch(shapeUrl, {
+          headers: { 'Authorization': `Bearer ${cachedElectricToken}` }
+        });
+        if (!resp.ok) throw new Error(`拉取${shapeName} shape失败: ${resp.status}`);
+        const { rows } = await resp.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          totalRows = totalRows.concat(rows);
+          for (const row of rows) {
+            if (shapeName === 'lists') {
+              await pg.query(
+                `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                  ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+                [
+                  row.id ?? null,
+                  row.name ?? null,
+                  row.sort_order ?? 0,
+                  row.is_hidden ?? false,
+                  row.modified ?? null
+                ]
+              );
+            } else if (shapeName === 'todos') {
+              await pg.query(
+                `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                  ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+                [
+                  row.id ?? null,
+                  row.title ?? null,
+                  row.completed ?? false,
+                  row.deleted ?? false,
+                  row.sort_order ?? 0,
+                  row.due_date ?? null,
+                  row.content ?? null,
+                  row.tags ?? null,
+                  row.priority ?? 0,
+                  row.created_time ?? null,
+                  row.completed_time ?? null,
+                  row.start_date ?? null,
+                  row.list_id ?? null
+                ]
+              );
+            }
           }
         }
-        console.log(`已手动写入${shapeName} shape数据到本地，共${rows.length}条`);
+      } else {
+        // 分页拉取
+        while (true) {
+          const shapeUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns.join(',')}&offset=${offset}&limit=${limit}`;
+          const resp = await fetch(shapeUrl, {
+            headers: { 'Authorization': `Bearer ${cachedElectricToken}` }
+          });
+          if (!resp.ok) throw new Error(`拉取${shapeName} shape失败: ${resp.status}`);
+          const { rows, hasMore } = await resp.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            totalRows = totalRows.concat(rows);
+            for (const row of rows) {
+              if (shapeName === 'lists') {
+                await pg.query(
+                  `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+                  [
+                    row.id ?? null,
+                    row.name ?? null,
+                    row.sort_order ?? 0,
+                    row.is_hidden ?? false,
+                    row.modified ?? null
+                  ]
+                );
+              } else if (shapeName === 'todos') {
+                await pg.query(
+                  `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                    ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+                  [
+                    row.id ?? null,
+                    row.title ?? null,
+                    row.completed ?? false,
+                    row.deleted ?? false,
+                    row.sort_order ?? 0,
+                    row.due_date ?? null,
+                    row.content ?? null,
+                    row.tags ?? null,
+                    row.priority ?? 0,
+                    row.created_time ?? null,
+                    row.completed_time ?? null,
+                    row.start_date ?? null,
+                    row.list_id ?? null
+                  ]
+                );
+              }
+            }
+            if (!hasMore) break;
+            offset += limit;
+          } else {
+            break;
+          }
+        }
+      }
+      console.log(`已手动写入${shapeName} shape数据到本地，共${totalRows.length}条`);
+      if (shapeName === 'lists') {
         const result = await pg.query('SELECT * FROM lists');
         console.log('lists表内容', result.rows);
       }
