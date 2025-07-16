@@ -184,7 +184,7 @@ export default function TodoListPage() {
 
   // --- 数据查询 ---
   const todosResult = useLiveQuery('SELECT * FROM todos ORDER BY sort_order, created_time DESC')
-  const listsResult = useLiveQuery('SELECT * FROM lists WHERE is_hidden = false ORDER BY sort_order')
+  const listsResult = useLiveQuery('SELECT * FROM lists ORDER BY sort_order')
   const sloganResult = useLiveQuery('SELECT value FROM meta WHERE key = \'slogan\'')
 
   // --- 数据标准化 ---
@@ -412,9 +412,16 @@ export default function TodoListPage() {
     const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
     const params = [listId, ...Object.values(updates)];
     await db.write(`UPDATE lists SET ${setClauses} WHERE id = $1`, params);
-    try { await sendChangesToServer({ lists: [createListChange(listId, updates)], todos: [] });
+    // 补全 name 字段，防止同步时 name 为 null
+    const list = lists.find(l => l.id === listId);
+    const fullUpdates = { ...updates };
+    if (list && (fullUpdates.name === undefined || fullUpdates.name === null)) {
+      fullUpdates.name = list.name;
+    }
+    try {
+      await sendChangesToServer({ lists: [createListChange(listId, fullUpdates)], todos: [] });
     } catch (error) { console.error('Failed to sync list update:', error); }
-  }, [db]);
+  }, [db, lists]);
 
   const handleUpdateListsOrder = useCallback(async (reorderedLists: List[]) => {
       const queries = reorderedLists.map((list, index) => ({
