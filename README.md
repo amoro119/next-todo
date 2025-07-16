@@ -3,25 +3,40 @@
 请深入分析代码，理解todo项目程序功能如何实现和使用的技术框架。然后帮我把todo项目重构为nextjs为核心的next-todo项目，请一步一步来操作，我完成你一步你再告诉我下一步如何操作
 
 ```
-原始 todo 项目
-技术栈:
-前端: 这是一个经典的单页面应用（SPA），使用 Vue.js (v2) 作为核心框架。所有前端逻辑都包含在 index-zh.html 文件中的 <script> 标签内，通过一个大的 Vue 实例来管理状态和交互。
-后端: 使用 Node.js + Express 搭建了一个简单的 RESTful API 服务器 (server.js)。
-数据库: 使用 SQLite (database.js) 进行数据持久化。
-样式: 使用原生 CSS，并提供了 SCSS 源文件 (style.css, style.scss)。
-日历模块功能实现:
-视图切换: 通过一个名为 currentView 的 Vue 数据属性，在不同的视图（如今日待办、收件箱、日历）之间切换。
-日历网格生成: 使用 calendarDays 计算属性动态生成一个月的日历视图，包括上个月和下个月的补全日期。
-任务展示: getTodosForDate 方法负责筛选出在特定日期应该显示的任务。它支持跨越多天的任务（通过 start_date 和 due_date）。
-交互:
-拖放: 您可以在日历的不同日期之间拖放任务来更改其截止日期。
-任务详情: 点击日历上的任务会弹出一个模态框，允许用户查看和编辑任务的完整信息（包括标题、备注、日期、优先级等）。
-快速添加: 点击日期上的 + 号，可以直接在主输入框中为该日期添加新任务。
-目标 next-todo 项目
-技术栈:
-前端: Next.js (App Router) with React and TypeScript。这是一个更现代的、基于组件的架构。
-后端: Next.js Route Handlers (app/api/...)，同样连接到 SQLite 数据库。
-样式: Tailwind CSS (通过 globals.css 和 @import "tailwindcss"; 配置)。
+核心功能
+多清单管理：用户可以创建、编辑、删除、排序和隐藏不同的待办事项清单。
+待办事项（Todo）管理：支持丰富的 Todo 属性，包括标题、备注、完成状态、优先级、标签、起止日期等。
+多种视图：
+今日待办 (List View)：显示当天到期的任务。
+日历视图 (Calendar View)：以月历形式展示和管理任务，支持拖拽修改日期。
+收件箱 (Inbox)：收集未分类或已过期的任务。
+清单视图：显示特定清单下的所有任务。
+回收站 (Recycle Bin)：软删除的任务会进入回收站，可以恢复或永久删除。
+数据导入/导出：支持从 CSV (滴答清单格式) 或 JSON 文件导入数据，也提供了导出功能（尽管UI上按钮的功能尚未完全实现）。
+离线可用性：所有操作都首先在本地数据库完成，无需等待网络响应。
+云端同步：当网络可用时，本地数据会自动与远程服务器进行双向同步。
+技术框架拆解
+前端框架:
+Next.js (App Router): 用于构建用户界面，利用其服务端组件和客户端组件的能力。
+React: UI 库。
+Tailwind CSS: 用于样式设计。
+桌面应用打包:
+Electron: 将基于 Web 技术的应用打包成跨平台的桌面应用（macOS, Windows, Linux）。
+main.js: Electron 的主进程入口文件，负责创建窗口和管理应用的生命周期。
+preload.js: 预加载脚本，作为主进程和渲染进程之间的桥梁，通过 contextBridge 安全地暴露主进程能力给渲染进程（例如数据库操作）。
+数据层 (Local-First 核心):
+ElectricSQL: 这是一个 Local-First 同步平台，是本项目的灵魂。它负责在本地设备和云端 PostgreSQL 之间进行实时、双向的数据同步和冲突解决。
+PGlite: ElectricSQL 使用的一个关键组件，它是一个在 JavaScript 环境中（浏览器 Worker 或 Node.js）运行的、功能完备的 PostgreSQL 数据库。
+在本项目中，PGlite 运行在 Web Worker (app/pglite-worker.ts) 中。这样做的好处是数据库操作不会阻塞 UI 线程，保证了应用的流畅性。
+数据同步 (app/sync.ts): 这个文件负责配置和启动 ElectricSQL 的同步过程。它会连接到远程的 ElectricSQL 服务，并定义哪些数据表（Shapes）需要同步。
+后端服务 (云端):
+Docker Compose (docker-compose.yml): 用于在本地开发环境中一键启动 PostgreSQL 数据库和 ElectricSQL 同步服务。
+Supabase: 在生产环境中，本项目似乎计划使用 Supabase 作为后端服务提供商。
+PostgreSQL 数据库: Supabase 提供了托管的 PostgreSQL 数据库。
+Edge Functions: 使用 Deno 运行时编写的无服务器函数，用于处理自定义逻辑。
+token-issuer: 负责为客户端颁发用于 ElectricSQL 同步的 JWT（JSON Web Token）。
+gatekeeper: 似乎是一个自定义的、用于数据塑形（Shape）请求的代理或验证层。
+write-server: 一个 非常关键 的自定义接口，用于接收客户端（特别是数据导入时）发来的批量数据变更，并将其写入 Supabase 数据库。这是一种手动触发的同步方式，作为 ElectricSQL 自动同步的补充。
 ```
 
 
