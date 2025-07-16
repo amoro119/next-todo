@@ -170,7 +170,7 @@ export default function TodoListPage() {
   const db = getDatabaseAPI();
   
   // --- 状态管理 ---
-  const [currentView, setCurrentView] = useState<string>('inbox')
+  const [currentView, setCurrentView] = useState<string>('today')
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
   const [isManageListsOpen, setIsManageListsOpen] = useState(false)
   const [newTodoTitle, setNewTodoTitle] = useState('')
@@ -225,7 +225,7 @@ export default function TodoListPage() {
         return completedTodos
       case 'recycle':
         return recycledTodos
-      case 'list':
+      case 'today':
         return uncompletedTodos.filter((t: Todo) => t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
       case 'calendar':
         return uncompletedTodos
