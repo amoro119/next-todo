@@ -11,6 +11,7 @@ worker({
   async init() {
     // 在浏览器环境中，PGlite 会自动使用 IndexedDB 存储
     const pg = await PGlite.create({
+      dataDir: 'idb://todo-local-db',
       relaxedDurability: true,
       // 不指定 dataDir，让 PGlite 自动使用 IndexedDB
     })

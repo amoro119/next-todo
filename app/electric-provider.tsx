@@ -31,11 +31,9 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       // 使用标准的 Web Worker API 和 URL 对象来创建 worker
-      // 这是 Next.js 中最可靠、最兼容 SSR 的方式
       worker = new Worker(new URL('./pglite-worker.ts', import.meta.url), {
         type: 'module',
       });
-      
       // PGliteWorker.create 接受一个标准的 Worker 实例
       const db = (await PGliteWorker.create(worker, {
         extensions: {
@@ -56,10 +54,6 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
         (globalThis as any).pg = db;
       }
 
-      // 立即启动同步，不等待leader选举
-      console.log('Starting sync immediately...')
-      startSync(db)
-      
       // 监听leader变化，但同步已经启动
       leaderSub = db.onLeaderChange(() => {
         console.log('Leader changed, isLeader:', db.isLeader)
@@ -75,6 +69,15 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
       worker?.terminate()
     }
   }, [])
+
+  // 只有 pg 初始化好后再启动同步
+  useEffect(() => {
+    if (pg) {
+      // 立即启动同步，不等待leader选举
+      console.log('Starting sync immediately...')
+      startSync(pg)
+    }
+  }, [pg])
 
   if (!pg) {
     // 初始加载由 `electric-client-provider` 的 loading 处理
