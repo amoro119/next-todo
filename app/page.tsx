@@ -226,14 +226,21 @@ export default function TodoListPage() {
       case 'recycle':
         return recycledTodos
       case 'today':
-        return uncompletedTodos.filter((t: Todo) => t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
+        // 今日待办应显示所有今日任务（无论是否已完成），未完成任务排在前面
+        return todos
+          .filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
+          .sort((a, b) => {
+            // 未完成优先，已完成靠后
+            if (a.completed === b.completed) return 0;
+            return a.completed ? 1 : -1;
+          });
       case 'calendar':
         return uncompletedTodos
       default:
         const list = lists.find((l: List) => l.name === currentView)
         return list ? uncompletedTodos.filter((t: Todo) => t.list_id === list.id) : uncompletedTodos
     }
-  }, [currentView, uncompletedTodos, completedTodos, recycledTodos, lists, todayStrInUTC8])
+  }, [currentView, uncompletedTodos, completedTodos, recycledTodos, lists, todayStrInUTC8, todos])
 
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -649,7 +656,7 @@ export default function TodoListPage() {
               </div>
             ) : (
               <CalendarView
-                todos={uncompletedTodos}
+                todos={todos}
                 onAddTodo={handleAddTodoFromCalendar}
                 onUpdateTodo={handleUpdateTodo}
                 onOpenModal={setSelectedTodo}

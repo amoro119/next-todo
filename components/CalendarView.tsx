@@ -305,7 +305,8 @@ export default function CalendarView({
     });
 
     // 批量处理待办事项，减少循环开销
-    const validTodos = todos.filter(todo => todo.start_date || todo.due_date);
+    // 包含所有未被删除的任务（无论是否已完成）
+    const validTodos = todos.filter(todo => !todo.deleted && (todo.start_date || todo.due_date));
     
     validTodos.forEach(todo => {
       const sDateStr = utcToLocalDateString(todo.start_date);
