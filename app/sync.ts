@@ -175,86 +175,95 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     const rows = await shape.rows;
     console.log('shape.rows 已返回:', rows.length);
     // 4. 写入本地数据库
-    for (const row of rows) {
-      if (shapeName === 'lists') {
-        await pg.query(
-          `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-          [
-            row.id ?? null,
-            row.name ?? null,
-            row.sort_order ?? 0,
-            row.is_hidden ?? false,
-            row.modified ?? null
-          ]
-        );
-      } else if (shapeName === 'todos') {
-        await pg.query(
-          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-          [
-            row.id ?? null,
-            row.title ?? null,
-            row.completed ?? false,
-            row.deleted ?? false,
-            row.sort_order ?? 0,
-            row.due_date ?? null,
-            row.content ?? null,
-            row.tags ?? null,
-            row.priority ?? 0,
-            row.created_time ?? null,
-            row.completed_time ?? null,
-            row.start_date ?? null,
-            row.list_id ?? null
-          ]
-        );
-      }
-    }
+    // for (const row of rows) {
+    //   if (shapeName === 'lists') {
+    //     await pg.query(
+    //       `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+    //         ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+    //       [
+    //         row.id ?? null,
+    //         row.name ?? null,
+    //         row.sort_order ?? 0,
+    //         row.is_hidden ?? false,
+    //         row.modified ?? null
+    //       ]
+    //     );
+    //   } else if (shapeName === 'todos') {
+    //     await pg.query(
+    //       `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+    //         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    //         ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+    //       [
+    //         row.id ?? null,
+    //         row.title ?? null,
+    //         row.completed ?? false,
+    //         row.deleted ?? false,
+    //         row.sort_order ?? 0,
+    //         row.due_date ?? null,
+    //         row.content ?? null,
+    //         row.tags ?? null,
+    //         row.priority ?? 0,
+    //         row.created_time ?? null,
+    //         row.completed_time ?? null,
+    //         row.start_date ?? null,
+    //         row.list_id ?? null
+    //       ]
+    //     );
+    //   }
+    // }
     console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+
     // 5. 监听 shape 数据变化，实时写入本地
-    shape.subscribe(({ rows }) => {
-      // 这里可以做更智能的 diff/merge，这里简单全量 upsert
-      (async () => {
-        for (const row of rows) {
-          if (shapeName === 'lists') {
-            await pg.query(
-              `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-              [
-                row.id ?? null,
-                row.name ?? null,
-                row.sort_order ?? 0,
-                row.is_hidden ?? false,
-                row.modified ?? null
-              ]
-            );
-          } else if (shapeName === 'todos') {
-            await pg.query(
-              `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-              [
-                row.id ?? null,
-                row.title ?? null,
-                row.completed ?? false,
-                row.deleted ?? false,
-                row.sort_order ?? 0,
-                row.due_date ?? null,
-                row.content ?? null,
-                row.tags ?? null,
-                row.priority ?? 0,
-                row.created_time ?? null,
-                row.completed_time ?? null,
-                row.start_date ?? null,
-                row.list_id ?? null
-              ]
-            );
+    stream.subscribe(
+      (messages) => {
+        (async () => {
+          console.log(messages)
+          for (const msg of messages) {
+            if (!('value' in msg)) continue; // 跳过 control 消息
+            const row = msg.value;
+            if (shapeName === 'lists') {
+              await pg.query(
+                `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                  ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+                [
+                  row.id ?? null,
+                  row.name ?? null,
+                  row.sort_order ?? 0,
+                  row.is_hidden ?? false,
+                  row.modified ?? null
+                ]
+              );
+            } else if (shapeName === 'todos') {
+              await pg.query(
+                `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                  ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+                [
+                  row.id ?? null,
+                  row.title ?? null,
+                  row.completed ?? false,
+                  row.deleted ?? false,
+                  row.sort_order ?? 0,
+                  row.due_date ?? null,
+                  row.content ?? null,
+                  row.tags ?? null,
+                  row.priority ?? 0,
+                  row.created_time ?? null,
+                  row.completed_time ?? null,
+                  row.start_date ?? null,
+                  row.list_id ?? null
+                ]
+              );
+            }
           }
-        }
-        console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
-      })();
-    });
+          console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
+        })();
+      },
+      (error) => {
+        // Get notified about errors
+        console.error('Error in subscription:', error)
+      }
+    )
   }
 
   // 本地 select 校验
