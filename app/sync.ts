@@ -4,6 +4,7 @@ import { PGliteWithLive } from '@electric-sql/pglite/live'
 import { PGliteWithSync } from '@electric-sql/pglite-sync'
 import { postInitialSync } from '../db/migrations-client'
 import { useEffect, useState } from 'react'
+import { ShapeStream, Shape } from '@electric-sql/client';
 
 type SyncStatus = 'initial-sync' | 'done' | 'error'
 
@@ -134,14 +135,16 @@ async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
 }
 
 async function startBidirectionalSync(pg: PGliteWithExtensions) {
-  const MAX_RETRIES = 3
-  
-  // 需要同步的表
-  const shapes = ['lists', 'todos']
-  
-  console.log('Starting bidirectional sync for shapes:', shapes)
-  
-  // 检查并获取必要的环境变量
+  const shapes = [
+    {
+      name: 'lists',
+      columns: ['id', 'name', 'sort_order', 'is_hidden', 'modified']
+    },
+    {
+      name: 'todos',
+      columns: ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
+    }
+  ];
   const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
   if (!electricProxyUrl) {
     throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
@@ -150,134 +153,113 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     throw new Error("Authentication token is not available for sync.");
   }
 
-  // 1. 仅首次启动/本地无数据时 shape 全量拉取
-  for (const shapeName of shapes) {
-    try {
-      console.log('准备检查本地表是否有数据，pg 实例：', pg, '表名：', shapeName);
-      // 检查本地表是否有数据
-      const result = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
-      const countRaw = (result.rows[0] as Record<string, unknown>)?.count;
-      const count = typeof countRaw === 'string' ? parseInt(countRaw, 10) : Number(countRaw);
-      console.log(`本地 ${shapeName} count:`, count, 'rows:', result.rows);
-      if (count === 0) {
-        // 仅首次 shape 拉取
-        const columns = shapeName === 'lists'
-          ? ['id', 'name', 'sort_order', 'is_hidden', 'modified']
-          : ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id'];
-        let offset = 0;
-        const limit = 999;
-        while (true) {
-          const shapeUrl = `${electricProxyUrl}/v1/shape?table=${shapeName}&columns=${columns.join(',')}&offset=${offset}&limit=${limit}`;
-          const resp = await fetch(shapeUrl, {
-            headers: { 'Authorization': `Bearer ${cachedElectricToken}` }
-          });
-          if (!resp.ok) throw new Error(`拉取${shapeName} shape失败: ${resp.status}`);
-          const { rows, hasMore } = await resp.json();
-          if (Array.isArray(rows) && rows.length > 0) {
-            for (const row of rows) {
-              if (shapeName === 'lists') {
-                await pg.query(
-                  `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                    ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-                  [
-                    row.id ?? null,
-                    row.name ?? null,
-                    row.sort_order ?? 0,
-                    row.is_hidden ?? false,
-                    row.modified ?? null
-                  ]
-                );
-              } else if (shapeName === 'todos') {
-                await pg.query(
-                  `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                    ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-                  [
-                    row.id ?? null,
-                    row.title ?? null,
-                    row.completed ?? false,
-                    row.deleted ?? false,
-                    row.sort_order ?? 0,
-                    row.due_date ?? null,
-                    row.content ?? null,
-                    row.tags ?? null,
-                    row.priority ?? 0,
-                    row.created_time ?? null,
-                    row.completed_time ?? null,
-                    row.start_date ?? null,
-                    row.list_id ?? null
-                  ]
-                );
-              }
-            }
-            if (!hasMore || rows.length < limit) break;
-            offset += limit;
-          } else {
-            break;
+  for (const shapeDef of shapes) {
+    const { name: shapeName, columns } = shapeDef;
+    // 1. 创建 ShapeStream
+    const stream = new ShapeStream({
+      url: `${electricProxyUrl}/v1/shape`,
+      params: {
+        table: shapeName,
+        columns: columns
+      },
+      headers: {
+        'Authorization': `Bearer ${cachedElectricToken}`
+      }
+    });
+    // 2. 创建 Shape 对象
+    const shape = new Shape(stream);
+    // 3. 等待初始同步完成
+    console.log('创建 ShapeStream...');
+    console.log(shape);
+    console.log('等待 shape.rows...');
+    const rows = await shape.rows;
+    console.log('shape.rows 已返回:', rows.length);
+    // 4. 写入本地数据库
+    for (const row of rows) {
+      if (shapeName === 'lists') {
+        await pg.query(
+          `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+          [
+            row.id ?? null,
+            row.name ?? null,
+            row.sort_order ?? 0,
+            row.is_hidden ?? false,
+            row.modified ?? null
+          ]
+        );
+      } else if (shapeName === 'todos') {
+        await pg.query(
+          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+          [
+            row.id ?? null,
+            row.title ?? null,
+            row.completed ?? false,
+            row.deleted ?? false,
+            row.sort_order ?? 0,
+            row.due_date ?? null,
+            row.content ?? null,
+            row.tags ?? null,
+            row.priority ?? 0,
+            row.created_time ?? null,
+            row.completed_time ?? null,
+            row.start_date ?? null,
+            row.list_id ?? null
+          ]
+        );
+      }
+    }
+    console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+    // 5. 监听 shape 数据变化，实时写入本地
+    shape.subscribe(({ rows }) => {
+      // 这里可以做更智能的 diff/merge，这里简单全量 upsert
+      (async () => {
+        for (const row of rows) {
+          if (shapeName === 'lists') {
+            await pg.query(
+              `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+              [
+                row.id ?? null,
+                row.name ?? null,
+                row.sort_order ?? 0,
+                row.is_hidden ?? false,
+                row.modified ?? null
+              ]
+            );
+          } else if (shapeName === 'todos') {
+            await pg.query(
+              `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+              [
+                row.id ?? null,
+                row.title ?? null,
+                row.completed ?? false,
+                row.deleted ?? false,
+                row.sort_order ?? 0,
+                row.due_date ?? null,
+                row.content ?? null,
+                row.tags ?? null,
+                row.priority ?? 0,
+                row.created_time ?? null,
+                row.completed_time ?? null,
+                row.start_date ?? null,
+                row.list_id ?? null
+              ]
+            );
           }
         }
-        console.log(`首次初始化 ${shapeName}，已拉取并写入本地`);
-      } else {
-        console.log(`${shapeName} 本地已有数据，跳过 shape 拉取`);
-      }
-    } catch (err) {
-      console.error(`同步${shapeName} shape数据失败:`, err);
-    }
+        console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
+      })();
+    });
   }
 
-  // 2. 始终执行 ElectricSQL sync 机制
-  const syncPromises = shapes.map(async (shapeName) => {
-    console.log(`🔄 开始双向同步 ${shapeName}...`);
-    let retryCount = 0;
-    let success = false;
-    while (retryCount < MAX_RETRIES && !success) {
-      try {
-        console.log(`📥 尝试同步 ${shapeName} (尝试 ${retryCount + 1}/${MAX_RETRIES})...`);
-        const syncConfig = {
-          shape: {
-            url: `${electricProxyUrl}/v1/shape`,
-            params: {
-              table: shapeName,
-              columns: shapeName === 'lists'
-                ? ['id', 'name', 'sort_order', 'is_hidden', 'modified']
-                : ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
-            },
-            headers: {
-              'Authorization': `Bearer ${cachedElectricToken}`
-            }
-          },
-          table: shapeName,
-          primaryKey: ['id'],
-          shapeKey: shapeName
-        };
-        await pg.sync.syncShapeToTable(syncConfig);
-        console.log(`✅ ${shapeName} ElectricSQL 双向同步启动成功`);
-        success = true;
-      } catch (error) {
-        console.error(`❌ ${shapeName} 同步错误 (尝试 ${retryCount + 1}):`, error);
-        if (retryCount < MAX_RETRIES - 1) {
-          retryCount++;
-          const delay = 1000 * retryCount;
-          console.log(`⏳ ${delay}ms 后重试 ${shapeName}...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          throw new Error(`同步 ${shapeName} 失败，已重试 ${MAX_RETRIES} 次: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-  });
-
-  // 等待所有表的同步启动完成
-  await Promise.all(syncPromises);
-
-  console.log('🎉 所有双向同步启动完成！');
-  
-  // 等待一段时间让初始同步完成
-  console.log('⏳ 等待初始同步完成...');
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  
-  // 验证同步状态
-  for (const shapeName of shapes) {
+  // 本地 select 校验
+  for (const shapeDef of shapes) {
+    const shapeName = shapeDef.name;
     try {
       const result = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
       const count = (result.rows[0] as { count: string }).count;
