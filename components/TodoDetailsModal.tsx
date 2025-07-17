@@ -20,25 +20,42 @@ function localDateToDbUTC(date: string | null | undefined): string | null {
   if (!date) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     const [year, month, day] = date.split('-').map(Number);
-    const d = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
-    d.setUTCDate(d.getUTCDate() - 1);
+    const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
+    d.setUTCDate(d.getUTCDate() - 1); // 恢复减一天
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 16:00:00+00`;
   }
-  if (/^\d{4}-\d{2}-\d{2} 16:00:00\+00$/.test(date)) return date;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(date)) return date; // ISO 8601 format
   return null;
 }
 
-// 数据库 UTC 字符串转本地日期字符串（+1天）
+// 数据库 UTC 字符串转本地日期字符串
 function dbUTCToLocalDate(date: string | null | undefined): string {
   if (!date) return '';
+  // 如果是 YYYY-MM-DD 格式，直接返回
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
+  // 如果是数据库格式 YYYY-MM-DD 16:00:0提取日期部分并加一天
   const match = date.match(/^(\d{4}-\d{2}-\d{2})/);
   if (match) {
     const [year, month, day] = match[1].split('-').map(Number);
-    const d = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
-    d.setUTCDate(d.getUTCDate() + 1);
+    const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
+    d.setUTCDate(d.getUTCDate() + 1); // 加一天
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  }
+  // 尝试解析其他格式
+  try {
+    const d = new Date(date);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = (d.getMonth() + 1).toString().padStart(2, '0');
+      const day = d.getDate().toString().padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch (e) {
+    console.error("Error parsing date:", date, e);
   }
   return '';
 }
@@ -48,13 +65,14 @@ const cleanTodoDates = (todo: Todo): Todo => {
   const cleanDate = (date: string | null | undefined) => {
     if (!date) return null;
     // 已经是数据库格式
-    if (/^\d{4}-\d{2}-\d{2} 16:00:00\+00$/.test(date)) return date;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(date)) return date; // ISO 8601 format
+    if (/^\d{4}-\d{2}-\d{2} 160000$/.test(date)) return date; // YYYY-MM-DD HH:mm:ss+00
     // 只有日期
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       const [year, month, day] = date.split('-').map(Number);
-      const d = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+      const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
       const pad = (n: number) => n.toString().padStart(2, '0');
-      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 16:00:00+00`;
+      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 160000`;
     }
     // 其他情况尝试转为 Date
     try {
@@ -63,9 +81,11 @@ const cleanTodoDates = (todo: Todo): Todo => {
         const year = d.getUTCFullYear();
         const month = (d.getUTCMonth() + 1).toString().padStart(2, '0');
         const day = d.getUTCDate().toString().padStart(2, '0');
-        return `${year}-${month}-${day} 16:00:00+00`;
+        return `${year}-${month}-${day} 160000`;
       }
-    } catch {}
+    } catch (e) {
+      console.error("Error cleaning date:", date, e);
+    }
     return null;
   };
   return {
@@ -89,6 +109,17 @@ export default function TodoDetailsModal({
 }: TodoDetailsModalProps) {
   const [editableTodo, setEditableTodo] = useState<Todo>(todo);
   const isRecycled = !!todo.deleted;
+  
+  // 添加详细的调试信息
+  console.log('=== TodoDetailsModal 调试信息 ===');
+  console.log('传入的 todo 对象:', todo);
+  console.log('todo.start_date:', todo.start_date, '类型:', typeof todo.start_date);
+  console.log('todo.due_date:', todo.due_date, '类型:', typeof todo.due_date);
+  console.log('dbUTCToLocalDate(todo.start_date):', dbUTCToLocalDate(todo.start_date));
+  console.log('dbUTCToLocalDate(todo.due_date):', dbUTCToLocalDate(todo.due_date));
+  console.log('editableTodo.start_date:', editableTodo.start_date);
+  console.log('editableTodo.due_date:', editableTodo.due_date);
+  console.log('================================');
 
   const handleSave = () => {
     onSave(cleanTodoDates(editableTodo));
@@ -216,7 +247,7 @@ export default function TodoDetailsModal({
                         type="date"
                         id="start_date"
                         name="start_date"
-                        value={dbUTCToLocalDate(editableTodo.start_date)}
+                        value={dbUTCToLocalDate(editableTodo.start_date) || ''}
                         onChange={handleInputChange}
                         readOnly={isRecycled}
                     />
@@ -247,8 +278,7 @@ export default function TodoDetailsModal({
                 />
             </div>
         </div>
-        <div className="modal-footer">
-          {isRecycled ? (
+        <div className="modal-footer">         {isRecycled ? (
             <>
               <button className="btn-small delete" onClick={handlePermanentDelete}>永久删除</button>
               <button className="btn-small" onClick={onClose}>关闭</button>
@@ -265,4 +295,4 @@ export default function TodoDetailsModal({
       </div>
     </div>
   );
-}
+} 

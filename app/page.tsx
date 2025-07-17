@@ -132,19 +132,53 @@ const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | 
 };
 
 // --- 数据标准化函数 ---
+function formatDbDate(val: unknown): string | null {
+  if (!val) return null;
+  if (typeof val === 'string') {
+    // 已经是数据库格式
+    if (/^\d{4}-\d{2}-\d{2}( 16:00:00\+00)?$/.test(val)) return val;
+    // 是 ISO 字符串
+    if (/^\d{4}-\d{2}-\d{2}T/.test(val)) return val.slice(0, 10);
+    // 是 JS Date 字符串
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      const m = (d.getMonth() + 1).toString().padStart(2, '0');
+      const dd = d.getDate().toString().padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    }
+  }
+  // 是 Date 对象
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = (val.getMonth() + 1).toString().padStart(2, '0');
+    const d = val.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  // 尝试 new Date
+  const d = new Date(val as string);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const dd = d.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+  return null;
+}
+
 const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
   id: String(raw.id),
   title: String(raw.title || ''),
   completed: Boolean(raw.completed),
   deleted: Boolean(raw.deleted),
   sort_order: Number(raw.sort_order) || 0,
-  due_date: raw.due_date ? String(raw.due_date) : null,
+  due_date: formatDbDate(raw.due_date),
   content: raw.content ? String(raw.content) : null,
   tags: raw.tags ? String(raw.tags) : null,
   priority: Number(raw.priority) || 0,
   created_time: raw.created_time ? String(raw.created_time) : new Date().toISOString(),
   completed_time: raw.completed_time ? String(raw.completed_time) : null,
-  start_date: raw.start_date ? String(raw.start_date) : null,
+  start_date: formatDbDate(raw.start_date),
   list_id: raw.list_id ? String(raw.list_id) : null,
   list_name: raw.list_name ? String(raw.list_name) : null,
 });
