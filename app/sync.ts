@@ -172,57 +172,113 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     console.log('创建 ShapeStream...');
     console.log(shape);
     console.log('等待 shape.rows...');
-    const rows = await shape.rows;
-    console.log('shape.rows 已返回:', rows.length);
-    // 4. 写入本地数据库
-    for (const row of rows) {
-      if (shapeName === 'lists') {
-        await pg.query(
-          `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-          [
-            row.id ?? null,
-            row.name ?? null,
-            row.sort_order ?? 0,
-            row.is_hidden ?? false,
-            row.modified ?? null
-          ]
-        );
-      } else if (shapeName === 'todos') {
-        await pg.query(
-          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-          [
-            row.id ?? null,
-            row.title ?? null,
-            row.completed ?? false,
-            row.deleted ?? false,
-            row.sort_order ?? 0,
-            row.due_date ?? null,
-            row.content ?? null,
-            row.tags ?? null,
-            row.priority ?? 0,
-            row.created_time ?? null,
-            row.completed_time ?? null,
-            row.start_date ?? null,
-            row.list_id ?? null
-          ]
-        );
-      }
+    // 检查本地表是否为空
+    let shouldInitialUpsert = false;
+    try {
+      const res = await pg.query(`SELECT 1 FROM ${shapeName} LIMIT 1`);
+      shouldInitialUpsert = res.rows.length === 0;
+    } catch (e) {
+      console.warn('本地表计数失败，默认进行初始upsert:', e);
+      shouldInitialUpsert = true;
     }
-    console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+    let rows = [];
+    if (shouldInitialUpsert) {
+      // 用 offset=-1 获取全量数据
+      const fullShapeStream = new ShapeStream({
+        url: `${electricProxyUrl}/v1/shape`,
+        params: {
+          table: shapeName,
+          columns: columns,
+          // @ts-expect-error 强制offset类型为any，兼容ShapeStream参数
+          offset: -1
+        },
+        headers: {
+          'Authorization': `Bearer ${cachedElectricToken}`
+        }
+      });
+      const fullShape = new Shape(fullShapeStream);
+      rows = await fullShape.rows;
+      for (const row of rows) {
+        if (shapeName === 'lists') {
+          await pg.query(
+            `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+              ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+            [
+              row.id ?? null,
+              row.name ?? null,
+              row.sort_order ?? 0,
+              row.is_hidden ?? false,
+              row.modified ?? null
+            ]
+          );
+        } else if (shapeName === 'todos') {
+          await pg.query(
+            `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+              ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+            [
+              row.id ?? null,
+              row.title ?? null,
+              row.completed ?? false,
+              row.deleted ?? false,
+              row.sort_order ?? 0,
+              row.due_date ?? null,
+              row.content ?? null,
+              row.tags ?? null,
+              row.priority ?? 0,
+              row.created_time ?? null,
+              row.completed_time ?? null,
+              row.start_date ?? null,
+              row.list_id ?? null
+            ]
+          );
+        }
+      }
+      console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+    } else {
+      console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
+    }
 
     // 5. 监听 shape 数据变化，实时写入本地
     stream.subscribe(
       (messages) => {
         (async () => {
           console.log(messages)
+          // 1. 预处理：对同一个id的同一字段，只保留lsn最大的那条
+          const latestByIdField = new Map();
           for (const msg of messages) {
-            if (!('value' in msg)) continue; // 跳过 control 消息
+            if (!('value' in msg)) continue;
             const row = msg.value;
             const operation = msg.headers?.operation;
-            if (!operation) continue; // 没有operation字段则跳过
+            const lsn = Number(msg.headers?.lsn ?? 0);
+            if (!row.id || !operation) continue;
+            for (const field of Object.keys(row)) {
+              if (field === 'id') continue;
+              const key = `${row.id}::${field}`;
+              const prev = latestByIdField.get(key);
+              if (!prev || lsn > prev.lsn) {
+                latestByIdField.set(key, { msg, lsn });
+              }
+            }
+          }
+          // 2. 合并同id的字段，组装为一条最新的msg
+          const latestMsgById = new Map();
+          for (const { msg } of latestByIdField.values()) {
+            const row = msg.value;
+            const id = row.id;
+            if (!latestMsgById.has(id)) {
+              latestMsgById.set(id, { ...msg, value: { id } });
+            }
+            // 合并字段
+            Object.assign(latestMsgById.get(id).value, row);
+            // 保留最新的headers
+            latestMsgById.get(id).headers = msg.headers;
+          }
+          // 3. 只处理去重合并后的消息
+          for (const msg of latestMsgById.values()) {
+            const row = msg.value;
+            const operation = msg.headers?.operation;
+            if (!operation) continue;
             if (shapeName === 'lists') {
               if (operation === 'insert') {
                 await pg.query(
@@ -237,7 +293,6 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
                   ]
                 );
               } else if (operation === 'update') {
-                // 只更新变动字段
                 const updateFields = Object.keys(row).filter(key => key !== 'id');
                 if (updateFields.length > 0) {
                   const setClause = updateFields.map((key, idx) => `${key} = $${idx + 2}`).join(', ');
@@ -276,7 +331,6 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
                   ]
                 );
               } else if (operation === 'update') {
-                // 只更新变动字段
                 const updateFields = Object.keys(row).filter(key => key !== 'id');
                 if (updateFields.length > 0) {
                   const setClause = updateFields.map((key, idx) => `${key} = $${idx + 2}`).join(', ');
