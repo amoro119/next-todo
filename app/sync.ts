@@ -175,42 +175,42 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     const rows = await shape.rows;
     console.log('shape.rows 已返回:', rows.length);
     // 4. 写入本地数据库
-    // for (const row of rows) {
-    //   if (shapeName === 'lists') {
-    //     await pg.query(
-    //       `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-    //         ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-    //       [
-    //         row.id ?? null,
-    //         row.name ?? null,
-    //         row.sort_order ?? 0,
-    //         row.is_hidden ?? false,
-    //         row.modified ?? null
-    //       ]
-    //     );
-    //   } else if (shapeName === 'todos') {
-    //     await pg.query(
-    //       `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-    //         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-    //         ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-    //       [
-    //         row.id ?? null,
-    //         row.title ?? null,
-    //         row.completed ?? false,
-    //         row.deleted ?? false,
-    //         row.sort_order ?? 0,
-    //         row.due_date ?? null,
-    //         row.content ?? null,
-    //         row.tags ?? null,
-    //         row.priority ?? 0,
-    //         row.created_time ?? null,
-    //         row.completed_time ?? null,
-    //         row.start_date ?? null,
-    //         row.list_id ?? null
-    //       ]
-    //     );
-    //   }
-    // }
+    for (const row of rows) {
+      if (shapeName === 'lists') {
+        await pg.query(
+          `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+          [
+            row.id ?? null,
+            row.name ?? null,
+            row.sort_order ?? 0,
+            row.is_hidden ?? false,
+            row.modified ?? null
+          ]
+        );
+      } else if (shapeName === 'todos') {
+        await pg.query(
+          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+          [
+            row.id ?? null,
+            row.title ?? null,
+            row.completed ?? false,
+            row.deleted ?? false,
+            row.sort_order ?? 0,
+            row.due_date ?? null,
+            row.content ?? null,
+            row.tags ?? null,
+            row.priority ?? 0,
+            row.created_time ?? null,
+            row.completed_time ?? null,
+            row.start_date ?? null,
+            row.list_id ?? null
+          ]
+        );
+      }
+    }
     console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
 
     // 5. 监听 shape 数据变化，实时写入本地
@@ -221,39 +221,77 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
           for (const msg of messages) {
             if (!('value' in msg)) continue; // 跳过 control 消息
             const row = msg.value;
+            const operation = msg.headers?.operation;
+            if (!operation) continue; // 没有operation字段则跳过
             if (shapeName === 'lists') {
-              await pg.query(
-                `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                  ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-                [
-                  row.id ?? null,
-                  row.name ?? null,
-                  row.sort_order ?? 0,
-                  row.is_hidden ?? false,
-                  row.modified ?? null
-                ]
-              );
+              if (operation === 'insert') {
+                await pg.query(
+                  `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+                  [
+                    row.id ?? null,
+                    row.name ?? null,
+                    row.sort_order ?? 0,
+                    row.is_hidden ?? false,
+                    row.modified ?? null
+                  ]
+                );
+              } else if (operation === 'update') {
+                // 只更新变动字段
+                const updateFields = Object.keys(row).filter(key => key !== 'id');
+                if (updateFields.length > 0) {
+                  const setClause = updateFields.map((key, idx) => `${key} = $${idx + 2}`).join(', ');
+                  const values = [row.id, ...updateFields.map(key => row[key])];
+                  await pg.query(
+                    `UPDATE lists SET ${setClause} WHERE id = $1`,
+                    values
+                  );
+                }
+              } else if (operation === 'delete') {
+                await pg.query(
+                  `DELETE FROM lists WHERE id = $1`,
+                  [row.id ?? null]
+                );
+              }
             } else if (shapeName === 'todos') {
-              await pg.query(
-                `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                  ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-                [
-                  row.id ?? null,
-                  row.title ?? null,
-                  row.completed ?? false,
-                  row.deleted ?? false,
-                  row.sort_order ?? 0,
-                  row.due_date ?? null,
-                  row.content ?? null,
-                  row.tags ?? null,
-                  row.priority ?? 0,
-                  row.created_time ?? null,
-                  row.completed_time ?? null,
-                  row.start_date ?? null,
-                  row.list_id ?? null
-                ]
-              );
+              if (operation === 'insert') {
+                await pg.query(
+                  `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                    ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+                  [
+                    row.id ?? null,
+                    row.title ?? null,
+                    row.completed ?? false,
+                    row.deleted ?? false,
+                    row.sort_order ?? 0,
+                    row.due_date ?? null,
+                    row.content ?? null,
+                    row.tags ?? null,
+                    row.priority ?? 0,
+                    row.created_time ?? null,
+                    row.completed_time ?? null,
+                    row.start_date ?? null,
+                    row.list_id ?? null
+                  ]
+                );
+              } else if (operation === 'update') {
+                // 只更新变动字段
+                const updateFields = Object.keys(row).filter(key => key !== 'id');
+                if (updateFields.length > 0) {
+                  const setClause = updateFields.map((key, idx) => `${key} = $${idx + 2}`).join(', ');
+                  const values = [row.id, ...updateFields.map(key => row[key])];
+                  await pg.query(
+                    `UPDATE todos SET ${setClause} WHERE id = $1`,
+                    values
+                  );
+                }
+              } else if (operation === 'delete') {
+                await pg.query(
+                  `DELETE FROM todos WHERE id = $1`,
+                  [row.id ?? null]
+                );
+              }
             }
           }
           console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
