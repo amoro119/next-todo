@@ -134,6 +134,20 @@ async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
   }
 }
 
+// shape 同步状态本地存储
+function getShapeSyncState(shapeName: string): { offset?: string, handle?: string } {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(`shapeSyncState:${shapeName}`);
+    console.log(`[调试] 读取localStorage shapeSyncState:${shapeName} =`, raw);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    console.error(`[调试] 解析localStorage shapeSyncState:${shapeName} 失败:`, e);
+    return {};
+  }
+}
+
+
 async function startBidirectionalSync(pg: PGliteWithExtensions) {
   const shapes = [
     {
@@ -155,6 +169,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
 
   for (const shapeDef of shapes) {
     const { name: shapeName, columns } = shapeDef;
+
     // 1. 创建 ShapeStream
     const stream = new ShapeStream({
       url: `${electricProxyUrl}/v1/shape`,
@@ -170,7 +185,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     const shape = new Shape(stream);
     // 3. 等待初始同步完成
     console.log('创建 ShapeStream...');
-    console.log(shape);
+    console.log('shape',shape);
     console.log('等待 shape.rows...');
     // 检查本地表是否为空
     let shouldInitialUpsert = false;
@@ -181,23 +196,21 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       console.warn('本地表计数失败，默认进行初始upsert:', e);
       shouldInitialUpsert = true;
     }
-    let rows = [];
     if (shouldInitialUpsert) {
       // 用 offset=-1 获取全量数据
       const fullShapeStream = new ShapeStream({
         url: `${electricProxyUrl}/v1/shape`,
         params: {
           table: shapeName,
-          columns: columns,
-          // @ts-expect-error 强制offset类型为any，兼容ShapeStream参数
-          offset: -1
+          columns: columns
         },
+        offset: '-1',
         headers: {
           'Authorization': `Bearer ${cachedElectricToken}`
         }
       });
       const fullShape = new Shape(fullShapeStream);
-      rows = await fullShape.rows;
+      const rows = await fullShape.rows;
       for (const row of rows) {
         if (shapeName === 'lists') {
           await pg.query(
@@ -243,40 +256,19 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     stream.subscribe(
       (messages) => {
         (async () => {
-          console.log(messages)
-          // 1. 预处理：对同一个id的同一字段，只保留lsn最大的那条
-          const latestByIdField = new Map();
+          // console.log(messages)
           for (const msg of messages) {
-            if (!('value' in msg)) continue;
-            const row = msg.value;
-            const operation = msg.headers?.operation;
-            const lsn = Number(msg.headers?.lsn ?? 0);
-            if (!row.id || !operation) continue;
-            for (const field of Object.keys(row)) {
-              if (field === 'id') continue;
-              const key = `${row.id}::${field}`;
-              const prev = latestByIdField.get(key);
-              if (!prev || lsn > prev.lsn) {
-                latestByIdField.set(key, { msg, lsn });
-              }
+            // 处理控制消息
+            if (msg.headers?.control === 'must-refetch') {
+              console.warn(`[must-refetch] 收到 must-refetch 控制消息，需要全量同步！`);
+              // 你可以在这里触发自动重启同步流或提示用户刷新页面
+              return; // 跳出for循环，跳过所有后续消息处理
             }
-          }
-          // 2. 合并同id的字段，组装为一条最新的msg
-          const latestMsgById = new Map();
-          for (const { msg } of latestByIdField.values()) {
+            // 处理数据变更消息
+            // console.log('msg',msg)
+            if (!('value' in msg && 'lsn' in msg.headers)) continue;
             const row = msg.value;
-            const id = row.id;
-            if (!latestMsgById.has(id)) {
-              latestMsgById.set(id, { ...msg, value: { id } });
-            }
-            // 合并字段
-            Object.assign(latestMsgById.get(id).value, row);
-            // 保留最新的headers
-            latestMsgById.get(id).headers = msg.headers;
-          }
-          // 3. 只处理去重合并后的消息
-          for (const msg of latestMsgById.values()) {
-            const row = msg.value;
+            console.log(row)
             const operation = msg.headers?.operation;
             if (!operation) continue;
             if (shapeName === 'lists') {
@@ -352,7 +344,6 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         })();
       },
       (error) => {
-        // Get notified about errors
         console.error('Error in subscription:', error)
       }
     )
@@ -369,7 +360,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       console.error(`❌ 验证 ${shapeName} 失败:`, error);
     }
   }
-
+ 
   if (!initialSyncDone) {
     initialSyncDone = true;
     updateSyncStatus('initial-sync', 'Creating indexes...');
@@ -378,7 +369,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     console.log('✅ 双向同步完成，应用已准备就绪');
   }
 }
-
+ 
 export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
   // Guard against SSR
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -393,10 +384,10 @@ export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
     })
   )
 }
-
+ 
 export function useSyncStatus(): [SyncStatus, string | undefined] {
   const [syncStatus, setSyncStatus] = useState<[SyncStatus, string | undefined]>(['initial-sync', 'Starting sync...']);
-
+ 
   useEffect(() => {
     const getStatus = (): [SyncStatus, string | undefined] => {
       // This will only run on the client, where localStorage is available.
@@ -405,23 +396,23 @@ export function useSyncStatus(): [SyncStatus, string | undefined] {
     };
     
     setSyncStatus(getStatus());
-
+ 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'syncStatus' && e.newValue) {
         setSyncStatus(JSON.parse(e.newValue));
       }
     };
-
+ 
     window.addEventListener('storage', handleStorageChange);
-
+ 
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
-
+ 
   return syncStatus;
 }
-
+ 
 let initialSyncDone = false;
 export function waitForInitialSyncDone() {
   return new Promise<void>((resolve) => {
@@ -444,7 +435,7 @@ export function waitForInitialSyncDone() {
         return false;
     };
     if (checkStatus()) return;
-
+ 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'syncStatus' && e.newValue) {
         if (checkStatus()) {
@@ -452,7 +443,7 @@ export function waitForInitialSyncDone() {
         }
       }
     };
-
+ 
     window.addEventListener('storage', handleStorageChange);
   });
 }
