@@ -69,10 +69,7 @@ const cleanTodoDates = (todo: Todo): Todo => {
     if (/^\d{4}-\d{2}-\d{2} 160000$/.test(date)) return date; // YYYY-MM-DD HH:mm:ss+00
     // 只有日期
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      const [year, month, day] = date.split('-').map(Number);
-      const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
-      const pad = (n: number) => n.toString().padStart(2, '0');
-      return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 160000`;
+      return localDateToDbUTC(date)?.replace(' 16:00:00+00', ' 160000') || null;
     }
     // 其他情况尝试转为 Date
     try {
