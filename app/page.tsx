@@ -214,6 +214,16 @@ export default function TodoListPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const addTodoInputRef = useRef<HTMLInputElement>(null)
 
+  // --- START: BUG FIX ---
+  // When the view changes, if it's not the calendar view,
+  // reset the newTodoDate state to null.
+  useEffect(() => {
+    if (currentView !== 'calendar') {
+      setNewTodoDate(null);
+    }
+  }, [currentView]);
+  // --- END: BUG FIX ---
+
   const todosResult = useLiveQuery('SELECT * FROM todos ORDER BY sort_order, created_time DESC')
   const listsResult = useLiveQuery('SELECT * FROM lists ORDER BY sort_order')
   const sloganResult = useLiveQuery('SELECT value FROM meta WHERE key = \'slogan\'')
@@ -348,7 +358,7 @@ export default function TodoListPage() {
       const list = lists.find((l: List) => l.name === currentView);
       if (list) listId = list.id;
     }
-    const dueDateString = newTodoDate || (currentView === 'list' ? todayStrInUTC8 : null);
+    const dueDateString = newTodoDate || (currentView === 'today' ? todayStrInUTC8 : null);
     const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
     const todoId = uuid();
     const createdTime = new Date().toISOString();
