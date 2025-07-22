@@ -147,6 +147,25 @@ function getShapeSyncState(shapeName: string): { offset?: string, handle?: strin
   }
 }
 
+// global_last_seen_lsn 本地缓存工具
+function getGlobalLastSeenLsn(shapeName: string): string | undefined {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return undefined;
+  try {
+    return localStorage.getItem(`global_last_seen_lsn:${shapeName}` ) || undefined;
+  } catch (e) {
+    console.error(`[调试] 读取 global_last_seen_lsn:${shapeName} 失败:`, e);
+    return undefined;
+  }
+}
+
+function setGlobalLastSeenLsn(shapeName: string, lsn: string) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(`global_last_seen_lsn:${shapeName}`, lsn);
+  } catch (e) {
+    console.error(`[调试] 写入 global_last_seen_lsn:${shapeName} 失败:`, e);
+  }
+}
 
 async function startBidirectionalSync(pg: PGliteWithExtensions) {
   const shapes = [
@@ -267,6 +286,12 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
             // 处理数据变更消息
             // console.log('msg',msg)
             if (!('value' in msg && 'lsn' in msg.headers)) continue;
+            const msgLsn = msg.headers.lsn;
+            if (typeof msgLsn !== 'string') continue;
+            const lastSeenLsn = getGlobalLastSeenLsn(shapeName);
+            console.log(shapeName,lastSeenLsn)
+            // 只有当本地lsn小于消息lsn时才处理
+            if (lastSeenLsn && compareLsn(lastSeenLsn, msgLsn) >= 0) continue;
             const row = msg.value;
             console.log(row)
             const operation = msg.headers?.operation;
@@ -338,6 +363,10 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
                   [row.id ?? null]
                 );
               }
+            }
+            // 处理完后，更新本地 global_last_seen_lsn
+            if (typeof msgLsn === 'string') {
+              setGlobalLastSeenLsn(shapeName, msgLsn);
             }
           }
           console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
@@ -446,4 +475,14 @@ export function waitForInitialSyncDone() {
  
     window.addEventListener('storage', handleStorageChange);
   });
+}
+
+// lsn 字符串比较工具（假设 lsn 是字符串，可以直接比较；如有特殊格式可扩展）
+function compareLsn(a: string, b: string): number {
+  // 兼容 pg lsn 格式如 '0/16B6C50'，先按长度再按字典序
+  if (a === b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
+  if (a.length !== b.length) return a.length - b.length;
+  return a < b ? -1 : 1;
 }
