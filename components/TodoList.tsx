@@ -1,6 +1,7 @@
 // components/TodoList.tsx
-import React, { memo, useRef, useEffect, useState } from 'react';
+import React, { memo, useRef, useEffect, useState, forwardRef } from 'react';
 import Image from 'next/image';
+import { TransitionGroup, CSSTransition } from 'react-transition-group';
 import type { Todo } from '../lib/types';
 
 // Helper function moved here for encapsulation
@@ -31,18 +32,37 @@ interface TodoItemProps {
   onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
+  delay: number; // 新增
+  animationTrigger: number; // 新增
 }
 
-const TodoItem = memo<TodoItemProps>(({ 
-  todo, 
-  currentView, 
-  onToggleComplete, 
-  onDelete, 
-  onRestore, 
-  onSelectTodo 
-}) => {
+const TodoItem = memo(forwardRef<HTMLLIElement, TodoItemProps>(({
+  todo,
+  currentView,
+  onToggleComplete,
+  onDelete,
+  onRestore,
+  onSelectTodo,
+  delay,
+  animationTrigger
+}, ref) => {
+  // 新增：用于控制动画启动
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    setShow(false);
+    const timer = setTimeout(() => setShow(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay, animationTrigger]);
+
   return (
-    <li className={`todo-item ${todo.deleted ? 'deleted' : ''}`} onClick={() => onSelectTodo(todo)}>
+    <li
+      ref={ref}
+      className={`todo-item${todo.deleted ? ' deleted' : ''} ${show ? 'fade-in' : ''}`}
+      data-delay={delay}
+      onClick={() => onSelectTodo(todo)}
+      style={{ opacity: show ? 1 : 0 }}
+    >
       <div className={`todo-content ${todo.completed ? "completed" : ""}`}>
         {todo.deleted ? (
           <button className="todo-btn btn-restore" onClick={(e) => { e.stopPropagation(); onRestore(todo.id); }}>
@@ -68,7 +88,7 @@ const TodoItem = memo<TodoItemProps>(({
       </div>
     </li>
   );
-});
+}));
 TodoItem.displayName = 'TodoItem';
 
 interface TodoListProps {
@@ -90,6 +110,20 @@ const TodoListComponent: React.FC<TodoListProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(400);
+
+  // 为每个 todo 生成一个 ref
+  const nodeRefs = useRef<Record<string, React.RefObject<HTMLLIElement | null>>>({});
+  todos.forEach(todo => {
+    if (!nodeRefs.current[todo.id]) {
+      nodeRefs.current[todo.id] = React.createRef<HTMLLIElement>();
+    }
+  });
+
+  // 新增：切换 list 时触发动画
+  const [animationTrigger, setAnimationTrigger] = useState(0);
+  useEffect(() => {
+    setAnimationTrigger(t => t + 1);
+  }, [currentView, todos.length]);
 
   // Update container height based on available space
   useEffect(() => {
@@ -131,19 +165,29 @@ const TodoListComponent: React.FC<TodoListProps> = ({
         overflowX: 'hidden'
       }}
     >
-      <ul className="todo-list">
-        {todos.map((todo) => (
-          <TodoItem
+      <TransitionGroup component="ul" className="todo-list">
+        {todos.map((todo, idx) => (
+          <CSSTransition
             key={todo.id}
-            todo={todo}
-            currentView={currentView}
-            onToggleComplete={onToggleComplete}
-            onDelete={onDelete}
-            onRestore={onRestore}
-            onSelectTodo={onSelectTodo}
-          />
+            timeout={400}
+            classNames="todo-fade"
+            appear
+            nodeRef={nodeRefs.current[todo.id]}
+          >
+            <TodoItem
+              ref={nodeRefs.current[todo.id]}
+              todo={todo}
+              currentView={currentView}
+              onToggleComplete={onToggleComplete}
+              onDelete={onDelete}
+              onRestore={onRestore}
+              onSelectTodo={onSelectTodo}
+              delay={idx * 150}
+              animationTrigger={animationTrigger}
+            />
+          </CSSTransition>
         ))}
-      </ul>
+      </TransitionGroup>
     </div>
   );
 };

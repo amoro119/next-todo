@@ -71,6 +71,7 @@
     "postgres": "^3.4.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-transition-group": "^4.4.5",
     "tree-kill": "^1.2.2",
     "uuid": "^11.1.0",
     "zod": "^3.25.74"
@@ -88,6 +89,7 @@
     "@types/pg": "^8.15.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-transition-group": "^4.4.12",
     "@types/uuid": "^10.0.0",
     "concurrently": "^8.2.2",
     "dotenv-cli": "^8.0.0",

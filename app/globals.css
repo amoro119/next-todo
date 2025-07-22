@@ -22,3 +22,44 @@
     background-size: 1em;
     padding-right: 2.5rem;
 }
+
+/* 逐个出现动画的核心样式 */
+.todo-item {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.4s cubic-bezier(0.4,0,0.2,1),
+    transform 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* JS 控制的 class，动画触发 */
+.todo-item.fade-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 兼容 CSSTransition 的 classNames（可选，增强动画流畅性） */
+.todo-fade-appear,
+.todo-fade-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+.todo-fade-appear-active,
+.todo-fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 0.4s cubic-bezier(0.4,0,0.2,1),
+    transform 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+.todo-fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+.todo-fade-exit-active {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.3s cubic-bezier(0.4,0,0.2,1),
+    transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}
