@@ -62,7 +62,7 @@ const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
         className={currentView === 'today' ? 'active' : ''}
         onClick={() => setCurrentView('today')}
       >
-        今日待办{todayCount !== undefined ? ` (${todayCount})` : ''}
+        今日待办
       </button>
       <button onClick={() => handleSetCurrentView('calendar')} className={currentView === 'calendar' ? 'active' : ''}>
         日历视图

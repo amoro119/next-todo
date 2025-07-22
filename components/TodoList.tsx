@@ -32,8 +32,8 @@ interface TodoItemProps {
   onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
-  delay: number; // 新增
-  animationTrigger: number; // 新增
+  delay: number;
+  animationTrigger: number;
 }
 
 const TodoItem = memo(forwardRef<HTMLLIElement, TodoItemProps>(({
@@ -46,7 +46,6 @@ const TodoItem = memo(forwardRef<HTMLLIElement, TodoItemProps>(({
   delay,
   animationTrigger
 }, ref) => {
-  // 新增：用于控制动画启动
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -76,7 +75,9 @@ const TodoItem = memo(forwardRef<HTMLLIElement, TodoItemProps>(({
           </button>
         )}
 
-        {todo.list_name && <span className="todo-list-name">[{todo.list_name}] </span>}
+        {(currentView === 'inbox' || currentView === 'today') && todo.list_name && (
+          <span className="todo-list-name">[{todo.list_name}] </span>
+        )}
         {todo.title}
         {todo.due_date && currentView !== 'list' && !todo.deleted && <span className="todo-due-date">{utcToLocalDateString(todo.due_date)}</span>}
 
@@ -111,7 +112,6 @@ const TodoListComponent: React.FC<TodoListProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(400);
 
-  // 为每个 todo 生成一个 ref
   const nodeRefs = useRef<Record<string, React.RefObject<HTMLLIElement | null>>>({});
   todos.forEach(todo => {
     if (!nodeRefs.current[todo.id]) {
@@ -119,19 +119,17 @@ const TodoListComponent: React.FC<TodoListProps> = ({
     }
   });
 
-  // 新增：切换 list 时触发动画
   const [animationTrigger, setAnimationTrigger] = useState(0);
   useEffect(() => {
     setAnimationTrigger(t => t + 1);
   }, [currentView, todos.length]);
 
-  // Update container height based on available space
   useEffect(() => {
     const updateHeight = () => {
       const container = document.querySelector('.todo-list-box');
       if (container) {
         const rect = container.getBoundingClientRect();
-        const availableHeight = window.innerHeight - rect.top - 100; // Account for header and other elements
+        const availableHeight = window.innerHeight - rect.top - 100;
         setContainerHeight(Math.max(300, Math.min(600, availableHeight)));
       }
     };
@@ -144,7 +142,7 @@ const TodoListComponent: React.FC<TodoListProps> = ({
   if (todos.length === 0) {
     const emptyMessage = () => {
       if (currentView === 'recycle') return <div>回收站是空的！🗑️</div>;
-      if (currentView === 'list') return <div>今日无待办事项！🎉</div>;
+      if (currentView === 'today') return <div>今日无待办事项！🎉</div>;
       if (currentView === 'inbox') return <div>收件箱是空的！👍</div>;
       return <div>此清单中没有待办事项！📝</div>;
     };

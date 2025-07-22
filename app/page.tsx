@@ -200,10 +200,8 @@ type LastAction =
 const camelToSnake = (str: string) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 
 export default function TodoListPage() {
-  // 获取数据库API
   const db = getDatabaseAPI();
   
-  // --- 状态管理 ---
   const [currentView, setCurrentView] = useState<string>('today')
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
   const [isManageListsOpen, setIsManageListsOpen] = useState(false)
@@ -216,12 +214,10 @@ export default function TodoListPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const addTodoInputRef = useRef<HTMLInputElement>(null)
 
-  // --- 数据查询 ---
   const todosResult = useLiveQuery('SELECT * FROM todos ORDER BY sort_order, created_time DESC')
   const listsResult = useLiveQuery('SELECT * FROM lists ORDER BY sort_order')
   const sloganResult = useLiveQuery('SELECT value FROM meta WHERE key = \'slogan\'')
 
-  // --- 数据标准化 ---
   const todos = useMemo(() => {
     if (!todosResult?.rows) return []
     return todosResult.rows.map(normalizeTodo)
@@ -232,39 +228,61 @@ export default function TodoListPage() {
     return listsResult.rows.map(normalizeList)
   }, [listsResult?.rows])
 
-  // 从数据库更新slogan
   useEffect(() => {
     if (sloganResult?.rows?.[0]?.value) {
       setSlogan(String(sloganResult.rows[0].value))
     }
   }, [sloganResult?.rows])
 
-  // --- 计算属性 ---
+  // --- FIX START: Create todos with list names ---
+  const todosWithListNames = useMemo(() => {
+    const listMap = new Map(lists.map(list => [list.id, list.name]));
+    return todos.map(todo => ({
+      ...todo,
+      list_name: todo.list_id ? listMap.get(todo.list_id) || null : null
+    }));
+  }, [todos, lists]);
+  // --- FIX END ---
+
   const todayStrInUTC8 = useMemo(() => dateCache.getTodayString(), [])
   
+  // --- FIX: Use todosWithListNames for all subsequent calculations ---
   const uncompletedTodos = useMemo(() => 
-    todos.filter((t: Todo) => !t.completed && !t.deleted), [todos])
+    todosWithListNames.filter((t: Todo) => !t.completed && !t.deleted), [todosWithListNames])
   
   const completedTodos = useMemo(() => 
-    todos.filter((t: Todo) => t.completed && !t.deleted), [todos])
+    todosWithListNames.filter((t: Todo) => t.completed && !t.deleted), [todosWithListNames])
   
   const recycledTodos = useMemo(() => 
-    todos.filter((t: Todo) => t.deleted), [todos])
+    todosWithListNames.filter((t: Todo) => t.deleted), [todosWithListNames])
 
   const displayTodos = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     switch (currentView) {
       case 'inbox':
-        return uncompletedTodos.filter((t: Todo) => !t.list_id)
+        // --- FIX: Correct inbox logic ---
+        return uncompletedTodos
+          .filter((t: Todo) => !t.list_id || !!t.due_date)
+          .sort((a, b) => {
+            const aHasDueDate = !!a.due_date;
+            const bHasDueDate = !!b.due_date;
+            if (!aHasDueDate && bHasDueDate) return -1;
+            if (aHasDueDate && !bHasDueDate) return 1;
+            if (aHasDueDate && bHasDueDate) {
+              return new Date(b.due_date!).getTime() - new Date(a.due_date!).getTime();
+            }
+            return 0;
+          });
       case 'completed':
         return completedTodos
       case 'recycle':
         return recycledTodos
       case 'today':
-        // 今日待办应显示所有今日任务（无论是否已完成），未完成任务排在前面
-        return todos
+        return todosWithListNames
           .filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
           .sort((a, b) => {
-            // 未完成优先，已完成靠后
             if (a.completed === b.completed) return 0;
             return a.completed ? 1 : -1;
           });
@@ -274,8 +292,8 @@ export default function TodoListPage() {
         const list = lists.find((l: List) => l.name === currentView)
         return list ? uncompletedTodos.filter((t: Todo) => t.list_id === list.id) : uncompletedTodos
     }
-  }, [currentView, uncompletedTodos, completedTodos, recycledTodos, lists, todayStrInUTC8, todos])
-
+  }, [currentView, uncompletedTodos, completedTodos, recycledTodos, lists, todayStrInUTC8, todosWithListNames])
+  
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const todo of uncompletedTodos) {
@@ -301,7 +319,6 @@ export default function TodoListPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // --- 事件处理函数 ---
   const handleEditSlogan = useCallback(() => {
     setOriginalSlogan(slogan);
     setIsEditingSlogan(true);
@@ -331,17 +348,7 @@ export default function TodoListPage() {
       const list = lists.find((l: List) => l.name === currentView);
       if (list) listId = list.id;
     }
-    // 修复: 在 today 视图下，dueDateString 应为 todayStrInUTC8
-    let dueDateString = newTodoDate;
-    if (!dueDateString) {
-      if (currentView === 'list') {
-        dueDateString = todayStrInUTC8;
-      } else if (currentView === 'today') {
-        dueDateString = todayStrInUTC8;
-      } else {
-        dueDateString = null;
-      }
-    }
+    const dueDateString = newTodoDate || (currentView === 'list' ? todayStrInUTC8 : null);
     const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
     const todoId = uuid();
     const createdTime = new Date().toISOString();
@@ -463,7 +470,6 @@ export default function TodoListPage() {
     const setClauses = keys.map((key, i) => `"${key}" = $${i + 2}`).join(', ');
     const params = [listId, ...Object.values(updates)];
     await db.write(`UPDATE lists SET ${setClauses} WHERE id = $1`, params);
-    // 补全 name 字段，防止同步时 name 为 null
     const list = lists.find(l => l.id === listId);
     const fullUpdates = { ...updates };
     if (list && (fullUpdates.name === undefined || fullUpdates.name === null)) {
@@ -513,7 +519,7 @@ export default function TodoListPage() {
           await db.transaction(queries);
           setTimeout(async () => {
             try { await sendChangesToServer({ lists: [], todos: lastActionData.map(d => createTodoChange(d.id, {
-                  completed_time: d.previousCompletedTime, completed: d.previousCompleted,
+                  completed_time: lastAction.data.previousCompletedTime, completed: d.previousCompleted,
                 })) });
             } catch (error) { console.error('Failed to sync undo batch completion:', error); }
           }, 1000);
@@ -628,7 +634,6 @@ export default function TodoListPage() {
     URL.revokeObjectURL(url);
   }, [todos, recycledTodos]);
 
-  // --- 渲染逻辑 ---
   return (
     <>
       <div className="bg-pattern"></div>
@@ -644,7 +649,7 @@ export default function TodoListPage() {
                   ref={addTodoInputRef}
                   type="text"
                   className="add-content"
-                  placeholder={newTodoDate ? `为 ${newTodoDate} 添加新事项...` : (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'today'&& currentView !== 'recycle') ? `在"${currentView}"中新增待办...` : '新增待办事项...'}
+                  placeholder={newTodoDate ? `为 ${newTodoDate} 添加新事项...` : (currentView !== 'today' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') ? `在"${currentView}"中新增待办...` : '新增待办事项...'}
                   value={newTodoTitle}
                   onChange={(e) => setNewTodoTitle(e.target.value)}
                   onKeyUp={(e) => e.key === 'Enter' && handleAddTodo()}
@@ -652,14 +657,15 @@ export default function TodoListPage() {
                 <button className="btn submit-btn" type="button" onClick={handleAddTodo}>提交</button>
               </div>
             </div>
-          </div> 
+          </div>
 
           <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}> 
             <ViewSwitcher
               currentView={currentView}
               setCurrentView={setCurrentView}
               lists={lists}
-              inboxCount={todos.filter(t => !t.list_id && !t.completed && !t.deleted).length}
+              inboxCount={uncompletedTodos.filter(t => !t.list_id || !!t.due_date).length}
+              todayCount={todosWithListNames.filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8).length}
               todosByList={todosByList}
             />
 
@@ -700,7 +706,7 @@ export default function TodoListPage() {
               </div>
             ) : (
               <CalendarView
-                todos={todos}
+                todos={todosWithListNames}
                 onAddTodo={handleAddTodoFromCalendar}
                 onUpdateTodo={handleUpdateTodo}
                 onOpenModal={setSelectedTodo}
@@ -719,6 +725,7 @@ export default function TodoListPage() {
               showMarkAllCompleted={displayTodos.some((t: Todo) => !t.completed_time)}
               onManageLists={() => setIsManageListsOpen(true)}
               onImport={handleImport}
+              onExport={handleExport}
             />
           </div>
 
@@ -749,10 +756,9 @@ export default function TodoListPage() {
       </div>
     </>
   )
-}// 扩展 Window 接口以包含 electron 属性
+}
 declare global {
   interface Window {
     electron: any;
   }
 }
-
