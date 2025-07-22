@@ -331,7 +331,17 @@ export default function TodoListPage() {
       const list = lists.find((l: List) => l.name === currentView);
       if (list) listId = list.id;
     }
-    const dueDateString = newTodoDate || (currentView === 'list' ? todayStrInUTC8 : null);
+    // 修复: 在 today 视图下，dueDateString 应为 todayStrInUTC8
+    let dueDateString = newTodoDate;
+    if (!dueDateString) {
+      if (currentView === 'list') {
+        dueDateString = todayStrInUTC8;
+      } else if (currentView === 'today') {
+        dueDateString = todayStrInUTC8;
+      } else {
+        dueDateString = null;
+      }
+    }
     const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
     const todoId = uuid();
     const createdTime = new Date().toISOString();
@@ -634,7 +644,7 @@ export default function TodoListPage() {
                   ref={addTodoInputRef}
                   type="text"
                   className="add-content"
-                  placeholder={newTodoDate ? `为 ${newTodoDate} 添加新事项...` : (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') ? `在"${currentView}"中新增待办...` : '新增待办事项...'}
+                  placeholder={newTodoDate ? `为 ${newTodoDate} 添加新事项...` : (currentView !== 'list' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'today'&& currentView !== 'recycle') ? `在"${currentView}"中新增待办...` : '新增待办事项...'}
                   value={newTodoTitle}
                   onChange={(e) => setNewTodoTitle(e.target.value)}
                   onKeyUp={(e) => e.key === 'Enter' && handleAddTodo()}
@@ -642,7 +652,7 @@ export default function TodoListPage() {
                 <button className="btn submit-btn" type="button" onClick={handleAddTodo}>提交</button>
               </div>
             </div>
-          </div>
+          </div> 
 
           <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}> 
             <ViewSwitcher
