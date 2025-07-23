@@ -134,19 +134,6 @@ async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
   }
 }
 
-// shape 同步状态本地存储
-function getShapeSyncState(shapeName: string): { offset?: string, handle?: string } {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(`shapeSyncState:${shapeName}`);
-    console.log(`[调试] 读取localStorage shapeSyncState:${shapeName} =`, raw);
-    return raw ? JSON.parse(raw) : {};
-  } catch (e) {
-    console.error(`[调试] 解析localStorage shapeSyncState:${shapeName} 失败:`, e);
-    return {};
-  }
-}
-
 // global_last_seen_lsn 本地缓存工具
 function getGlobalLastSeenLsn(shapeName: string): string | undefined {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') return undefined;
@@ -281,15 +268,20 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
             if (msg.headers?.control === 'must-refetch') {
               console.warn(`[must-refetch] 收到 must-refetch 控制消息，需要全量同步！`);
               // 你可以在这里触发自动重启同步流或提示用户刷新页面
-              return; // 跳出for循环，跳过所有后续消息处理
+              shouldInitialUpsert = true;
             }
             // 处理数据变更消息
-            // console.log('msg',msg)
-            if (!('value' in msg && 'lsn' in msg.headers)) continue;
-            const msgLsn = msg.headers.lsn;
+            console.log('msg', msg.headers)
+            const msgLsn = msg.headers.global_last_seen_lsn;
             if (typeof msgLsn !== 'string') continue;
+            setGlobalLastSeenLsn(shapeName, msgLsn);
             const lastSeenLsn = getGlobalLastSeenLsn(shapeName);
             console.log(shapeName,lastSeenLsn)
+            if (lastSeenLsn !== msg.headers.global_last_seen_lsn) {
+              console.warn(`lsn不一致，需要全量同步！`);
+              // shouldInitialUpsert = true;
+            }
+            if (!('value' in msg && 'lsn' in msg.headers)) continue;
             // 只有当本地lsn小于消息lsn时才处理
             if (lastSeenLsn && compareLsn(lastSeenLsn, msgLsn) >= 0) continue;
             const row = msg.value;
@@ -365,9 +357,9 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
               }
             }
             // 处理完后，更新本地 global_last_seen_lsn
-            if (typeof msgLsn === 'string') {
-              setGlobalLastSeenLsn(shapeName, msgLsn);
-            }
+            // if (typeof msgLsn === 'string') {
+            //   setGlobalLastSeenLsn(shapeName, msgLsn);
+            // }
           }
           console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
         })();
