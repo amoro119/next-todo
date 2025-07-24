@@ -5,70 +5,35 @@ import { PGliteWithSync } from '@electric-sql/pglite-sync'
 import { postInitialSync } from '../db/migrations-client'
 import { useEffect, useState } from 'react'
 import { ShapeStream, Shape } from '@electric-sql/client';
+import { getAuthToken, getCachedAuthToken, invalidateToken } from '../lib/auth'; // <--- 导入新的认证模块
 
 type SyncStatus = 'initial-sync' | 'done' | 'error'
 
 type PGliteWithExtensions = PGliteWithLive & PGliteWithSync
 
-// --- 认证逻辑 ---
-let cachedElectricToken: string | null = null;
-
-export function invalidateElectricToken() {
-  console.log("Invalidating cached Electric token.");
-  cachedElectricToken = null;
-}
-
-export async function getElectricToken(): Promise<string> {
-  if (cachedElectricToken) {
-    return cachedElectricToken;
-  }
-
-  try {
-    console.log("Fetching new ElectricSQL auth token from token-issuer function...");
-    
-    const tokenIssuerUrl = process.env.NEXT_PUBLIC_TOKEN_ISSUER_URL;
-    if (!tokenIssuerUrl) {
-      throw new Error("NEXT_PUBLIC_TOKEN_ISSUER_URL is not set.");
-    }
-
-    const response = await fetch(tokenIssuerUrl);
-    if (!response.ok) {
-      throw new Error(`获取Electric令牌失败: ${response.status} ${response.statusText}`);
-    }
-    const { token } = await response.json();
-    if (!token) {
-      throw new Error('在响应中未找到令牌');
-    }
-    cachedElectricToken = token;
-    return token;
-  } catch (error) {
-    console.error("获取Electric令牌时发生严重错误:", error);
-    invalidateElectricToken();
-    throw new Error(`无法获取认证令牌: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-export function getCachedElectricToken() {
-  return cachedElectricToken;
-}
+// --- 认证逻辑现在已移至 lib/auth.ts ---
 
 export async function startSync(pg: PGliteWithExtensions) {
   console.log('Starting ElectricSQL sync...')
   updateSyncStatus('initial-sync', 'Starting sync...')
-  
+
   try {
     // 获取认证令牌
     console.log("正在获取同步认证令牌...");
-    await getElectricToken(); 
-    if (!cachedElectricToken) {
+    // 调用新的、健壮的令牌获取函数
+    await getAuthToken();
+    const token = getCachedAuthToken();
+
+    if (!token) {
       throw new Error("认证失败：未能获取到有效的同步令牌。");
     }
     console.log("认证成功，令牌已缓存。");
 
+
     // 初始化ElectricSQL系统表
     console.log('Initializing ElectricSQL system tables...')
     await initializeElectricSystemTables(pg)
-    
+
     // 检查本地是否首次同步（无数据时才清理订阅）
     const listsCountRes = await pg.query('SELECT COUNT(*) as count FROM lists');
     const todosCountRes = await pg.query('SELECT COUNT(*) as count FROM todos');
@@ -81,12 +46,14 @@ export async function startSync(pg: PGliteWithExtensions) {
     } else {
       console.log('本地已有数据，跳过订阅清理')
     }
-    
+
     // 启动非破坏性的双向同步
     console.log('Starting non-destructive bidirectional sync...')
     await startBidirectionalSync(pg)
   } catch (error) {
     console.error('Sync failed:', error)
+    // 当认证失败时，确保清除缓存的令牌
+    invalidateToken();
     const errorMessage = error instanceof Error ? error.message : '同步失败，但应用仍可使用';
     if (errorMessage.includes('认证失败') || errorMessage.includes('认证令牌')) {
       updateSyncStatus('error', '认证失败，无法同步数据');
@@ -96,12 +63,19 @@ export async function startSync(pg: PGliteWithExtensions) {
   }
 }
 
+// ... 文件其余部分保持不变 (initializeElectricSystemTables, cleanupOldSubscriptions, 等)
+// ... 为了简洁，这里省略了未更改的代码，请保留你文件中的其余部分
+
+// <--- 请确保将 getElectricToken, invalidateElectricToken 和 getCachedElectricToken 的旧实现从这个文件中删除 --->
+// <--- 下面的 startBidirectionalSync, updateSyncStatus, useSyncStatus 等函数保持不变 --->
+
+
 async function initializeElectricSystemTables(pg: PGliteWithExtensions) {
   console.log('Waiting for ElectricSQL to initialize system tables...')
-  
+
   // 等待一段时间让ElectricSQL初始化
   await new Promise(resolve => setTimeout(resolve, 2000))
-  
+
   // 尝试创建一个简单的查询来触发ElectricSQL系统表初始化
   try {
     await pg.query('SELECT 1')
@@ -109,7 +83,7 @@ async function initializeElectricSystemTables(pg: PGliteWithExtensions) {
   } catch {
     console.log('ElectricSQL still initializing, continuing...')
   }
-  
+
   // 再等待一段时间确保系统表创建完成
   await new Promise(resolve => setTimeout(resolve, 1000))
 }
@@ -117,7 +91,7 @@ async function initializeElectricSystemTables(pg: PGliteWithExtensions) {
 async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
   try {
     console.log('Cleaning up old sync subscriptions...')
-    
+
     // 只清理旧的同步订阅，不清空数据
     try {
       await pg.sync.deleteSubscription('lists')
@@ -127,12 +101,12 @@ async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
     } catch (error) {
       console.log('No old subscriptions to delete or error:', error instanceof Error ? error.message : String(error))
     }
-    
+
     // 等待一小段时间确保订阅删除完成
     await new Promise(resolve => setTimeout(resolve, 100))
-    
+
     console.log('Old subscriptions cleanup completed')
-    
+
   } catch (error) {
     console.log('Cleanup old subscriptions error:', error)
   }
@@ -171,7 +145,7 @@ export async function getFullShapeRows({
   columns: string[],
   electricProxyUrl: string,
   token: string
-}): Promise<unknown[]> {   
+}): Promise<unknown[]> {
   const fullShapeStream = new ShapeStream({
     url: `${electricProxyUrl}/v1/shape`,
     params: {
@@ -322,7 +296,8 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
   if (!electricProxyUrl) {
     throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
   }
-  if (!cachedElectricToken) {
+  const token = getCachedAuthToken();
+  if (!token) {
     throw new Error("Authentication token is not available for sync.");
   }
 
@@ -337,7 +312,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         columns: columns
       },
       headers: {
-        'Authorization': `Bearer ${cachedElectricToken}`
+        'Authorization': `Bearer ${token}`
       }
     });
     // 2. 创建 Shape 对象
@@ -361,7 +336,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         table: shapeName,
         columns,
         electricProxyUrl,
-        token: cachedElectricToken!
+        token: token!
       });
       for (const rowRaw of rows) {
         const row = rowRaw as Record<string, unknown>;
@@ -439,7 +414,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
             // 只有当本地lsn小于消息lsn时才处理
             if (rowLsn && compareLsn(String(rowLsn), String(msgLsn)) >= 0) continue;
             const row = msg.value;
-            console.log('row',row)
+            // console.log('row',row)
             const operation = msg.headers?.operation;
             if (!operation) continue;
             if (shapeName === 'lists') {
@@ -531,7 +506,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       console.error(`❌ 验证 ${shapeName} 失败:`, error);
     }
   }
- 
+
   if (!initialSyncDone) {
     initialSyncDone = true;
     updateSyncStatus('initial-sync', 'Creating indexes...');
@@ -540,7 +515,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     console.log('✅ 双向同步完成，应用已准备就绪');
   }
 }
- 
+
 export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
   // Guard against SSR
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -555,35 +530,35 @@ export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
     })
   )
 }
- 
+
 export function useSyncStatus(): [SyncStatus, string | undefined] {
   const [syncStatus, setSyncStatus] = useState<[SyncStatus, string | undefined]>(['initial-sync', 'Starting sync...']);
- 
+
   useEffect(() => {
     const getStatus = (): [SyncStatus, string | undefined] => {
       // This will only run on the client, where localStorage is available.
       const currentSyncStatusJson = localStorage.getItem('syncStatus');
       return currentSyncStatusJson ? JSON.parse(currentSyncStatusJson) : ['initial-sync', 'Starting sync...'];
     };
-    
+
     setSyncStatus(getStatus());
- 
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'syncStatus' && e.newValue) {
         setSyncStatus(JSON.parse(e.newValue));
       }
     };
- 
+
     window.addEventListener('storage', handleStorageChange);
- 
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
- 
+
   return syncStatus;
 }
- 
+
 let initialSyncDone = false;
 export function waitForInitialSyncDone() {
   return new Promise<void>((resolve) => {
@@ -606,7 +581,7 @@ export function waitForInitialSyncDone() {
         return false;
     };
     if (checkStatus()) return;
- 
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'syncStatus' && e.newValue) {
         if (checkStatus()) {
@@ -614,7 +589,7 @@ export function waitForInitialSyncDone() {
         }
       }
     };
- 
+
     window.addEventListener('storage', handleStorageChange);
   });
 }
