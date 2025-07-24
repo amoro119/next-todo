@@ -1,4 +1,6 @@
 // lib/sync/NetworkMonitor.ts
+import { getAuthToken } from '../auth';
+
 export interface NetworkMonitor {
   // 开始监控网络状态
   startMonitoring(): void
@@ -93,30 +95,38 @@ export class NetworkMonitorImpl implements NetworkMonitor {
 
   async testServerConnection(): Promise<boolean> {
     try {
-      const tokenIssuerUrl = process.env.NEXT_PUBLIC_TOKEN_ISSUER_URL;
-      if (!tokenIssuerUrl) {
-        console.warn('NetworkMonitor: TOKEN_ISSUER_URL not configured, assuming server is reachable');
+      // 通过 getAuthToken 获取 token（已自动缓存）
+      const token = await getAuthToken();
+      if (!token) {
+        console.warn('NetworkMonitor: 无法获取认证令牌，假定服务器可达');
+        return true;
+      }
+
+      // 使用独立的健康检查地址
+      const healthcheckUrl = process.env.NEXT_PUBLIC_HEALTHCHECK_URL;
+      if (!healthcheckUrl) {
+        console.warn('NetworkMonitor: HEALTHCHECK_URL 未配置，假定服务器可达');
         return true;
       }
 
       const startTime = Date.now();
-      
-      // 使用AbortController实现超时
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.serverTestTimeout);
-      
-      const response = await fetch(tokenIssuerUrl, {
-        method: 'HEAD', // 使用HEAD请求减少数据传输
+
+      // 携带缓存token进行健康检查
+      const response = await fetch(healthcheckUrl, {
+        method: 'HEAD',
         signal: controller.signal,
-        cache: 'no-cache'
+        cache: 'no-cache',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
-      
+
       clearTimeout(timeoutId);
-      
       const responseTime = Date.now() - startTime;
       const isReachable = response.ok;
-      
-      // 更新缓存状态
+
       this.updateNetworkStatus({
         isOnline: navigator.onLine,
         serverReachable: isReachable,
@@ -124,17 +134,16 @@ export class NetworkMonitorImpl implements NetworkMonitor {
         reconnectAttempts: isReachable ? 0 : this.reconnectAttempts + 1,
         lastChecked: new Date().toISOString()
       });
-      
+
       if (isReachable) {
         this.reconnectAttempts = 0;
       } else {
         this.reconnectAttempts++;
       }
-      
+
       return isReachable;
     } catch (error) {
       console.warn('NetworkMonitor: Server connection test failed:', error);
-      
       this.reconnectAttempts++;
       this.updateNetworkStatus({
         isOnline: navigator.onLine,
@@ -142,7 +151,6 @@ export class NetworkMonitorImpl implements NetworkMonitor {
         reconnectAttempts: this.reconnectAttempts,
         lastChecked: new Date().toISOString()
       });
-      
       return false;
     }
   }

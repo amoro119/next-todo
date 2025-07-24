@@ -1,5 +1,6 @@
 // lib/changes.ts
 import { z } from 'zod'
+import { getAuthToken } from './auth'; // <--- 导入新的认证模块
 
 export const listChangeSchema = z.object({
   id: z.string(),
@@ -42,21 +43,10 @@ export type ChangeSet = z.infer<typeof changeSetSchema>
 export async function sendChangesToServer(changes: ChangeSet): Promise<void> {
   try {
     console.log('Starting manual sync to server...');
-    
+
     // 获取认证令牌
-    let authToken: string;
-    try {
-      const tokenResponse = await fetch('https://uurjvmztzzresuplaiuw.supabase.co/functions/v1/token-issuer');
-      if (!tokenResponse.ok) {
-        throw new Error(`Failed to get auth token: ${tokenResponse.status}`);
-      }
-      const { token } = await tokenResponse.json();
-      authToken = token;
-    } catch (tokenError) {
-      console.error('Failed to get auth token:', tokenError);
-      throw new Error('Failed to get authentication token');
-    }
-    
+    const authToken = await getAuthToken(); // <--- 使用新的认证模块
+
     // 使用远程的 Supabase write-server Edge Function
     const response = await fetch('https://uurjvmztzzresuplaiuw.supabase.co/functions/v1/write-server', {
       method: 'POST',
@@ -78,7 +68,7 @@ export async function sendChangesToServer(changes: ChangeSet): Promise<void> {
     }
 
     console.log('Changes sent to server successfully')
-    
+
   } catch (error) {
     console.error('Failed to send changes to server:', error)
     throw error

@@ -58,6 +58,7 @@
     "@electric-sql/react": "^1.0.5",
     "@hono/node-server": "^1.15.0",
     "@supabase/supabase-js": "^2.50.3",
+    "async-mutex": "^0.5.0",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
     "dompurify": "^3.1.6",
