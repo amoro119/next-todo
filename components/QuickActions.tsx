@@ -1,5 +1,7 @@
 // components/QuickActions.tsx
 import { useState, useRef } from 'react';
+import type { PGliteWithLive } from '@electric-sql/pglite/live';
+import type { PGliteWithSync } from '@electric-sql/pglite-sync';
 
 interface QuickActionsProps {
   currentView: string;
@@ -36,6 +38,8 @@ export default function QuickActions({
     // Reset input value to allow selecting the same file again
     event.target.value = ''; 
   };
+
+  type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
 
   return (
     <>
@@ -116,6 +120,61 @@ export default function QuickActions({
                   type="button" 
                   className="btn-small action-repl" 
                   onClick={() => window.open('/pg-repl-standalone.html', '_blank')} 
+                />
+              </li>
+              <li>
+                <input 
+                  value="手动全量同步" 
+                  type="button" 
+                  className="btn-small action-sync" 
+                  onClick={async () => {
+                    try {
+                      const win = window as unknown as { pg?: PGliteWithExtensions };
+                      const pg = win.pg;
+                      if (!pg) {
+                        alert('数据库未初始化，无法同步');
+                        return;
+                      }
+                      const mod = await import('../app/sync');
+                      if (mod && typeof mod.forceFullTableSync === 'function') {
+                        const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
+                        let token = mod.getCachedElectricToken && mod.getCachedElectricToken();
+                        if (!token && mod.getElectricToken) {
+                          token = await mod.getElectricToken();
+                        }
+                        if (!electricProxyUrl || !token) {
+                          alert('缺少同步配置');
+                          return;
+                        }
+                        // lists表
+                        await mod.forceFullTableSync({
+                          table: 'lists',
+                          columns: ['id', 'name', 'sort_order', 'is_hidden', 'modified'],
+                          electricProxyUrl,
+                          token,
+                          pg,
+                          upsertSql: `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                            ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`
+                        });
+                        // todos表
+                        await mod.forceFullTableSync({
+                          table: 'todos',
+                          columns: ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id'],
+                          electricProxyUrl,
+                          token,
+                          pg,
+                          upsertSql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`
+                        });
+                        alert('全量同步已完成');
+                      } else {
+                        alert('找不到同步方法');
+                      }
+                    } catch (e) {
+                      alert('同步失败: ' + (e instanceof Error ? e.message : e));
+                    }
+                  }}
                 />
               </li>
             </ul>
