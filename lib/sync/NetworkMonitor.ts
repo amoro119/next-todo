@@ -103,7 +103,7 @@ export class NetworkMonitorImpl implements NetworkMonitor {
       }
 
       // 使用独立的健康检查地址
-      const healthcheckUrl = process.env.NEXT_PUBLIC_HEALTHCHECK_URL;
+      const healthcheckUrl = process.env.NEXT_PUBLIC_WRITE_SERVER_URL;
       if (!healthcheckUrl) {
         console.warn('NetworkMonitor: HEALTHCHECK_URL 未配置，假定服务器可达');
         return true;
