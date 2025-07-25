@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import type { PGliteWithLive } from '@electric-sql/pglite/live';
 import type { PGliteWithSync } from '@electric-sql/pglite-sync';
+import { getAuthToken, getCachedAuthToken, invalidateToken } from '../lib/auth';
 
 interface QuickActionsProps {
   currentView: string;
@@ -138,9 +139,9 @@ export default function QuickActions({
                       const mod = await import('../app/sync');
                       if (mod && typeof mod.forceFullTableSync === 'function') {
                         const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
-                        let token = mod.getCachedElectricToken && mod.getCachedElectricToken();
-                        if (!token && mod.getElectricToken) {
-                          token = await mod.getElectricToken();
+                        let token = getCachedAuthToken && getCachedAuthToken();
+                        if (!token && getAuthToken) {
+                          token = await getAuthToken();
                         }
                         if (!electricProxyUrl || !token) {
                           alert('缺少同步配置');
