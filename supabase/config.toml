@@ -20,15 +20,15 @@ port = 54323
 # --- Edge Function 配置 ---
 # Gatekeeper：用 Supabase JWT 交换一个自定义的 Electric JWT
 [functions.gatekeeper]
-verify_jwt = true # 验证来自客户端的 Supabase JWT
+verify_jwt = false # 验证来自客户端的 Supabase JWT
 import_map = "./functions/import_map.json"
 
 # Write-server：用于应用来自客户端的更改
 [functions.write-server]
-verify_jwt = true # 验证来自客户端的 Supabase JWT
+verify_jwt = false # 验证来自客户端的 Supabase JWT
 import_map = "./functions/import_map.json"
 
 # 新的 ElectricSQL 同步授权代理
-[functions.electric-proxy]
+[functions.token-issuer]
 verify_jwt = false # 重要：代理自己进行JWT验证
 import_map = "./functions/import_map.json"
