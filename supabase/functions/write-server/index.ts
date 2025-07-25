@@ -79,7 +79,7 @@ const app = new Hono();
 app.use('*', cors({
   origin: '*',
   allowHeaders: ['*'],
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'OPTIONS', 'HEAD'],
 }));
 
 // 处理所有 OPTIONS 请求

@@ -227,10 +227,14 @@ export class DatabaseWrapper {
    */
   async update(table: 'todos' | 'lists', id: string, data: Record<string, unknown>): Promise<unknown> {
     const realId = typeof id === 'string' ? id : String(id)
+    
+    // 修复：创建一个包含 ID 的新数据对象
+    const dataWithId = { ...data, id: realId };
+
     const operation: DatabaseOperation = {
       table,
       operation: 'update',
-      data,
+      data: dataWithId, // 使用包含 ID 的数据
       id: realId,
       timestamp: new Date().toISOString()
     }
