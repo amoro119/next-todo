@@ -1,130 +1,144 @@
-// 从Deno官方推荐的URL导入JWT库
-import { verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
-
+// 使用官方推荐的jsonwebtoken库，简化JWT验证
+import jwt from 'jsonwebtoken';
 // --- 配置 ---
 const AUTH_SECRET = Deno.env.get("AUTH_SECRET") || "e8b1c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2";
-
-// supabase/functions/gatekeeper/index.ts
+const ELECTRIC_URL = Deno.env.get("ELECTRIC_URL") || "http://localhost:5133";
+// CORS配置
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-control-allow-headers': 'authorization, x-client-info, apikey, content-type, electric-cursor',
-  // 添加 ElectricSQL 头部到允许列表
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, electric-cursor',
   'Access-Control-Expose-Headers': 'electric-offset, electric-handle, electric-schema, electric-cursor'
 };
-
 // --- 辅助函数 ---
-
 /**
- * 将十六进制字符串正确地解析为Uint8Array字节数组。
- * @param hex 十六进制字符串
- */
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    const hexPair = hex.substring(i * 2, i * 2 + 2);
-    bytes[i] = parseInt(hexPair, 16);
-  }
-  return bytes;
-}
-
-function isGetShapeRequest(method: string, path: string): boolean {
+ * 匹配 `GET /v1/shape` 请求
+ */ function isGetShapeRequest(method, path) {
   return method === 'GET' && path.endsWith('/v1/shape');
 }
-
-async function verifyAuthHeader(headers: Headers): Promise<[boolean]> {
+/**
+ * 验证JWT token - 使用官方简化方式
+ */ function verifyAuthHeader(headers) {
   const auth_header = headers.get("Authorization");
-
   if (auth_header === null) {
-    return [false];
+    return [
+      false,
+      null
+    ];
   }
-
   const token = auth_header.split("Bearer ")[1];
   if (!token) {
-    return [false];
-  }
-
-  try {
-    // **最终修正**: 十六进制字符串密钥必须被正确解析为字节数组。
-    const keyData = hexToBytes(AUTH_SECRET);
-
-    const key = await crypto.subtle.importKey(
-      "raw",
-      keyData, // 使用正确解析的字节
-      { name: "HMAC", hash: "SHA-256" },
+    return [
       false,
-      ["verify"],
-    );
-
-    await verify(token, key);
-    return [true];
+      null
+    ];
+  }
+  try {
+    // 使用简单的jwt验证，减少CPU消耗
+    const claims = jwt.verify(token, AUTH_SECRET, {
+      algorithms: [
+        "HS256"
+      ]
+    });
+    return [
+      true,
+      claims
+    ];
   } catch (err) {
-    console.error("JWT Verification FAILED!");
-    console.error(`--> Secret Key Used: "${AUTH_SECRET}"`);
-    console.error("--> Error Details:", err.message);
-    return [false];
+    console.warn("JWT verification failed:", err.message);
+    return [
+      false,
+      null
+    ];
   }
 }
-
 // --- 主服务处理器 ---
-Deno.serve(async (req) => {
+Deno.serve((req)=>{
+  // 处理CORS预检请求
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', {
+      headers: corsHeaders
+    });
   }
-
   const url = new URL(req.url);
+  // 检查是否为shape请求
   if (!isGetShapeRequest(req.method, url.pathname)) {
-    return new Response("Not found", { status: 404, headers: corsHeaders });
+    return new Response("Not found", {
+      status: 404,
+      headers: corsHeaders
+    });
   }
-
-  const [isValidJWT] = await verifyAuthHeader(req.headers);
-  console.log("JWT verification result:", { isValidJWT });
-  
+  // JWT验证
+  const [isValidJWT, claims] = verifyAuthHeader(req.headers);
   if (!isValidJWT) {
-    return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-  }
-
-  console.log("JWT is valid, fetching real data");
-
-  try {
-    // 直接代理 ElectricSQL Proxy 的 shape log
-    const electricUrl = Deno.env.get("ELECTRIC_URL") || "http://localhost:5133";
-    const electricSecret = Deno.env.get("AUTH_SECRET") || "e8b1c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2";
-    const shapeUrl = new URL(`${electricUrl}/v1/shape`);
-    shapeUrl.search = url.searchParams.toString();
-    if (electricSecret) {
-      shapeUrl.searchParams.set('secret', electricSecret);
-    }
-    console.log("Gatekeeper ElectricSQL Proxy Forwarding:");
-    console.log("electricSecret:", electricSecret);
-    console.log("shapeUrl:", shapeUrl.toString());
-    // 转发认证头（如 Authorization）
-    const proxyHeaders = new Headers();
-    if (electricSecret) {
-      proxyHeaders.set('Authorization', `Bearer ${electricSecret}`);
-    }
-    console.log("Proxy Headers:", Array.from(proxyHeaders.entries()));
-    if (req.headers.get('Authorization')) {
-      proxyHeaders.set('X-Client-Authorization', req.headers.get('Authorization'));
-    }
-    // 你可以根据需要转发更多头部
-    const electricResp = await fetch(shapeUrl.toString(), {
-      headers: proxyHeaders
+    return new Response("Unauthorized", {
+      status: 401,
+      headers: corsHeaders
     });
-    const body = await electricResp.body;
-    // 直接转发响应，保留原始 headers
-    const respHeaders = new Headers(electricResp.headers);
-    // 你可以根据需要添加 CORS 头
-    respHeaders.set('Access-Control-Allow-Origin', '*');
-    respHeaders.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    respHeaders.set('Access-control-allow-headers', 'authorization, x-client-info, apikey, content-type, electric-cursor');
-    respHeaders.set('Access-Control-Expose-Headers', 'electric-offset, electric-handle, electric-schema, electric-cursor');
-    return new Response(body, {
-      status: electricResp.status,
-      headers: respHeaders
-    });
-  } catch (error) {
-    console.error("Error:", error);
-    return new Response("Internal Server Error", { status: 500, headers: corsHeaders });
   }
+  console.log("JWT验证通过，开始代理请求");
+  // 构建ElectricSQL请求URL
+  const shapeUrl = new URL(`${ELECTRIC_URL}/v1/shape`);
+  shapeUrl.search = url.searchParams.toString();
+  // 添加secret参数用于ElectricSQL认证
+  const electricSecret = AUTH_SECRET;
+  if (electricSecret) {
+    shapeUrl.searchParams.set('secret', electricSecret);
+  }
+  console.log("代理到:", shapeUrl.toString());
+  // 关键：直接返回fetch Promise，保持流式特性
+  // 这样gatekeeper不会等待完整响应，避免长时间占用CPU
+  return fetch(shapeUrl.toString(), {
+    method: req.method,
+    headers: {
+      'Authorization': `Bearer ${electricSecret}`,
+      // 转发客户端的Accept头部
+      ...req.headers.get('Accept') && {
+        'Accept': req.headers.get('Accept')
+      },
+      // 转发ElectricSQL相关头部
+      ...req.headers.get('electric-cursor') && {
+        'electric-cursor': req.headers.get('electric-cursor')
+      }
+    }
+  }).then((electricResponse)=>{
+    console.log(`ElectricSQL响应状态: ${electricResponse.status}`);
+    // 最小化的响应处理 - 只复制必要的头部
+    const responseHeaders = new Headers();
+    // 复制ElectricSQL的关键头部
+    const electricHeaders = [
+      'content-type',
+      'electric-offset',
+      'electric-handle',
+      'electric-schema',
+      'electric-cursor'
+    ];
+    electricHeaders.forEach((header)=>{
+      const value = electricResponse.headers.get(header);
+      if (value) {
+        responseHeaders.set(header, value);
+      }
+    });
+    // 添加CORS头部
+    Object.entries(corsHeaders).forEach(([key, value])=>{
+      responseHeaders.set(key, value);
+    });
+    // 直接返回响应体流，保持流式特性
+    return new Response(electricResponse.body, {
+      status: electricResponse.status,
+      headers: responseHeaders
+    });
+  }).catch((error)=>{
+    console.error("代理请求失败:", error);
+    return new Response(JSON.stringify({
+      error: "Proxy request failed",
+      message: error.message
+    }), {
+      status: 502,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
+  });
 });

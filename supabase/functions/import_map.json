@@ -5,6 +5,7 @@
     "https://deno.land/x/zod/mod.ts": "https://deno.land/x/zod@v3.25.0/mod.ts",
     "https://deno.land/x/djwt@v3.0.2/mod.ts": "https://deno.land/x/djwt@v3.0.2/mod.ts",
     "npm:hono@4.8.4": "npm:hono@4.8.4",
-    "npm:hono@cors@0.2.2": "npm:hono@0.2.2/cors"
+    "npm:hono@cors@0.2.2": "npm:hono@0.2.2/cors",
+    "jsonwebtoken": "npm:jsonwebtoken@9.0.2"
   }
 }
