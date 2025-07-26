@@ -66,8 +66,6 @@ export async function getAuthToken(): Promise<string> {
     // 缓存令牌
     cachedToken = token;
     console.log("ElectricSQL auth token fetched and cached.");
-      
-    console.log(cachedToken)
 
     return token;
   } catch (error) {
