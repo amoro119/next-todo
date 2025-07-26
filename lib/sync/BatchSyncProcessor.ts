@@ -1,7 +1,7 @@
 // lib/sync/BatchSyncProcessor.ts
 import { ChangeRecord, SyncResult, ChangeSet, ListChange, TodoChange, RetryConfig, DEFAULT_RETRY_CONFIG } from './types';
 import { SyncQueueManager } from './SyncQueueManager';
-import { getAuthToken } from './tokenUtils';
+import { getAuthToken } from '../../lib/auth';
 import { RetryStrategy, ExponentialBackoffStrategy } from './RetryStrategy';
 
 export interface SyncProgressCallback {
