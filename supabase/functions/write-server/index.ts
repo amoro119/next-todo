@@ -4,7 +4,7 @@ import { Hono } from 'jsr:@hono/hono';
 import { cors } from 'jsr:@hono/hono/cors';
 import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { z } from 'npm:zod';
-import { verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+import jwt from 'jsonwebtoken';
 
 // 本地 schema 定义
 const listChangeSchema = z.object({
@@ -48,30 +48,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
 const AUTH_SECRET = Deno.env.get("AUTH_SECRET") || "e8b1c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2";
 
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    const hexPair = hex.substring(i * 2, i * 2 + 2);
-    bytes[i] = parseInt(hexPair, 16);
-  }
-  return bytes;
-}
 
-async function verifyToken(token: string): Promise<boolean> {
-  try {
-    const keyData = hexToBytes(AUTH_SECRET);
-    const key = await crypto.subtle.importKey(
-      "raw", keyData, { name: "HMAC", hash: "SHA-256" },
-      false, ["verify"]
-    );
-    
-    await verify(token, key);
-    return true;
-  } catch (error) {
-    console.error('Token verification failed:', error);
-    return false;
-  }
-}
 
 const app = new Hono();
 
@@ -112,20 +89,23 @@ app.post('*', async (c) => {
 
     // 提取 token
     const token = authHeader.replace('Bearer ', '');
-    
-    // 验证自定义 JWT token
-    const isValidToken = await verifyToken(token);
-    if (!isValidToken) {
+
+    // 使用 jsonwebtoken 校验 JWT
+    let claims;
+    try {
+      claims = jwt.verify(token, AUTH_SECRET, { algorithms: ["HS256"] });
+    } catch (err) {
+      console.warn("JWT verification failed:", err.message);
       return c.json({ error: 'Invalid token' }, 401);
     }
 
-    console.log('Token verified successfully');
+    console.log('Token verified successfully', claims);
 
     const content = await c.req.json();
     const parsedChanges = changeSetSchema.parse(content);
-    
+
     console.log('Parsed changes:', JSON.stringify(parsedChanges, null, 2));
-    
+
     // 使用 Supabase 客户端，但不依赖 JWT 验证
     const supabaseClient = createClient(
       supabaseUrl,
@@ -133,7 +113,7 @@ app.post('*', async (c) => {
     );
 
     await applyChanges(parsedChanges, supabaseClient);
-    
+
     return c.json({ success: true });
 
   } catch (error) {
