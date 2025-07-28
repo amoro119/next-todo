@@ -191,6 +191,8 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
 /**
  * 数据库操作包装器 - 用于拦截数据库写操作
  */
+// lib/sync/ChangeInterceptor.ts 中的 DatabaseWrapper 类（已修改）
+
 export class DatabaseWrapper {
   private changeInterceptor?: ChangeInterceptor
 
@@ -201,10 +203,15 @@ export class DatabaseWrapper {
   }
 
   /**
-   * 包装的插入操作
+   * 包装的插入操作（先本地写入，后拦截）
    */
   async insert(table: 'todos' | 'lists', data: Record<string, unknown>): Promise<unknown> {
-    const id = typeof data.id === 'string' ? data.id : String(data.id)
+    const id = String(data.id)
+
+    // ✅ 1. 先执行本地数据库操作
+    await this.executeInsert(table, data)
+
+    // ✅ 2. 成功后创建变更记录并进入同步流程
     const operation: DatabaseOperation = {
       table,
       operation: 'insert',
@@ -213,46 +220,55 @@ export class DatabaseWrapper {
       timestamp: new Date().toISOString()
     }
 
-    // 拦截操作
     if (this.changeInterceptor) {
-      await this.changeInterceptor.interceptWrite(operation)
+      // ✅ 异步处理同步，不阻塞本地操作
+      this.changeInterceptor.interceptWrite(operation).catch(err => {
+        console.error('Failed to intercept write after local insert:', err)
+      })
     }
 
-    // 执行实际的数据库操作
-    return this.executeInsert(table, data)
+    return { id }
   }
 
   /**
-   * 包装的更新操作
+   * 包装的更新操作（先本地写入，后拦截）
    */
   async update(table: 'todos' | 'lists', id: string, data: Record<string, unknown>): Promise<unknown> {
-    const realId = typeof id === 'string' ? id : String(id)
-    
-    // 修复：创建一个包含 ID 的新数据对象
-    const dataWithId = { ...data, id: realId };
+    const realId = String(id)
+    const dataWithId = { ...data, id: realId }
 
+    // ✅ 1. 先执行本地数据库操作
+    await this.executeUpdate(table, id, data)
+
+    // ✅ 2. 成功后创建变更记录
     const operation: DatabaseOperation = {
       table,
       operation: 'update',
-      data: dataWithId, // 使用包含 ID 的数据
+      data: dataWithId,
       id: realId,
       timestamp: new Date().toISOString()
     }
 
-    // 拦截操作
     if (this.changeInterceptor) {
-      await this.changeInterceptor.interceptWrite(operation)
+      // ✅ 异步处理同步
+      this.changeInterceptor.interceptWrite(operation).catch(err => {
+        console.error('Failed to intercept write after local update:', err)
+      })
     }
 
-    // 执行实际的数据库操作
-    return this.executeUpdate(table, id, data)
+    return { id: realId }
   }
 
   /**
-   * 包装的删除操作
+   * 包装的删除操作（先本地写入，后拦截）
    */
   async delete(table: 'todos' | 'lists', id: string): Promise<unknown> {
-    const realId = typeof id === 'string' ? id : String(id)
+    const realId = String(id)
+
+    // ✅ 1. 先执行本地数据库操作
+    await this.executeDelete(table, id)
+
+    // ✅ 2. 成功后创建变更记录
     const operation: DatabaseOperation = {
       table,
       operation: 'delete',
@@ -261,13 +277,14 @@ export class DatabaseWrapper {
       timestamp: new Date().toISOString()
     }
 
-    // 拦截操作
     if (this.changeInterceptor) {
-      await this.changeInterceptor.interceptWrite(operation)
+      // ✅ 异步处理同步
+      this.changeInterceptor.interceptWrite(operation).catch(err => {
+        console.error('Failed to intercept write after local delete:', err)
+      })
     }
 
-    // 执行实际的数据库操作
-    return this.executeDelete(table, id)
+    return { id: realId }
   }
 
   /**
@@ -277,13 +294,15 @@ export class DatabaseWrapper {
     return this.db
   }
 
-  // 私有方法：执行实际的数据库操作
+  // ======================
+  // 以下方法保持不变（未修改）
+  // ======================
+
   private async executeInsert(table: string, data: Record<string, unknown>): Promise<unknown> {
     if (table === 'todos') {
       const columns = ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
       const values = columns.map(col => data[col] ?? null)
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
-      
       return this.db.query(
         `INSERT INTO todos (${columns.join(', ')}) VALUES (${placeholders})`,
         values
@@ -292,7 +311,6 @@ export class DatabaseWrapper {
       const columns = ['id', 'name', 'sort_order', 'is_hidden', 'modified']
       const values = columns.map(col => col === 'modified' ? new Date().toISOString() : (data[col] ?? null))
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
-      
       return this.db.query(
         `INSERT INTO lists (${columns.join(', ')}) VALUES (${placeholders})`,
         values
@@ -305,7 +323,6 @@ export class DatabaseWrapper {
     if (entries.length === 0) return
 
     if (table === 'lists') {
-      // 为 lists 表自动添加 modified 时间戳
       entries.push(['modified', new Date().toISOString()])
     }
 
