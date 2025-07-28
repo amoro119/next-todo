@@ -108,15 +108,15 @@ export default function TodoDetailsModal({
   const isRecycled = !!todo.deleted;
   
   // 添加详细的调试信息
-  console.log('=== TodoDetailsModal 调试信息 ===');
-  console.log('传入的 todo 对象:', todo);
-  console.log('todo.start_date:', todo.start_date, '类型:', typeof todo.start_date);
-  console.log('todo.due_date:', todo.due_date, '类型:', typeof todo.due_date);
-  console.log('dbUTCToLocalDate(todo.start_date):', dbUTCToLocalDate(todo.start_date));
-  console.log('dbUTCToLocalDate(todo.due_date):', dbUTCToLocalDate(todo.due_date));
-  console.log('editableTodo.start_date:', editableTodo.start_date);
-  console.log('editableTodo.due_date:', editableTodo.due_date);
-  console.log('================================');
+  // console.log('=== TodoDetailsModal 调试信息 ===');
+  // console.log('传入的 todo 对象:', todo);
+  // console.log('todo.start_date:', todo.start_date, '类型:', typeof todo.start_date);
+  // console.log('todo.due_date:', todo.due_date, '类型:', typeof todo.due_date);
+  // console.log('dbUTCToLocalDate(todo.start_date):', dbUTCToLocalDate(todo.start_date));
+  // console.log('dbUTCToLocalDate(todo.due_date):', dbUTCToLocalDate(todo.due_date));
+  // console.log('editableTodo.start_date:', editableTodo.start_date);
+  // console.log('editableTodo.due_date:', editableTodo.due_date);
+  // console.log('================================');
 
   const handleSave = () => {
     onSave(cleanTodoDates(editableTodo));
