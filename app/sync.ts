@@ -439,56 +439,61 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     console.log('✅ 初始同步完成，准备开始实时同步...');
   }
 
-  // 4. 创建 ShapeStream 但不立即订阅
-  const streams = shapes.map(shapeDef => {
-    return {
-      shapeName: shapeDef.name,
-      columns: shapeDef.columns,
-      stream: new ShapeStream({
-        url: `${electricProxyUrl}/v1/shape`,
-        params: {
-          table: shapeDef.name,
-          columns: shapeDef.columns
-        },
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-    };
-  });
-
   // 5. 在 initialSyncDone 后订阅变动
-  function subscribeShapeStream(shapeName: string, columns: string[], stream: ShapeStream) {
+  function subscribeShapeStream(
+    shapeName: string,
+    columns: string[],
+    pg: PGliteWithExtensions,
+    electricProxyUrl: string,
+    token: string
+  ) {
+    let currentStream: ShapeStream | null = null;
     let lastMessageTime = Date.now();
-    let timeoutChecker: ReturnType<typeof setInterval> | null = null;
-    
-    const TIMEOUT_MS = 60000;
-    
-    const setupSubscription = () => {
-      if (timeoutChecker) clearInterval(timeoutChecker);
-      
-      lastMessageTime = Date.now();
-      timeoutChecker = setInterval(() => {
-        if (Date.now() - lastMessageTime > TIMEOUT_MS) {
-          console.warn(`ShapeStream ${shapeName} 超时无消息，自动重连...`);
-          clearInterval(timeoutChecker!);
-          setupSubscription();
-        }
-      }, 10000);
+    let timeoutCheck: ReturnType<typeof setInterval> | null = null;
 
-      stream.subscribe(
+    const TIMEOUT_MS = 60_000;
+
+    /* 清理资源 */
+    function cleanup() {
+      if (timeoutCheck) {
+        clearInterval(timeoutCheck);
+        timeoutCheck = null;
+      }
+      if (currentStream) {
+        currentStream.unsubscribeAll?.(); // 如果 Shape 提供了关闭方法
+        currentStream = null;
+      }
+    }
+
+    /* 真正执行一次“创建 + 订阅” */
+    function connect() {
+      cleanup(); // 先关掉上一轮
+
+      // 创建新的 ShapeStream
+      currentStream = new ShapeStream({
+        url: `${electricProxyUrl}/v1/shape`,
+        params: { table: shapeName, columns },
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      lastMessageTime = Date.now();
+
+      // 超时检测
+      timeoutCheck = setInterval(() => {
+        if (Date.now() - lastMessageTime > TIMEOUT_MS) {
+          console.warn(`⏰ ${shapeName} 超时无消息 -> 重建连接`);
+          connect(); // 递归重连
+        }
+      }, 10_000);
+
+      // 订阅
+      currentStream.subscribe(
         (messages) => {
+          lastMessageTime = Date.now();
           (async () => {
-            if (!messages || messages.length === 0) {
-              console.warn(`${shapeName} 未收到消息，尝试重连 ShapeStream...`);
-              setTimeout(setupSubscription, 1000);
-              return;
-            }
-            
-            lastMessageTime = Date.now();
-            
+            if (!messages?.length) return;
             for (const msg of messages) {
-              // 处理消息的逻辑...
+              /// 处理消息的逻辑...
               if (msg.headers?.control === 'must-refetch') {
                 console.warn(`[must-refetch] ${shapeName} 收到 must-refetch 控制消息，需要全量同步！`);
               }
@@ -509,28 +514,24 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
               const row = msg.value;
               const operation = msg.headers?.operation;
               if (!operation) continue;
-              
-              // 处理 insert/update/delete 操作...
-              await processShapeChange(shapeName, operation, row, pg);
+               await processShapeChange(shapeName, operation, row, pg);
             }
-            
-            console.log(`🔄 ${shapeName} 实时变更已同步到本地`);
+            console.log(`🔄 ${shapeName} 实时变更已同步`);
           })();
         },
-        (error) => {
-          console.error(`${shapeName} subscription error:`, error);
-          setTimeout(setupSubscription, 1000);
+        (err) => {
+          console.error(`❌ ${shapeName} 订阅错误 -> 重建连接`, err);
+          setTimeout(connect, 1_000); // 错误后 1 秒重试
         }
       );
-    };
-    
-    setupSubscription();
-  }
+    }
 
-  // 6. 为每个 stream 设置订阅
-  streams.forEach(({ shapeName, columns, stream }) => {
-    subscribeShapeStream(shapeName, columns, stream);
-  });
+    connect(); // 首次启动
+  }
+  // 6. 为每个表启动订阅
+  for (const { name: shapeName, columns } of shapes) {
+    subscribeShapeStream(shapeName, columns, pg, electricProxyUrl, token);
+  }
 }
 
 // 将处理 shape 变更的逻辑提取为独立函数
