@@ -308,7 +308,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     let stream: ShapeStream | null = null;
     let lastMessageTime = Date.now();
     let timeoutChecker: ReturnType<typeof setInterval> | null = null;
-    const TIMEOUT_MS = 30000; // 30秒无消息自动重连
+    const TIMEOUT_MS = 60000; // 60秒无消息自动重连
     const createAndSubscribeStream = () => {
       stream = new ShapeStream({
         url: `${electricProxyUrl}/v1/shape`,
