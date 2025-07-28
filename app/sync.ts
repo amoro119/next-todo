@@ -360,15 +360,73 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     }
   }
 
-  // 2. 只在初始同步完成后执行一次校验
+  // 2. 只在初始同步完成后执行一次校验（带补偿）
   for (const shapeDef of shapes) {
-    const shapeName = shapeDef.name;
+    const { name: shapeName, columns } = shapeDef;
+
+    /* ---------- 远程行数 ---------- */
+    const remoteRows = await getFullShapeRows({
+      table: shapeName,
+      columns,
+      electricProxyUrl,
+      token: token!
+    });
+    const remoteCount = remoteRows.length;
+
+    /* ---------- 本地行数 ---------- */
+    let localCount = 0;
     try {
-      const result = await pg.query(`SELECT COUNT(*) as count FROM ${shapeName}`);
-      const count = (result.rows[0] as { count: string }).count;
-      console.log(`📊 ${shapeName} 初始同步后记录数: ${count} 条`);
-    } catch (error) {
-      console.error(`❌ 验证 ${shapeName} 失败:`, error);
+      const res = await pg.query(`SELECT COUNT(*)::int AS count FROM ${shapeName}`);
+      localCount = res.rows[0]?.count ?? 0;
+    } catch {
+      localCount = 0;
+    }
+
+    console.log(
+      `📊 ${shapeName} 校验 -> 远程:${remoteCount} 本地:${localCount}`
+    );
+
+    /* ---------- 不一致时补偿 ---------- */
+    if (localCount !== remoteCount) {
+      console.warn(
+        `⚠️ ${shapeName} 行数不一致，准备强制全量同步...`
+      );
+
+      // 根据表名生成 upsert SQL
+      const upsertSql =
+        shapeName === 'lists'
+          ? `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1,$2,$3,$4,$5)
+            ON CONFLICT(id) DO UPDATE SET name=$2, sort_order=$3, is_hidden=$4, modified=$5`
+          : `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags,
+                              priority, created_time, completed_time, start_date, list_id)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5,
+                                          due_date=$6, content=$7, tags=$8, priority=$9,
+                                          created_time=$10, completed_time=$11,
+                                          start_date=$12, list_id=$13`;
+
+      await forceFullTableSync({
+        table: shapeName,
+        columns,
+        electricProxyUrl,
+        token,
+        pg,
+        upsertSql
+      });
+
+      /* 再次校验 */
+      try {
+        const finalRes = await pg.query(
+          `SELECT COUNT(*)::int AS count FROM ${shapeName}`
+        );
+        console.log(
+          `✅ ${shapeName} 补偿后本地记录数: ${finalRes.rows[0]?.count}`
+        );
+      } catch (e) {
+        console.error(`❌ ${shapeName} 补偿后校验失败:`, e);
+      }
+    } else {
+      console.log(`✅ ${shapeName} 行数一致，无需补偿`);
     }
   }
 
