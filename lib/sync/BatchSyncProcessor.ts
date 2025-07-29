@@ -240,18 +240,18 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
   }
 
   private convertToTodoChange(change: ChangeRecord): TodoChange {
-    const data = change.data;
+    const data = { ...change.data }; // Create a mutable copy
     const isNew = change.operation === 'insert';
-    
-    // 根据操作类型确定修改的列
     let modifiedColumns: string[] = [];
+
     if (change.operation === 'insert') {
       modifiedColumns = Object.keys(data).filter(key => key !== 'id');
     } else if (change.operation === 'update') {
       modifiedColumns = Object.keys(data).filter(key => key !== 'id' && data[key] !== undefined);
     } else if (change.operation === 'delete') {
-      // 对于删除操作，设置 deleted 标志
-      modifiedColumns = ['deleted'];
+      // This is a permanent delete. Signal it to the server by setting
+      // `deleted: true` and having an empty `modified_columns` array.
+      modifiedColumns = [];
       data.deleted = true;
     }
 
