@@ -156,7 +156,8 @@ export async function getFullShapeRows({
 }
 
 /**
- * 拉取全量数据并写入本地数据库（核心实现）
+ * [MODIFIED] 拉取全量数据并与本地数据库进行三步协调（删除、更新、插入）
+ * 这是修正后的实现。
  */
 async function doFullTableSync({
   table,
@@ -164,58 +165,87 @@ async function doFullTableSync({
   electricProxyUrl,
   token,
   pg,
-  upsertSql
 }: {
   table: string,
   columns: string[],
   electricProxyUrl: string,
   token: string,
   pg: PGliteWithExtensions,
-  upsertSql: string
+  upsertSql: string // 保留以兼容调用，但逻辑已内置
 }): Promise<void> {
+  console.log(`- Starting full reconciliation for table: ${table}`);
+
   const rows = await getFullShapeRows({ table, columns, electricProxyUrl, token });
-  for (const rowRaw of rows) {
-    const row = rowRaw as Record<string, unknown>;
-    if (table === 'lists') {
-      await pg.query(
-        `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-        [
-          row.id ?? null,
-          row.name ?? null,
-          row.sort_order ?? 0,
-          row.is_hidden ?? false,
-          row.modified ?? null
-        ]
+  const remoteIds = rows.map(r => (r as { id: string }).id);
+
+  console.log(`- Fetched ${remoteIds.length} remote rows for ${table}.`);
+
+  await pg.transaction(async (tx) => {
+    // 1. （可选，用于日志）获取本地 IDs
+    const localIdRows = await tx.query<{ id: string }>(`SELECT id FROM "main"."${table}"`);
+    const localIds = localIdRows.rows.map(r => r.id);
+    console.log(`- Found ${localIds.length} local rows in ${table}.`);
+
+    // 2. 删除本地存在但远程不存在的“孤立”记录
+    if (remoteIds.length > 0) {
+      const { rows: deletedRows } = await tx.query(
+        `DELETE FROM "main"."${table}" WHERE id NOT IN (${remoteIds.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`,
+        remoteIds
       );
-    } else if (table === 'todos') {
-      await pg.query(
-        `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-          ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-        [
-          row.id ?? null,
-          row.title ?? null,
-          row.completed ?? false,
-          row.deleted ?? false,
-          row.sort_order ?? 0,
-          row.due_date ?? null,
-          row.content ?? null,
-          row.tags ?? null,
-          row.priority ?? 0,
-          row.created_time ?? null,
-          row.completed_time ?? null,
-          row.start_date ?? null,
-          row.list_id ?? null
-        ]
-      );
+      if (deletedRows.length > 0) {
+        console.log(`- Deleted ${deletedRows.length} orphan rows from local ${table}.`);
+      }
     } else {
-      // 通用写入逻辑
-      const values = columns.map(col => row[col] ?? null);
-      await pg.query(upsertSql, values);
+      // 如果远程没有数据，则清空本地表
+      const { rows: deletedRows } = await tx.query(`DELETE FROM "main"."${table}" RETURNING id`);
+       if (deletedRows.length > 0) {
+        console.log(`- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`);
+      }
     }
-  }
-  console.log(`📥 ${table} 全量同步完成，已写入本地`);
+
+    // 3. Upsert 所有远程记录到本地数据库
+    if (rows.length > 0) {
+        for (const rowRaw of rows) {
+            const row = rowRaw as Record<string, unknown>;
+            if (table === 'lists') {
+            await tx.query(
+                `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+                [
+                row.id ?? null,
+                row.name ?? null,
+                row.sort_order ?? 0,
+                row.is_hidden ?? false,
+                row.modified ?? null
+                ]
+            );
+            } else if (table === 'todos') {
+            await tx.query(
+                `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+                [
+                row.id ?? null,
+                row.title ?? null,
+                row.completed ?? false,
+                row.deleted ?? false,
+                row.sort_order ?? 0,
+                row.due_date ?? null,
+                row.content ?? null,
+                row.tags ?? null,
+                row.priority ?? 0,
+                row.created_time ?? null,
+                row.completed_time ?? null,
+                row.start_date ?? null,
+                row.list_id ?? null
+                ]
+            );
+            }
+        }
+    }
+  });
+  
+  console.log(`- ✅ ${table} full reconciliation complete.`);
 }
 
 /**
@@ -310,53 +340,17 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     }
     
     if (shouldInitialUpsert) {
-      const rows = await getFullShapeRows({
+      await doFullTableSync({
         table: shapeName,
         columns,
         electricProxyUrl,
-        token: token!
+        token: token!,
+        pg,
+        upsertSql: '' // upsertSql 不再需要
       });
-      
-      for (const rowRaw of rows) {
-        const row = rowRaw as Record<string, unknown>;
-        if (shapeName === 'lists') {
-          await pg.query(
-            `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-              ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-            [
-              row.id ?? null,
-              row.name ?? null,
-              row.sort_order ?? 0,
-              row.is_hidden ?? false,
-              row.modified ?? null
-            ]
-          );
-        } else if (shapeName === 'todos') {
-          await pg.query(
-            `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-              ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-            [
-              row.id ?? null,
-              row.title ?? null,
-              row.completed ?? false,
-              row.deleted ?? false,
-              row.sort_order ?? 0,
-              row.due_date ?? null,
-              row.content ?? null,
-              row.tags ?? null,
-              row.priority ?? 0,
-              row.created_time ?? null,
-              row.completed_time ?? null,
-              row.start_date ?? null,
-              row.list_id ?? null
-            ]
-          );
-        }
-      }
-      console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+        console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
     } else {
-      console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
+        console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
     }
   }
 
@@ -392,26 +386,13 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         `⚠️ ${shapeName} 行数不一致，准备强制全量同步...`
       );
 
-      // 根据表名生成 upsert SQL
-      const upsertSql =
-        shapeName === 'lists'
-          ? `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1,$2,$3,$4,$5)
-            ON CONFLICT(id) DO UPDATE SET name=$2, sort_order=$3, is_hidden=$4, modified=$5`
-          : `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags,
-                              priority, created_time, completed_time, start_date, list_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5,
-                                          due_date=$6, content=$7, tags=$8, priority=$9,
-                                          created_time=$10, completed_time=$11,
-                                          start_date=$12, list_id=$13`;
-
-      await forceFullTableSync({
+      await doFullTableSync({
         table: shapeName,
         columns,
         electricProxyUrl,
         token,
         pg,
-        upsertSql
+        upsertSql: '' // upsertSql 不再需要
       });
 
       /* 再次校验 */
