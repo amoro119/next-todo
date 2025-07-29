@@ -171,39 +171,37 @@ async function doFullTableSync({
   electricProxyUrl: string,
   token: string,
   pg: PGliteWithExtensions,
-  upsertSql: string // 保留以兼容调用，但逻辑已内置
+  upsertSql: string // Kept for compatibility, but logic is now self-contained.
 }): Promise<void> {
   console.log(`- Starting full reconciliation for table: ${table}`);
 
+  // 1. Fetch all rows from the remote server.
   const rows = await getFullShapeRows({ table, columns, electricProxyUrl, token });
   const remoteIds = rows.map(r => (r as { id: string }).id);
-
   console.log(`- Fetched ${remoteIds.length} remote rows for ${table}.`);
 
   await pg.transaction(async (tx) => {
-    // 1. （可选，用于日志）获取本地 IDs
-    const localIdRows = await tx.query<{ id: string }>(`SELECT id FROM "main"."${table}"`);
-    const localIds = localIdRows.rows.map(r => r.id);
-    console.log(`- Found ${localIds.length} local rows in ${table}.`);
-
-    // 2. 删除本地存在但远程不存在的“孤立”记录
+    // 2. Delete local rows that are no longer present on the server.
+    // This is the key step to fix the localCount > remoteCount issue.
     if (remoteIds.length > 0) {
       const { rows: deletedRows } = await tx.query(
-        `DELETE FROM "main"."${table}" WHERE id NOT IN (${remoteIds.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`,
+        // Note the removal of the "main" schema prefix.
+        `DELETE FROM "${table}" WHERE id NOT IN (${remoteIds.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`,
         remoteIds
       );
       if (deletedRows.length > 0) {
         console.log(`- Deleted ${deletedRows.length} orphan rows from local ${table}.`);
       }
     } else {
-      // 如果远程没有数据，则清空本地表
-      const { rows: deletedRows } = await tx.query(`DELETE FROM "main"."${table}" RETURNING id`);
+      // If the remote table is empty, clear the entire local table.
+      const { rows: deletedRows } = await tx.query(`DELETE FROM "${table}" RETURNING id`);
        if (deletedRows.length > 0) {
         console.log(`- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`);
       }
     }
 
-    // 3. Upsert 所有远程记录到本地数据库
+    // 3. Upsert all remote rows into the local database.
+    // This will update existing records and insert new ones.
     if (rows.length > 0) {
         for (const rowRaw of rows) {
             const row = rowRaw as Record<string, unknown>;
