@@ -2,358 +2,155 @@
 import { PGlite } from '@electric-sql/pglite'
 
 const migration = `
--- This is the local database schema for PGlite.
+-- Client-side schema for a local-first setup with ElectricSQL
 
--- It uses two tables: \`todos_synced\` and \`todos_local\`. These are combined
--- into a \`todos\` view that provides a merged view on both tables and supports
--- local live queries. Writes to the \`todos\` view are redirected using
--- \`INSTEAD OF\` triggers to the \`todos_local\` and \`changes\` tables.
+-- Let ElectricSQL create its own system tables automatically
+-- We only define our application tables here
 
--- The \`todos_synced\` table for immutable, synced state from the server.
-CREATE TABLE IF NOT EXISTS todos_synced (
-  id UUID PRIMARY KEY,
-  title TEXT NOT NULL,
-  completed BOOLEAN NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  -- Bookkeeping column.
-  write_id UUID
+-- # Tables and indexes
+-- Note: PGlite does not support generated columns with \`STORED\`. We use triggers to simulate this.
+-- The local-first columns are added to tables managed by Electric.
+
+CREATE TABLE IF NOT EXISTS "lists" (
+    "id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "sort_order" INTEGER,
+    "is_hidden" BOOLEAN DEFAULT FALSE,
+    "modified" TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT "lists_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "lists_name_key" UNIQUE ("name")
 );
 
--- The \`todos_local\` table for local optimistic state.
-CREATE TABLE IF NOT EXISTS todos_local (
-  id UUID PRIMARY KEY,
-  title TEXT,
-  completed BOOLEAN,
-  created_at TIMESTAMP WITH TIME ZONE,
-  -- Bookkeeping columns.
-  changed_columns TEXT[],
-  is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-  write_id UUID NOT NULL
+CREATE TABLE IF NOT EXISTS "todos" (
+  "id" UUID NOT NULL,
+  "title" TEXT,
+  "completed" BOOLEAN DEFAULT FALSE,
+  "deleted" BOOLEAN DEFAULT FALSE,
+  "sort_order" INTEGER,
+  "due_date" TIMESTAMPTZ,
+  "content" TEXT,
+  "tags" TEXT,
+  "priority" INTEGER DEFAULT 0,
+  "created_time" TIMESTAMPTZ DEFAULT NOW(),
+  "completed_time" TIMESTAMPTZ,
+  "start_date" TIMESTAMPTZ,
+  "list_id" UUID,
+  
+  -- 重复任务相关字段
+  "repeat" TEXT, -- RFC 5545 RRULE格式，如 "FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15"
+  "reminder" TEXT, -- ISO 8601 Duration格式，如 "PT0S"(到期时), "P0DT9H0M0S"(提前9小时)
+  "is_recurring" BOOLEAN DEFAULT FALSE,
+  "recurring_parent_id" UUID, -- 指向原始重复任务的ID
+  "instance_number" INTEGER, -- 实例序号
+  "next_due_date" TIMESTAMPTZ, -- 下次到期日期（仅原始任务使用）
+  
+  CONSTRAINT "todos_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "todos_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES "lists"("id") ON DELETE SET NULL
 );
 
--- The \`todos\` view to combine the two tables on read.
-CREATE OR REPLACE VIEW todos AS
-  SELECT
-    COALESCE(local.id, synced.id) AS id,
-    CASE
-      WHEN 'title' = ANY(local.changed_columns)
-        THEN local.title
-        ELSE synced.title
-      END AS title,
-    CASE
-      WHEN 'completed' = ANY(local.changed_columns)
-        THEN local.completed
-        ELSE synced.completed
-      END AS completed,
-    CASE
-      WHEN 'created_at' = ANY(local.changed_columns)
-        THEN local.created_at
-        ELSE synced.created_at
-      END AS created_at
-  FROM todos_synced AS synced
-  FULL OUTER JOIN todos_local AS local
-    ON synced.id = local.id
-    WHERE local.id IS NULL OR local.is_deleted = FALSE;
-
--- Triggers to automatically remove local optimistic state when the corresponding
--- row syncs over the replication stream. Match on \`write_id\`, to allow local
--- state to be rebased on concurrent changes to the same row.
-CREATE OR REPLACE FUNCTION delete_local_on_synced_insert_and_update_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-  DELETE FROM todos_local
-    WHERE id = NEW.id
-      AND write_id IS NOT NULL
-      AND write_id = NEW.write_id;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- N.b.: deletes can be concurrent, but can't update the \`write_id\` and aren't
--- revertable (once a row is deleted, it would be re-created with an insert),
--- so its safe to just match on ID. You could implement revertable concurrent
--- deletes using soft deletes (which are actually updates).
-CREATE OR REPLACE FUNCTION delete_local_on_synced_delete_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-  DELETE FROM todos_local WHERE id = OLD.id;
-  RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER delete_local_on_synced_insert
-AFTER INSERT OR UPDATE ON todos_synced
-FOR EACH ROW
-EXECUTE FUNCTION delete_local_on_synced_insert_and_update_trigger();
-
-CREATE OR REPLACE TRIGGER delete_local_on_synced_delete
-AFTER DELETE ON todos_synced
-FOR EACH ROW
-EXECUTE FUNCTION delete_local_on_synced_delete_trigger();
-
--- The local \`changes\` table for capturing and persisting a log
--- of local write operations that we want to sync to the server.
-CREATE TABLE IF NOT EXISTS changes (
-  id BIGSERIAL PRIMARY KEY,
-  operation TEXT NOT NULL,
-  value JSONB NOT NULL,
-  write_id UUID NOT NULL,
-  transaction_id XID8 NOT NULL
+CREATE TABLE IF NOT EXISTS "meta" (
+  "key" TEXT PRIMARY KEY,
+  "value" TEXT
 );
 
--- The following \`INSTEAD OF\` triggers:
--- 1. allow the app code to write directly to the view
--- 2. to capture write operations and write change messages into the
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS "lists_id_idx" ON "lists" ("id");
+CREATE INDEX IF NOT EXISTS "todos_id_idx" ON "todos" ("id");
+CREATE INDEX IF NOT EXISTS "todos_list_id_idx" ON "todos" ("list_id");
 
--- The insert trigger
-CREATE OR REPLACE FUNCTION todos_insert_trigger()
-RETURNS TRIGGER AS $$
+-- 为重复任务查询优化添加索引
+CREATE INDEX IF NOT EXISTS "idx_todos_repeat" ON "todos" ("repeat") WHERE "repeat" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_reminder" ON "todos" ("reminder") WHERE "reminder" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_recurring_parent" ON "todos" ("recurring_parent_id") WHERE "recurring_parent_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_is_recurring" ON "todos" ("is_recurring") WHERE "is_recurring" = TRUE;
+CREATE INDEX IF NOT EXISTS "idx_todos_instance_number" ON "todos" ("instance_number") WHERE "instance_number" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_next_due_date" ON "todos" ("next_due_date") WHERE "next_due_date" IS NOT NULL;
+
+-- Insert initial slogan
+INSERT INTO "meta" (key, value) VALUES ('slogan', '今日事今日毕，勿将今事待明日!.☕') ON CONFLICT (key) DO NOTHING;
+
+-- Trigger to handle INSERT conflicts during ElectricSQL sync
+CREATE OR REPLACE FUNCTION handle_sync_insert_conflict()
+RETURNS TRIGGER AS $
 DECLARE
-  local_write_id UUID := gen_random_uuid();
+    is_syncing BOOLEAN;
 BEGIN
-  IF EXISTS (SELECT 1 FROM todos_synced WHERE id = NEW.id) THEN
-    RAISE EXCEPTION 'Cannot insert: id already exists in the synced table';
-  END IF;
-  IF EXISTS (SELECT 1 FROM todos_local WHERE id = NEW.id) THEN
-    RAISE EXCEPTION 'Cannot insert: id already exists in the local table';
-  END IF;
+    -- The 'electric.syncing' flag is set by the sync process.
+    -- We only want this trigger to run for operations coming from Electric.
+    -- The 'true' argument means it will return 't' or 'f' even if not set.
+    SELECT COALESCE(NULLIF(current_setting('electric.syncing', true), ''), 'false')::boolean INTO is_syncing;
 
-  -- Insert into the local table.
-  INSERT INTO todos_local (
-    id,
-    title,
-    completed,
-    created_at,
-    changed_columns,
-    write_id
-  )
-  VALUES (
-    NEW.id,
-    NEW.title,
-    NEW.completed,
-    NEW.created_at,
-    ARRAY['title', 'completed', 'created_at'],
-    local_write_id
-  );
+    IF is_syncing THEN
+        -- This is an INSERT from Electric. If the row already exists locally
+        -- (e.g., created offline), we convert the INSERT into an UPDATE
+        -- to avoid a primary key conflict.
+        
+        IF TG_TABLE_NAME = 'todos' THEN
+            UPDATE todos SET
+                title = NEW.title,
+                completed = NEW.completed,
+                deleted = NEW.deleted,
+                sort_order = NEW.sort_order,
+                due_date = NEW.due_date,
+                content = NEW.content,
+                tags = NEW.tags,
+                priority = NEW.priority,
+                created_time = NEW.created_time,
+                completed_time = NEW.completed_time,
+                start_date = NEW.start_date,
+                list_id = NEW.list_id,
+                repeat = NEW.repeat,
+                reminder = NEW.reminder,
+                is_recurring = NEW.is_recurring,
+                recurring_parent_id = NEW.recurring_parent_id,
+                instance_number = NEW.instance_number,
+                next_due_date = NEW.next_due_date
+            WHERE id = NEW.id;
+            
+            IF FOUND THEN
+                RETURN NULL; -- The update was successful, so we cancel the original INSERT.
+            END IF;
+        
+        ELSIF TG_TABLE_NAME = 'lists' THEN
+            UPDATE lists SET
+                name = NEW.name,
+                sort_order = NEW.sort_order,
+                is_hidden = NEW.is_hidden,
+                modified = NEW.modified
+            WHERE id = NEW.id;
 
-  -- Record the write operation in the change log.
-  INSERT INTO changes (
-    operation,
-    value,
-    write_id,
-    transaction_id
-  )
-  VALUES (
-    'insert',
-    jsonb_build_object(
-      'id', NEW.id,
-      'title', NEW.title,
-      'completed', NEW.completed,
-      'created_at', NEW.created_at
-    ),
-    local_write_id,
-    pg_current_xact_id()
-  );
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- The update trigger
-CREATE OR REPLACE FUNCTION todos_update_trigger()
-RETURNS TRIGGER AS $$
-DECLARE
-  synced todos_synced%ROWTYPE;
-  local todos_local%ROWTYPE;
-  changed_cols TEXT[] := '{}';
-  local_write_id UUID := gen_random_uuid();
-BEGIN
-  -- Fetch the corresponding rows from the synced and local tables
-  SELECT * INTO synced FROM todos_synced WHERE id = NEW.id;
-  SELECT * INTO local FROM todos_local WHERE id = NEW.id;
-
-  -- If the row is not present in the local table, insert it
-  IF NOT FOUND THEN
-    -- Compare each column with the synced table and add to changed_cols if different
-    IF NEW.title IS DISTINCT FROM synced.title THEN
-      changed_cols := array_append(changed_cols, 'title');
+            IF FOUND THEN
+                RETURN NULL; -- Cancel the original INSERT.
+            END IF;
+        END IF;
     END IF;
-    IF NEW.completed IS DISTINCT FROM synced.completed THEN
-      changed_cols := array_append(changed_cols, 'completed');
-    END IF;
-    IF NEW.created_at IS DISTINCT FROM synced.created_at THEN
-      changed_cols := array_append(changed_cols, 'created_at');
-    END IF;
-
-    INSERT INTO todos_local (
-      id,
-      title,
-      completed,
-      created_at,
-      changed_columns,
-      write_id
-    )
-    VALUES (
-      NEW.id,
-      NEW.title,
-      NEW.completed,
-      NEW.created_at,
-      changed_cols,
-      local_write_id
-    );
-
-  -- Otherwise, if the row is already in the local table, update it and adjust
-  -- the changed_columns
-  ELSE
-    UPDATE todos_local
-      SET
-        title =
-          CASE
-            WHEN NEW.title IS DISTINCT FROM synced.title
-              THEN NEW.title
-              ELSE local.title
-            END,
-        completed =
-          CASE
-            WHEN NEW.completed IS DISTINCT FROM synced.completed
-              THEN NEW.completed
-              ELSE local.completed
-            END,
-        created_at =
-          CASE
-            WHEN NEW.created_at IS DISTINCT FROM synced.created_at
-              THEN NEW.created_at
-              ELSE local.created_at
-            END,
-        -- Set the changed_columns to columes that have both been marked as changed
-        -- and have values that have actually changed.
-        changed_columns = (
-          SELECT array_agg(DISTINCT col) FROM (
-            SELECT unnest(local.changed_columns) AS col
-            UNION
-            SELECT unnest(ARRAY['title', 'completed', 'created_at']) AS col
-          ) AS cols
-          WHERE (
-            CASE
-              WHEN col = 'title'
-                THEN COALESCE(NEW.title, local.title) IS DISTINCT FROM synced.title
-              WHEN col = 'completed'
-                THEN COALESCE(NEW.completed, local.completed) IS DISTINCT FROM synced.completed
-              WHEN col = 'created_at'
-                THEN COALESCE(NEW.created_at, local.created_at) IS DISTINCT FROM synced.created_at
-              END
-          )
-        ),
-        write_id = local_write_id
-      WHERE id = NEW.id;
-  END IF;
-
-  -- Record the update into the change log.
-  INSERT INTO changes (
-    operation,
-    value,
-    write_id,
-    transaction_id
-  )
-  VALUES (
-    'update',
-    jsonb_strip_nulls(
-      jsonb_build_object(
-        'id', NEW.id,
-        'title', NEW.title,
-        'completed', NEW.completed,
-        'created_at', NEW.created_at
-      )
-    ),
-    local_write_id,
-    pg_current_xact_id()
-  );
-
-  RETURN NEW;
+    
+    -- For local operations, or for sync operations that don't conflict,
+    -- proceed with the original INSERT.
+    RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$ LANGUAGE plpgsql;
 
--- The delete trigger
-CREATE OR REPLACE FUNCTION todos_delete_trigger()
-RETURNS TRIGGER AS $$
-DECLARE
-  local_write_id UUID := gen_random_uuid();
-BEGIN
-  -- Upsert a soft-deletion record in the local table.
-  IF EXISTS (SELECT 1 FROM todos_local WHERE id = OLD.id) THEN
-    UPDATE todos_local
-    SET
-      is_deleted = TRUE,
-      write_id = local_write_id
-    WHERE id = OLD.id;
-  ELSE
-    INSERT INTO todos_local (
-      id,
-      is_deleted,
-      write_id
-    )
-    VALUES (
-      OLD.id,
-      TRUE,
-      local_write_id
-    );
-  END IF;
+-- Apply the trigger to the 'todos' table
+DROP TRIGGER IF EXISTS todos_handle_sync_insert_conflict_trigger ON todos;
+CREATE TRIGGER todos_handle_sync_insert_conflict_trigger
+    BEFORE INSERT ON todos
+    FOR EACH ROW
+    EXECUTE FUNCTION handle_sync_insert_conflict();
 
-  -- Record in the change log.
-  INSERT INTO changes (
-    operation,
-    value,
-    write_id,
-    transaction_id
-  )
-  VALUES (
-    'delete',
-    jsonb_build_object(
-      'id', OLD.id
-    ),
-    local_write_id,
-    pg_current_xact_id()
-  );
-
-  RETURN OLD;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER todos_insert
-INSTEAD OF INSERT ON todos
-FOR EACH ROW
-EXECUTE FUNCTION todos_insert_trigger();
-
-CREATE OR REPLACE TRIGGER todos_update
-INSTEAD OF UPDATE ON todos
-FOR EACH ROW
-EXECUTE FUNCTION todos_update_trigger();
-
-CREATE OR REPLACE TRIGGER todos_delete
-INSTEAD OF DELETE ON todos
-FOR EACH ROW
-EXECUTE FUNCTION todos_delete_trigger();
-
--- Notify on a \`changes\` topic whenever anything is added to the change log.
-CREATE OR REPLACE FUNCTION changes_notify_trigger()
-RETURNS TRIGGER AS $$
-BEGIN
-  NOTIFY changes;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE TRIGGER changes_notify
-AFTER INSERT ON changes
-FOR EACH ROW
-EXECUTE FUNCTION changes_notify_trigger();
+-- Apply the trigger to the 'lists' table
+DROP TRIGGER IF EXISTS lists_handle_sync_insert_conflict_trigger ON lists;
+CREATE TRIGGER lists_handle_sync_insert_conflict_trigger
+    BEFORE INSERT ON lists
+    FOR EACH ROW
+    EXECUTE FUNCTION handle_sync_insert_conflict();
 `;
 
 export async function migrate(db: PGlite) {
-  await db.exec(localSchema)
+  await db.exec(migration)
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function postInitialSync(_db: PGlite) {
-  console.log('Post-initial-sync migrations completed.')
+  console.log('Post-initial-sync migrations completed (no triggers to enable)')
 }

@@ -62,4 +62,138 @@
   transition:
     opacity 0.3s cubic-bezier(0.4,0,0.2,1),
     transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}/
+* 重复任务相关样式 */
+.recurrence-description {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-style: italic;
+  margin-left: 0.5rem;
+}
+
+.recurrence-config {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #f9fafb;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.recurrence-preview {
+  margin-top: 1rem;
+}
+
+.recurrence-preview label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.preview-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.preview-date {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: #dbeafe;
+  color: #1e40af;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.recurring-instance-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 0.5rem;
+}
+
+.instance-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background-color: #f59e0b;
+  color: white;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.instance-number {
+  font-size: 0.875rem;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.form-group-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.form-group-row label input[type="checkbox"] {
+  margin: 0;
+}/* 
+TodoList 重复任务相关样式 */
+.recurring-badge {
+  display: inline-block;
+  margin-right: 0.25rem;
+  font-size: 0.875rem;
+  cursor: help;
+}
+
+.recurring-instance-badge {
+  display: inline-block;
+  margin-right: 0.25rem;
+  font-size: 0.875rem;
+  cursor: help;
+}
+
+.next-due-date {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-left: 0.5rem;
+  font-style: italic;
+}
+
+.btn-stop-recurring {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  margin-left: 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.btn-stop-recurring:hover {
+  opacity: 1;
+  background-color: #fee2e2;
+}
+
+.todo-item:hover .btn-stop-recurring {
+  opacity: 1;
+}
+
+/* 重复任务在列表中的特殊样式 */
+.todo-item .recurring-badge,
+.todo-item .recurring-instance-badge {
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.todo-item:hover .recurring-badge,
+.todo-item:hover .recurring-instance-badge {
+  opacity: 1;
 }

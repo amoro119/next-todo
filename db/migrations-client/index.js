@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS "todos" (
   "completed_time" TIMESTAMPTZ,
   "start_date" TIMESTAMPTZ,
   "list_id" UUID,
+  
+  -- 重复任务相关字段
+  "repeat" TEXT, -- RFC 5545 RRULE格式，如 "FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=15"
+  "reminder" TEXT, -- ISO 8601 Duration格式，如 "PT0S"(到期时), "P0DT9H0M0S"(提前9小时)
+  "is_recurring" BOOLEAN DEFAULT FALSE,
+  "recurring_parent_id" UUID, -- 指向原始重复任务的ID
+  "instance_number" INTEGER, -- 实例序号
+  "next_due_date" TIMESTAMPTZ, -- 下次到期日期（仅原始任务使用）
+  
   CONSTRAINT "todos_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "todos_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES "lists"("id") ON DELETE SET NULL
 );
@@ -51,12 +60,20 @@ CREATE INDEX IF NOT EXISTS "lists_id_idx" ON "lists" ("id");
 CREATE INDEX IF NOT EXISTS "todos_id_idx" ON "todos" ("id");
 CREATE INDEX IF NOT EXISTS "todos_list_id_idx" ON "todos" ("list_id");
 
+-- 为重复任务查询优化添加索引
+CREATE INDEX IF NOT EXISTS "idx_todos_repeat" ON "todos" ("repeat") WHERE "repeat" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_reminder" ON "todos" ("reminder") WHERE "reminder" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_recurring_parent" ON "todos" ("recurring_parent_id") WHERE "recurring_parent_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_is_recurring" ON "todos" ("is_recurring") WHERE "is_recurring" = TRUE;
+CREATE INDEX IF NOT EXISTS "idx_todos_instance_number" ON "todos" ("instance_number") WHERE "instance_number" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_todos_next_due_date" ON "todos" ("next_due_date") WHERE "next_due_date" IS NOT NULL;
+
 -- Insert initial slogan
 INSERT INTO "meta" (key, value) VALUES ('slogan', '今日事今日毕，勿将今事待明日!.☕') ON CONFLICT (key) DO NOTHING;
 
 -- Trigger to handle INSERT conflicts during ElectricSQL sync
 CREATE OR REPLACE FUNCTION handle_sync_insert_conflict()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $
 DECLARE
     is_syncing BOOLEAN;
 BEGIN
@@ -83,7 +100,13 @@ BEGIN
                 created_time = NEW.created_time,
                 completed_time = NEW.completed_time,
                 start_date = NEW.start_date,
-                list_id = NEW.list_id
+                list_id = NEW.list_id,
+                repeat = NEW.repeat,
+                reminder = NEW.reminder,
+                is_recurring = NEW.is_recurring,
+                recurring_parent_id = NEW.recurring_parent_id,
+                instance_number = NEW.instance_number,
+                next_due_date = NEW.next_due_date
             WHERE id = NEW.id;
             
             IF FOUND THEN
@@ -108,7 +131,7 @@ BEGIN
     -- proceed with the original INSERT.
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$ LANGUAGE plpgsql;
 
 -- Apply the trigger to the 'todos' table
 DROP TRIGGER IF EXISTS todos_handle_sync_insert_conflict_trigger ON todos;

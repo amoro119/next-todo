@@ -3,6 +3,8 @@ import { SyncQueueManager } from './SyncQueueManager';
 import { BatchSyncProcessor } from './BatchSyncProcessor';
 import { networkStatusManager } from './NetworkStatusManager';
 import { SyncStatus, QueueStats } from './types';
+import { RecurringTaskGenerator } from '../recurring/RecurringTaskGenerator';
+import { Todo } from '../types';
 
 export interface SyncScheduler {
   // Start sync scheduling
@@ -31,6 +33,12 @@ export interface SyncScheduler {
   
   // Enable/disable adaptive sync
   setAdaptiveSync(enabled: boolean): void;
+  
+  // Enable/disable recurring task check
+  setRecurringTaskCheck(enabled: boolean): void;
+  
+  // Check and generate recurring tasks
+  checkRecurringTasks(): Promise<void>;
 }
 
 export class SyncSchedulerImpl implements SyncScheduler {
@@ -49,11 +57,18 @@ export class SyncSchedulerImpl implements SyncScheduler {
   private consecutiveFailures = 0;
   private maxConsecutiveFailures = 3;
   private lastNetworkQuality: 'good' | 'poor' | 'unknown' = 'unknown';
+  
+  // 重复任务相关属性
+  private recurringTaskCheckEnabled = true;
+  private databaseAPI: any = null;
 
   constructor(
     private syncQueueManager: SyncQueueManager,
-    private batchSyncProcessor: BatchSyncProcessor
-  ) {}
+    private batchSyncProcessor: BatchSyncProcessor,
+    databaseAPI?: unknown
+  ) {
+    this.databaseAPI = databaseAPI;
+  }
 
   start(): void {
     if (this.isActive) return;
@@ -394,6 +409,11 @@ export class SyncSchedulerImpl implements SyncScheduler {
     }
     
     try {
+      // 检查重复任务（如果启用）
+      if (this.recurringTaskCheckEnabled) {
+        await this.checkRecurringTasks();
+      }
+      
       const stats = await this.syncQueueManager.getQueueStats();
       
       // Update status with current queue stats even if we don't sync
@@ -474,5 +494,92 @@ export class SyncSchedulerImpl implements SyncScheduler {
       console.log(`SyncScheduler: Increasing sync interval from ${this.syncIntervalMs}ms to ${newInterval}ms`);
       this.setSyncInterval(newInterval);
     }
+  }
+
+  // 重复任务相关方法
+  
+  setRecurringTaskCheck(enabled: boolean): void {
+    this.recurringTaskCheckEnabled = enabled;
+    console.log(`SyncScheduler: Recurring task check ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  async checkRecurringTasks(): Promise<void> {
+    if (!this.databaseAPI || !this.recurringTaskCheckEnabled) {
+      return;
+    }
+
+    try {
+      console.log('SyncScheduler: Checking recurring tasks...');
+      
+      // 获取所有活跃的重复任务
+      const recurringTasksResult = await this.databaseAPI.query(
+        'SELECT * FROM todos WHERE is_recurring = true AND recurring_parent_id IS NULL AND deleted = false'
+      );
+
+      if (recurringTasksResult.rows.length === 0) {
+        console.log('SyncScheduler: No active recurring tasks found');
+        return;
+      }
+
+      const recurringTasks: Todo[] = recurringTasksResult.rows;
+      console.log(`SyncScheduler: Found ${recurringTasks.length} active recurring tasks`);
+
+      // 批量检查哪些任务需要生成新实例
+      const tasksNeedingInstances = RecurringTaskGenerator.batchCheckTasksNeedNewInstances(
+        recurringTasks,
+        new Date()
+      );
+
+      if (tasksNeedingInstances.length === 0) {
+        console.log('SyncScheduler: No recurring tasks need new instances');
+        return;
+      }
+
+      console.log(`SyncScheduler: ${tasksNeedingInstances.length} recurring tasks need new instances`);
+
+      // 生成新实例
+      for (const { task, dueDates } of tasksNeedingInstances) {
+        for (const dueDate of dueDates) {
+          try {
+            // 生成新实例
+            const instanceNumber = (task.instance_number || 0) + 1;
+            const newInstance = RecurringTaskGenerator.generateTaskInstance(
+              task,
+              dueDate,
+              instanceNumber
+            );
+
+            // 生成新的UUID
+            const newTaskId = this.generateUUID();
+            const newTask = { ...newInstance, id: newTaskId };
+
+            // 插入新任务实例
+            await this.databaseAPI.insert('todos', newTask);
+            console.log(`SyncScheduler: Generated recurring task instance: ${newTask.title}`);
+
+            // 更新原始任务的下次到期日期
+            const parentUpdates = RecurringTaskGenerator.updateNextDueDate(task, dueDate);
+            await this.databaseAPI.update('todos', task.id, parentUpdates);
+            console.log(`SyncScheduler: Updated original recurring task: ${task.title}`);
+
+          } catch (error) {
+            console.error(`SyncScheduler: Error generating instance for task ${task.title}:`, error);
+          }
+        }
+      }
+
+      console.log('SyncScheduler: Recurring task check completed');
+
+    } catch (error) {
+      console.error('SyncScheduler: Error checking recurring tasks:', error);
+    }
+  }
+
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 }

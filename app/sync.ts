@@ -311,7 +311,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     },
     {
       name: 'todos',
-      columns: ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
+      columns: ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id', 'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date']
     }
   ];
   
