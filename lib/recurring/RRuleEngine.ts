@@ -137,77 +137,70 @@ export class RRuleEngine {
    * @returns 下一个到期日期，如果重复已结束则返回null
    */
   static calculateNextDueDate(
-    rrule: string,
-    currentDate: Date,
-    startDate?: Date
-  ): Date | null {
-    const parsed = this.parseRRule(rrule);
-    const baseDate = startDate || currentDate;
-    const interval = parsed.interval || 1;
+  rrule: string,
+  currentDate: Date,
+  startDate?: Date,
+  maxIterations = 100 // 限制最大递归深度
+): Date | null {
+  const parsed = this.parseRRule(rrule);
+  const baseDate = startDate || currentDate;
+  const interval = parsed.interval || 1;
 
-    // 检查是否已达到结束条件
-    if (parsed.until && currentDate >= parsed.until) {
-      return null;
-    }
+  if (parsed.until && currentDate >= parsed.until) {
+    return null;
+  }
 
-    let nextDate = new Date(baseDate);
+  let nextDate = new Date(baseDate);
+  let iterations = 0;
+
+  while (iterations < maxIterations) {
+    iterations++;
 
     switch (parsed.freq) {
       case 'DAILY':
         nextDate.setDate(nextDate.getDate() + interval);
         break;
-
       case 'WEEKLY':
-        nextDate.setDate(nextDate.getDate() + (7 * interval));
+        nextDate.setDate(nextDate.getDate() + 7 * interval);
         break;
-
       case 'MONTHLY':
-        if (parsed.bymonthday && parsed.bymonthday.length > 0) {
-          // 使用指定的月份日期
+        if (parsed.bymonthday?.length) {
           const targetDay = parsed.bymonthday[0];
           nextDate.setMonth(nextDate.getMonth() + interval);
           nextDate.setDate(targetDay);
-          
-          // 处理月末日期（如31号在2月不存在）
           if (nextDate.getDate() !== targetDay) {
-            nextDate.setDate(0); // 设置为上个月的最后一天
+            nextDate.setDate(0); // fallback to last day of previous month
           }
         } else {
-          // 使用原始日期
           nextDate.setMonth(nextDate.getMonth() + interval);
         }
         break;
-
       case 'YEARLY':
-        if (parsed.bymonth && parsed.bymonthday) {
-          // 使用指定的月份和日期
-          const targetMonth = parsed.bymonth[0] - 1; // JavaScript月份从0开始
+        if (parsed.bymonth?.length && parsed.bymonthday?.length) {
+          const targetMonth = parsed.bymonth[0] - 1;
           const targetDay = parsed.bymonthday[0];
           nextDate.setFullYear(nextDate.getFullYear() + interval);
           nextDate.setMonth(targetMonth);
           nextDate.setDate(targetDay);
         } else {
-          // 使用原始日期
           nextDate.setFullYear(nextDate.getFullYear() + interval);
         }
         break;
-
       default:
         throw new Error(`Unsupported frequency: ${parsed.freq}`);
     }
 
-    // 确保下一个日期在当前日期之后
-    if (nextDate <= currentDate) {
-      return this.calculateNextDueDate(rrule, nextDate, startDate);
+    if (nextDate > currentDate) {
+      if (parsed.until && nextDate > parsed.until) {
+        return null;
+      }
+      return nextDate;
     }
-
-    // 检查UNTIL条件
-    if (parsed.until && nextDate > parsed.until) {
-      return null;
-    }
-
-    return nextDate;
   }
+
+  console.warn('Max iterations reached in calculateNextDueDate');
+  return null;
+}
 
   /**
    * 计算指定范围内的所有到期日期
