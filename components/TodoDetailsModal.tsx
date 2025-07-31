@@ -1,8 +1,10 @@
 // components/TodoDetailsModal.tsx
 "use client";
 
-import { useState } from 'react';
-import type { Todo, List } from '../lib/types';
+import { useState, useEffect } from 'react';
+import type { Todo, List, RecurrenceConfig } from '../lib/types';
+import { RRuleEngine, RRULE_PATTERNS } from '../lib/recurring/RRuleEngine';
+import { RecurringTaskGenerator } from '../lib/recurring/RecurringTaskGenerator';
 
 interface TodoDetailsModalProps {
   todo: Todo;
@@ -105,7 +107,30 @@ export default function TodoDetailsModal({
     onPermanentDelete
 }: TodoDetailsModalProps) {
   const [editableTodo, setEditableTodo] = useState<Todo>(todo);
+  const [showRecurrenceConfig, setShowRecurrenceConfig] = useState(false);
+  const [recurrenceDescription, setRecurrenceDescription] = useState('');
+  const [previewDates, setPreviewDates] = useState<Date[]>([]);
   const isRecycled = !!todo.deleted;
+
+  // 更新重复任务描述和预览
+  useEffect(() => {
+    if (editableTodo.repeat && editableTodo.is_recurring) {
+      try {
+        const description = RRuleEngine.generateHumanReadableDescription(editableTodo.repeat);
+        setRecurrenceDescription(description);
+        
+        const preview = RecurringTaskGenerator.generatePreviewInstances(editableTodo, 3);
+        setPreviewDates(preview);
+      } catch (error) {
+        console.error('Error generating recurrence description:', error);
+        setRecurrenceDescription('重复任务');
+        setPreviewDates([]);
+      }
+    } else {
+      setRecurrenceDescription('');
+      setPreviewDates([]);
+    }
+  }, [editableTodo.repeat, editableTodo.is_recurring, editableTodo.due_date]);
   
   // 添加详细的调试信息
   // console.log('=== TodoDetailsModal 调试信息 ===');
@@ -140,8 +165,8 @@ export default function TodoDetailsModal({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     if (isRecycled) return;
-    const { name, value } = e.target;
-    let finalValue: string | number | null = value;
+    const { name, value, type, checked } = e.target;
+    let finalValue: string | number | boolean | null = value;
 
     if (name === 'start_date' || name === 'due_date') {
       finalValue = localDateToDbUTC(value);
@@ -149,8 +174,46 @@ export default function TodoDetailsModal({
       finalValue = value ? Number(value) : 0;
     } else if (name === 'list_id') {
       finalValue = value === '' ? null : value;
+    } else if (type === 'checkbox') {
+      finalValue = checked;
+    } else if (name === 'repeat') {
+      finalValue = value === '' ? null : value;
     }
+    
     setEditableTodo(prev => ({ ...prev, [name]: finalValue }));
+  };
+
+  const handleRecurrenceToggle = (enabled: boolean) => {
+    if (isRecycled) return;
+    
+    if (enabled) {
+      // 启用重复任务
+      setEditableTodo(prev => ({
+        ...prev,
+        is_recurring: true,
+        repeat: prev.repeat || RRULE_PATTERNS.weekly,
+        next_due_date: prev.due_date
+      }));
+      setShowRecurrenceConfig(true);
+    } else {
+      // 禁用重复任务
+      setEditableTodo(prev => ({
+        ...prev,
+        is_recurring: false,
+        repeat: null,
+        next_due_date: null
+      }));
+      setShowRecurrenceConfig(false);
+    }
+  };
+
+  const handleRecurrencePatternChange = (pattern: string) => {
+    if (isRecycled) return;
+    
+    setEditableTodo(prev => ({
+      ...prev,
+      repeat: pattern
+    }));
   };
 
   const handleToggleComplete = async () => {
@@ -274,6 +337,73 @@ export default function TodoDetailsModal({
                     readOnly={isRecycled}
                 />
             </div>
+
+            {/* 重复任务配置 */}
+            {!isRecycled && !RecurringTaskGenerator.isTaskInstance(editableTodo) && (
+                <div className="form-group">
+                    <div className="form-group-row">
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={!!editableTodo.is_recurring}
+                                onChange={(e) => handleRecurrenceToggle(e.target.checked)}
+                                disabled={isRecycled}
+                            />
+                            重复任务
+                        </label>
+                        {editableTodo.is_recurring && recurrenceDescription && (
+                            <span className="recurrence-description">{recurrenceDescription}</span>
+                        )}
+                    </div>
+
+                    {editableTodo.is_recurring && (
+                        <div className="recurrence-config">
+                            <div className="form-group">
+                                <label htmlFor="recurrence-pattern">重复模式</label>
+                                <select
+                                    id="recurrence-pattern"
+                                    value={editableTodo.repeat || ''}
+                                    onChange={(e) => handleRecurrencePatternChange(e.target.value)}
+                                    disabled={isRecycled}
+                                >
+                                    <option value={RRULE_PATTERNS.daily}>每天</option>
+                                    <option value={RRULE_PATTERNS.weekly}>每周</option>
+                                    <option value={RRULE_PATTERNS.monthly}>每月</option>
+                                    <option value={RRULE_PATTERNS.yearly}>每年</option>
+                                    <option value={RRULE_PATTERNS.monthlyByDay(1)}>每月1号</option>
+                                    <option value={RRULE_PATTERNS.monthlyByDay(15)}>每月15号</option>
+                                    <option value={RRULE_PATTERNS.quarterly(1)}>每季度1号</option>
+                                </select>
+                            </div>
+
+                            {previewDates.length > 0 && (
+                                <div className="recurrence-preview">
+                                    <label>预览接下来的日期：</label>
+                                    <div className="preview-dates">
+                                        {previewDates.map((date, index) => (
+                                            <span key={index} className="preview-date">
+                                                {date.toLocaleDateString('zh-CN')}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* 显示重复任务实例信息 */}
+            {RecurringTaskGenerator.isTaskInstance(editableTodo) && (
+                <div className="form-group">
+                    <div className="recurring-instance-info">
+                        <span className="instance-badge">重复任务实例</span>
+                        {editableTodo.instance_number && (
+                            <span className="instance-number">第 {editableTodo.instance_number} 次</span>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
         <div className="modal-footer">         {isRecycled ? (
             <>

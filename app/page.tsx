@@ -579,6 +579,28 @@ export default function TodoListPage() {
           todosToImport = [...importedTodos, ...importedRecycleBin];
         }
         if (todosToImport.length === 0) { alert('没有找到可导入的事项。'); return; }
+        
+        // 检查和预览重复任务
+        const recurringTasks = todosToImport.filter(todo => todo.is_recurring && todo.repeat);
+        if (recurringTasks.length > 0) {
+          const previewMessage = `发现 ${recurringTasks.length} 个重复任务：\n\n` +
+            recurringTasks.map(task => {
+              try {
+                const description = task.repeat ? 
+                  require('../lib/recurring/RRuleEngine').RRuleEngine.generateHumanReadableDescription(task.repeat) : 
+                  '重复任务';
+                return `• ${task.title}: ${description}`;
+              } catch (error) {
+                return `• ${task.title}: 重复任务 (格式可能有误)`;
+              }
+            }).join('\n') +
+            '\n\n是否继续导入？';
+          
+          const confirmed = confirm(previewMessage);
+          if (!confirmed) {
+            return;
+          }
+        }
         const listNames = new Set(todosToImport.map(t => t.list_name).filter((s): s is string => !!s));
         const existingListNames = new Set(lists.map((l: List) => l.name));
         const newListsToCreate = [...listNames].filter(name => !existingListNames.has(name));
@@ -609,14 +631,22 @@ export default function TodoListPage() {
               id: uuid(), title: todo.title || '', completed: !!todo.completed, deleted: !!todo.deleted, sort_order: todo.sort_order || 0,
               due_date: todo.due_date || null, content: todo.content || null, tags: todo.tags || null, priority: todo.priority === undefined ? 0 : todo.priority,
               created_time: todo.created_time || new Date().toISOString(), completed_time: todo.completed_time || null, start_date: todo.start_date || null, list_id: listId,
+              // 重复任务相关字段
+              repeat: todo.repeat || null,
+              reminder: todo.reminder || null,
+              is_recurring: !!todo.is_recurring,
+              recurring_parent_id: todo.recurring_parent_id || null,
+              instance_number: todo.instance_number || null,
+              next_due_date: todo.next_due_date || null,
             };
             createdTodos.push(newTodoData as Todo);
             return {
-              sql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+              sql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
               params: [newTodoData.id, newTodoData.title, newTodoData.completed, newTodoData.deleted, newTodoData.sort_order,
                       newTodoData.due_date, newTodoData.content, newTodoData.tags, newTodoData.priority, newTodoData.created_time,
-                      newTodoData.completed_time, newTodoData.start_date, newTodoData.list_id]
+                      newTodoData.completed_time, newTodoData.start_date, newTodoData.list_id, newTodoData.repeat, newTodoData.reminder,
+                      newTodoData.is_recurring, newTodoData.recurring_parent_id, newTodoData.instance_number, newTodoData.next_due_date]
             };
         });
 
@@ -780,6 +810,6 @@ export default function TodoListPage() {
 }
 declare global {
   interface Window {
-    electron: any;
+    electron: unknown;
   }
 }

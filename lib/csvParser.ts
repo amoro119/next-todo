@@ -1,5 +1,6 @@
 // lib/csvParser.ts
 import { Todo } from './types';
+import { RRuleEngine } from './recurring/RRuleEngine';
 
 interface ParsedCsvResult {
   todos: Partial<Todo>[];
@@ -93,6 +94,8 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
     const completedTimeIndex = headers.indexOf('Completed Time');
     const startDateIndex = headers.indexOf('Start Date');
     const listNameIndex = headers.indexOf('List Name');
+    const repeatIndex = headers.indexOf('Repeat');
+    const reminderIndex = headers.indexOf('Reminder');
 
     if (titleIndex === -1 || statusIndex === -1) { throw new Error('CSV文件缺少必要的列: Title, Status'); }
 
@@ -128,6 +131,31 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
         const completedTime = completedTimeIndex > -1 ? parseDateTime(values[completedTimeIndex]) : null;
         const status = values[statusIndex];
 
+        // 处理重复任务字段
+        const repeatStr = repeatIndex > -1 ? values[repeatIndex]?.trim() : '';
+        const reminderStr = reminderIndex > -1 ? values[reminderIndex]?.trim() : '';
+        
+        // 解析和验证重复规则
+        let isRecurring = false;
+        let repeat: string | null = null;
+        
+        if (repeatStr && repeatStr !== '') {
+            try {
+                // 验证 RRULE 格式
+                if (RRuleEngine.validateRRule(repeatStr)) {
+                    isRecurring = true;
+                    repeat = repeatStr;
+                } else {
+                    console.warn(`Invalid RRULE format for task "${values[titleIndex]}": ${repeatStr}`);
+                }
+            } catch (error) {
+                console.warn(`Error parsing RRULE for task "${values[titleIndex]}": ${repeatStr}`, error);
+            }
+        }
+        
+        // 解析提醒设置
+        const reminder = (reminderStr && reminderStr !== '') ? reminderStr : null;
+
         const newTodo: Partial<Todo> = {
             title: values[titleIndex]?.trim() || '无标题',
             removed: status === '-1' ? 1 : 0,
@@ -140,6 +168,14 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
             created_time: createdTimeIndex > -1 ? parseDateTime(values[createdTimeIndex]) : new Date().toISOString(),
             start_date: startDate,
             list_name: listNameIndex > -1 ? values[listNameIndex] || null : null,
+            
+            // 重复任务相关字段
+            repeat: repeat,
+            reminder: reminder,
+            is_recurring: isRecurring,
+            recurring_parent_id: null, // 导入的都是原始任务
+            instance_number: null, // 导入的都是原始任务
+            next_due_date: isRecurring ? dueDate : null // 如果是重复任务，设置下次到期日期
         };
 
         if (newTodo.removed) {
