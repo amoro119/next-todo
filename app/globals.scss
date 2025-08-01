@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@use "tailwindcss";
 
 // SCSS Variables
 $body-bg: #e8f6ff;
@@ -1467,7 +1467,7 @@ span.shortcut-name {
   &.is-today .day-number {
     background-color: $deleted;
     color: #fff;
-    border-radius: 50%;
+    border-radius: 12px;
     width: 24px;
     height: 24px;
     line-height: 24px;
@@ -2134,6 +2134,8 @@ span.shortcut-name {
   &.selected {
     background: $completed;
     color: $font-color;
+    box-shadow: none;
+    transform:none;
   }
 }
 
@@ -2226,4 +2228,254 @@ span.shortcut-name {
   font-size: 16px;
   color: $font-color;
   font-weight: 600;
+}
+
+// Custom recurrence modal styles - optimized version
+.custom-recurrence-modal {
+  max-width: 500px;
+  
+  .modal-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+}
+
+// 基础设置区域
+.recurrence-basic {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  
+  .basic-row {
+    .base-type-select {
+      width: 100%;
+      padding: 12px;
+      border: var(--border);
+      border-radius: var(--border-radius);
+      background-color: #f8f9fa;
+      font-family: var(--font);
+      font-size: 16px;
+      color: var(--placeholder);
+    }
+  }
+  
+  .frequency-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    
+    .frequency-prefix {
+      font-size: 16px;
+      color: var(--font-color);
+      font-weight: 500;
+    }
+    
+    .interval-input {
+      width: 80px;
+      padding: 12px;
+      border: var(--border);
+      border-radius: var(--border-radius);
+      text-align: center;
+      font-size: 16px;
+      background-color: #fff;
+      font-weight: 600;
+    }
+    
+    .frequency-select {
+      flex: 1;
+      padding: 12px;
+      border: var(--border);
+      border-radius: var(--border-radius);
+      background-color: #fff;
+      font-family: var(--font);
+      font-size: 16px;
+    }
+  }
+}
+
+// 频率特定选项
+.frequency-options {
+  .option-label {
+    font-size: 14px;
+    color: var(--font-color);
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  
+  // 周选择
+  .weekdays-grid {
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    
+    .weekday-btn {
+      width: 44px;
+      height: 44px;
+      border: var(--border);
+      border-radius: 12px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      &:hover {
+        box-shadow: var(--box-shadow);
+        transform: translate(-2px, -2px);
+      }
+
+      &.selected {
+        background: $completed;
+        color: $font-color;
+        border-color: $font-color;
+        transform: none;
+        box-shadow: none;
+      }
+    }
+  }
+  
+  // 月选择标签
+  .monthly-tabs {
+    display: flex;
+    background: #f5f5f5;
+    border-radius: var(--border-radius);
+    padding: 4px;
+    margin-bottom: 20px;
+    
+    .tab-btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      border-radius: calc(var(--border-radius) - 4px);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      color: var(--font-color);
+
+      &.active {
+        background: #fff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        font-weight: 600;
+      }
+    }
+  }
+  
+  .monthly-content {
+    min-height: 200px;
+  }
+}
+
+// Date picker
+.date-picker {
+  .calendar-mini {
+    .dates-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+      .date-btn {
+        width: 45px;
+        height: 45px;
+        border: var(--border);
+        border-color: $font-color;
+        border-radius: var(--border-radius);
+        background: #fff;
+        cursor: pointer;
+        justify-self:center;
+        font-size: 12px;
+        transition: all 0.2s;
+        font-weight:600;
+      
+        &:hover {
+          box-shadow: var(--box-shadow);
+          transform: translate(-2px, -2px);
+        }
+      
+        &.selected {
+          background: $completed;
+          color: $font-color;
+          border-color: $font-color;
+          transform: none;
+          box-shadow: none;
+        }
+      
+        &.special {
+          grid-column: span 2;
+          font-size: 12px;
+        }
+      }
+    }
+  }
+}
+
+// Weekday and workday pickers
+.weekday-picker,
+.workday-picker,
+.yearly-picker {
+  .picker-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    
+    select {
+      flex: 1;
+      padding: 12px;
+      border: var(--border);
+      border-radius: var(--border-radius);
+      background-color: #fff;
+      font-family: var(--font);
+      font-size: 16px;
+    }
+    
+    .date-input {
+      width: 80px;
+      padding: 12px;
+      border: var(--border);
+      border-radius: var(--border-radius);
+      text-align: center;
+      font-size: 16px;
+      background-color: #fff;
+    }
+    
+    span {
+      font-size: 16px;
+      color: var(--font-color);
+    }
+  }
+}
+
+// 跳过选项
+.skip-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #e1e5e9;
+  
+  .skip-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--font-color);
+    
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: $completed;
+      cursor: pointer;
+    }
+    
+    span {
+      user-select: none;
+    }
+  }
 }
