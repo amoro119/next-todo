@@ -1,21 +1,21 @@
 // app/sync.ts
-import { PGlite } from '@electric-sql/pglite'
-import { PGliteWithLive } from '@electric-sql/pglite/live'
-import { PGliteWithSync } from '@electric-sql/pglite-sync'
-import { postInitialSync } from '../db/migrations-client'
-import { useEffect, useState } from 'react'
-import { ShapeStream, Shape } from '@electric-sql/client';
-import { getAuthToken, getCachedAuthToken, invalidateToken } from '../lib/auth'; // <--- 导入新的认证模块
+import { PGlite } from "@electric-sql/pglite";
+import { PGliteWithLive } from "@electric-sql/pglite/live";
+import { PGliteWithSync } from "@electric-sql/pglite-sync";
+import { postInitialSync } from "../db/migrations-client";
+import { useEffect, useState } from "react";
+import { ShapeStream, Shape } from "@electric-sql/client";
+import { getAuthToken, getCachedAuthToken, invalidateToken } from "../lib/auth"; // <--- 导入新的认证模块
 
-type SyncStatus = 'initial-sync' | 'done' | 'error'
+type SyncStatus = "initial-sync" | "done" | "error";
 
-type PGliteWithExtensions = PGliteWithLive & PGliteWithSync
+type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
 
 // --- 认证逻辑现在已移至 lib/auth.ts ---
 
 export async function startSync(pg: PGliteWithExtensions) {
-  console.log('Starting ElectricSQL sync...')
-  updateSyncStatus('initial-sync', 'Starting sync...')
+  console.log("Starting ElectricSQL sync...");
+  updateSyncStatus("initial-sync", "Starting sync...");
 
   try {
     // 获取认证令牌
@@ -29,88 +29,99 @@ export async function startSync(pg: PGliteWithExtensions) {
     }
     console.log("认证成功，令牌已缓存。");
 
-
     // 初始化ElectricSQL系统表
-    console.log('Initializing ElectricSQL system tables...')
-    await initializeElectricSystemTables(pg)
+    console.log("Initializing ElectricSQL system tables...");
+    await initializeElectricSystemTables(pg);
 
     // 检查本地是否首次同步（无数据时才清理订阅）
-    const listsCountRes = await pg.query('SELECT COUNT(*) as count FROM lists');
-    const todosCountRes = await pg.query('SELECT COUNT(*) as count FROM todos');
-    const listsCount = Number((listsCountRes.rows[0] as { count: string | number })?.count || 0);
-    const todosCount = Number((todosCountRes.rows[0] as { count: string | number })?.count || 0);
+    const listsCountRes = await pg.query("SELECT COUNT(*) as count FROM lists");
+    const todosCountRes = await pg.query("SELECT COUNT(*) as count FROM todos");
+    const listsCount = Number(
+      (listsCountRes.rows[0] as { count: string | number })?.count || 0
+    );
+    const todosCount = Number(
+      (todosCountRes.rows[0] as { count: string | number })?.count || 0
+    );
     if (listsCount === 0 && todosCount === 0) {
       // 仅首次同步时清理旧的同步订阅
-      console.log('首次同步，清理旧的同步订阅...')
-      await cleanupOldSubscriptions(pg)
+      console.log("首次同步，清理旧的同步订阅...");
+      await cleanupOldSubscriptions(pg);
     } else {
-      console.log('本地已有数据，跳过订阅清理')
+      console.log("本地已有数据，跳过订阅清理");
     }
 
     // 启动非破坏性的双向同步
-    console.log('Starting non-destructive bidirectional sync...')
-    await startBidirectionalSync(pg)
+    console.log("Starting non-destructive bidirectional sync...");
+    await startBidirectionalSync(pg);
   } catch (error) {
-    console.error('Sync failed:', error)
+    console.error("Sync failed:", error);
     // 当认证失败时，确保清除缓存的令牌
     invalidateToken();
-    const errorMessage = error instanceof Error ? error.message : '同步失败，但应用仍可使用';
-    if (errorMessage.includes('认证失败') || errorMessage.includes('认证令牌')) {
-      updateSyncStatus('error', '认证失败，无法同步数据');
+    const errorMessage =
+      error instanceof Error ? error.message : "同步失败，但应用仍可使用";
+    if (
+      errorMessage.includes("认证失败") ||
+      errorMessage.includes("认证令牌")
+    ) {
+      updateSyncStatus("error", "认证失败，无法同步数据");
     } else {
-      updateSyncStatus('error', '同步失败，但应用仍可使用');
+      updateSyncStatus("error", "同步失败，但应用仍可使用");
     }
   }
 }
 
-
 async function initializeElectricSystemTables(pg: PGliteWithExtensions) {
-  console.log('Waiting for ElectricSQL to initialize system tables...')
+  console.log("Waiting for ElectricSQL to initialize system tables...");
 
   // 等待一段时间让ElectricSQL初始化
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // 尝试创建一个简单的查询来触发ElectricSQL系统表初始化
   try {
-    await pg.query('SELECT 1')
-    console.log('ElectricSQL system tables should be initialized')
+    await pg.query("SELECT 1");
+    console.log("ElectricSQL system tables should be initialized");
   } catch {
-    console.log('ElectricSQL still initializing, continuing...')
+    console.log("ElectricSQL still initializing, continuing...");
   }
 
   // 再等待一段时间确保系统表创建完成
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
 async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
   try {
-    console.log('Cleaning up old sync subscriptions...')
+    console.log("Cleaning up old sync subscriptions...");
 
     // 只清理旧的同步订阅，不清空数据
     try {
-      await pg.sync.deleteSubscription('lists')
-      await pg.sync.deleteSubscription('todos')
-      await pg.sync.deleteSubscription('meta')
-      console.log('Deleted old sync subscriptions')
+      await pg.sync.deleteSubscription("lists");
+      await pg.sync.deleteSubscription("todos");
+      await pg.sync.deleteSubscription("meta");
+      console.log("Deleted old sync subscriptions");
     } catch (error) {
-      console.log('No old subscriptions to delete or error:', error instanceof Error ? error.message : String(error))
+      console.log(
+        "No old subscriptions to delete or error:",
+        error instanceof Error ? error.message : String(error)
+      );
     }
 
     // 等待一小段时间确保订阅删除完成
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
-    console.log('Old subscriptions cleanup completed')
-
+    console.log("Old subscriptions cleanup completed");
   } catch (error) {
-    console.log('Cleanup old subscriptions error:', error)
+    console.log("Cleanup old subscriptions error:", error);
   }
 }
 
 // global_last_seen_lsn 本地缓存工具
 function getGlobalLastSeenLsn(shapeName: string): string | undefined {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return undefined;
+  if (typeof window === "undefined" || typeof localStorage === "undefined")
+    return undefined;
   try {
-    return localStorage.getItem(`global_last_seen_lsn:${shapeName}` ) || undefined;
+    return (
+      localStorage.getItem(`global_last_seen_lsn:${shapeName}`) || undefined
+    );
   } catch (e) {
     console.error(`[调试] 读取 global_last_seen_lsn:${shapeName} 失败:`, e);
     return undefined;
@@ -118,11 +129,23 @@ function getGlobalLastSeenLsn(shapeName: string): string | undefined {
 }
 
 function setGlobalLastSeenLsn(shapeName: string, lsn: string) {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+  if (typeof window === "undefined" || typeof localStorage === "undefined")
+    return;
   try {
     localStorage.setItem(`global_last_seen_lsn:${shapeName}`, lsn);
   } catch (e) {
     console.error(`[调试] 写入 global_last_seen_lsn:${shapeName} 失败:`, e);
+  }
+}
+
+// 数据哈希缓存工具
+function setLastSyncHash(shapeName: string, hash: string) {
+  if (typeof window === "undefined" || typeof localStorage === "undefined")
+    return;
+  try {
+    localStorage.setItem(`last_sync_hash:${shapeName}`, hash);
+  } catch (e) {
+    console.error(`写入 last_sync_hash:${shapeName} 失败:`, e);
   }
 }
 
@@ -133,27 +156,69 @@ export async function getFullShapeRows({
   table,
   columns,
   electricProxyUrl,
-  token
+  token,
 }: {
-  table: string,
-  columns: string[],
-  electricProxyUrl: string,
-  token: string
+  table: string;
+  columns: string[];
+  electricProxyUrl: string;
+  token: string;
 }): Promise<unknown[]> {
   const fullShapeStream = new ShapeStream({
     url: `${electricProxyUrl}/v1/shape`,
     params: {
       table,
-      columns
+      columns,
     },
-    offset: '-1',
+    offset: "-1",
     headers: {
-      'Authorization': `Bearer ${token}`
-    }
+      Authorization: `Bearer ${token}`,
+    },
   });
   const fullShape = new Shape(fullShapeStream);
   return await fullShape.rows;
 }
+
+/**
+ * 计算数据集的简单哈希值（用于快速比较）
+ */
+function calculateDataHash(rows: unknown[]): string {
+  // 对所有行的ID进行排序后计算哈希，这样可以快速检测数据差异
+  const sortedIds = rows
+    .map((row) => (row as { id: string }).id)
+    .filter(Boolean)
+    .sort();
+
+  // 简单的字符串哈希算法
+  let hash = 0;
+  const str = sortedIds.join("|");
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // 转换为32位整数
+  }
+  return hash.toString();
+}
+
+/**
+ * 获取本地表的数据哈希
+ */
+async function getLocalDataHash(
+  table: string,
+  pg: PGliteWithExtensions
+): Promise<string> {
+  try {
+    const result = await pg.query(`SELECT id FROM ${table} ORDER BY id`);
+    const ids = result.rows
+      .map((row) => (row as { id: string }).id)
+      .filter(Boolean);
+    return calculateDataHash(ids.map((id) => ({ id })));
+  } catch (error) {
+    console.warn(`获取本地${table}数据哈希失败:`, error);
+    return "";
+  }
+}
+
+
 
 /**
  * [MODIFIED] 拉取全量数据并与本地数据库进行三步协调（删除、更新、插入）
@@ -166,18 +231,23 @@ async function doFullTableSync({
   token,
   pg,
 }: {
-  table: string,
-  columns: string[],
-  electricProxyUrl: string,
-  token: string,
-  pg: PGliteWithExtensions,
-  upsertSql: string // Kept for compatibility, but logic is now self-contained.
+  table: string;
+  columns: string[];
+  electricProxyUrl: string;
+  token: string;
+  pg: PGliteWithExtensions;
+  upsertSql: string; // Kept for compatibility, but logic is now self-contained.
 }): Promise<void> {
   console.log(`- Starting full reconciliation for table: ${table}`);
 
   // 1. Fetch all rows from the remote server.
-  const rows = await getFullShapeRows({ table, columns, electricProxyUrl, token });
-  const remoteIds = rows.map(r => (r as { id: string }).id);
+  const rows = await getFullShapeRows({
+    table,
+    columns,
+    electricProxyUrl,
+    token,
+  });
+  const remoteIds = rows.map((r) => (r as { id: string }).id);
   console.log(`- Fetched ${remoteIds.length} remote rows for ${table}.`);
 
   await pg.transaction(async (tx) => {
@@ -186,63 +256,71 @@ async function doFullTableSync({
     if (remoteIds.length > 0) {
       const { rows: deletedRows } = await tx.query(
         // Note the removal of the "main" schema prefix.
-        `DELETE FROM "${table}" WHERE id NOT IN (${remoteIds.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`,
+        `DELETE FROM "${table}" WHERE id NOT IN (${remoteIds
+          .map((_, i) => `$${i + 1}`)
+          .join(",")}) RETURNING id`,
         remoteIds
       );
       if (deletedRows.length > 0) {
-        console.log(`- Deleted ${deletedRows.length} orphan rows from local ${table}.`);
+        console.log(
+          `- Deleted ${deletedRows.length} orphan rows from local ${table}.`
+        );
       }
     } else {
       // If the remote table is empty, clear the entire local table.
-      const { rows: deletedRows } = await tx.query(`DELETE FROM "${table}" RETURNING id`);
-       if (deletedRows.length > 0) {
-        console.log(`- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`);
+      const { rows: deletedRows } = await tx.query(
+        `DELETE FROM "${table}" RETURNING id`
+      );
+      if (deletedRows.length > 0) {
+        console.log(
+          `- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`
+        );
       }
     }
 
     // 3. Upsert all remote rows into the local database.
     // This will update existing records and insert new ones.
     if (rows.length > 0) {
-        for (const rowRaw of rows) {
-            const row = rowRaw as Record<string, unknown>;
-            if (table === 'lists') {
-            await tx.query(
-                `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+      for (const rowRaw of rows) {
+        const row = rowRaw as Record<string, unknown>;
+        if (table === "lists") {
+          await tx.query(
+            `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-                [
-                row.id ?? null,
-                row.name ?? null,
-                row.sort_order ?? 0,
-                row.is_hidden ?? false,
-                row.modified ?? null
-                ]
-            );
-            } else if (table === 'todos') {
-            await tx.query(
-                `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+            [
+              row.id ?? null,
+              row.name ?? null,
+              row.sort_order ?? 0,
+              row.is_hidden ?? false,
+              row.modified ?? null,
+            ]
+          );
+        } else if (table === "todos") {
+          await tx.query(
+            `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                 ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-                [
-                row.id ?? null,
-                row.title ?? null,
-                row.completed ?? false,
-                row.deleted ?? false,
-                row.sort_order ?? 0,
-                row.due_date ?? null,
-                row.content ?? null,
-                row.tags ?? null,
-                row.priority ?? 0,
-                row.created_time ?? null,
-                row.completed_time ?? null,
-                row.start_date ?? null,
-                row.list_id ?? null
-                ]
-            );
-            }
+            [
+              row.id ?? null,
+              row.title ?? null,
+              row.completed ?? false,
+              row.deleted ?? false,
+              row.sort_order ?? 0,
+              row.due_date ?? null,
+              row.content ?? null,
+              row.tags ?? null,
+              row.priority ?? 0,
+              row.created_time ?? null,
+              row.completed_time ?? null,
+              row.start_date ?? null,
+              row.list_id ?? null,
+            ]
+          );
         }
+      }
     }
   });
-  
+
   console.log(`- ✅ ${table} full reconciliation complete.`);
 }
 
@@ -255,14 +333,14 @@ export async function syncFullTableToLocal({
   electricProxyUrl,
   token,
   pg,
-  upsertSql
+  upsertSql,
 }: {
-  table: string,
-  columns: string[],
-  electricProxyUrl: string,
-  token: string,
-  pg: PGliteWithExtensions,
-  upsertSql: string
+  table: string;
+  columns: string[];
+  electricProxyUrl: string;
+  token: string;
+  pg: PGliteWithExtensions;
+  upsertSql: string;
 }): Promise<void> {
   // 检查本地表是否为空，若查询失败则默认需要初始upsert
   let shouldInitialUpsert = false;
@@ -270,14 +348,21 @@ export async function syncFullTableToLocal({
     const res = await pg.query(`SELECT 1 FROM ${table} LIMIT 1`);
     shouldInitialUpsert = res.rows.length === 0;
   } catch (e) {
-    console.warn('本地表计数失败，默认进行初始upsert:', e);
+    console.warn("本地表计数失败，默认进行初始upsert:", e);
     shouldInitialUpsert = true;
   }
   if (!shouldInitialUpsert) {
     console.log(`📥 本地${table}表已有数据，跳过初始全量写入`);
     return;
   }
-  await doFullTableSync({ table, columns, electricProxyUrl, token, pg, upsertSql });
+  await doFullTableSync({
+    table,
+    columns,
+    electricProxyUrl,
+    token,
+    pg,
+    upsertSql,
+  });
 }
 
 /**
@@ -289,37 +374,64 @@ export async function forceFullTableSync({
   electricProxyUrl,
   token,
   pg,
-  upsertSql
+  upsertSql,
 }: {
-  table: string,
-  columns: string[],
-  electricProxyUrl: string,
-  token: string,
-  pg: PGliteWithExtensions,
-  upsertSql: string
-  }): Promise<void> {
-  updateSyncStatus('initial-sync', 'Starting sync...')
-  await doFullTableSync({ table, columns, electricProxyUrl, token, pg, upsertSql });
-  updateSyncStatus('done');
+  table: string;
+  columns: string[];
+  electricProxyUrl: string;
+  token: string;
+  pg: PGliteWithExtensions;
+  upsertSql: string;
+}): Promise<void> {
+  updateSyncStatus("initial-sync", "Starting sync...");
+  await doFullTableSync({
+    table,
+    columns,
+    electricProxyUrl,
+    token,
+    pg,
+    upsertSql,
+  });
+  updateSyncStatus("done");
 }
 
 async function startBidirectionalSync(pg: PGliteWithExtensions) {
   const shapes = [
     {
-      name: 'lists',
-      columns: ['id', 'name', 'sort_order', 'is_hidden', 'modified']
+      name: "lists",
+      columns: ["id", "name", "sort_order", "is_hidden", "modified"],
     },
     {
-      name: 'todos',
-      columns: ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id', 'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date']
-    }
+      name: "todos",
+      columns: [
+        "id",
+        "title",
+        "completed",
+        "deleted",
+        "sort_order",
+        "due_date",
+        "content",
+        "tags",
+        "priority",
+        "created_time",
+        "completed_time",
+        "start_date",
+        "list_id",
+        "repeat",
+        "reminder",
+        "is_recurring",
+        "recurring_parent_id",
+        "instance_number",
+        "next_due_date",
+      ],
+    },
   ];
-  
+
   const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
   if (!electricProxyUrl) {
     throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
   }
-  
+
   const token = getCachedAuthToken();
   if (!token) {
     throw new Error("Authentication token is not available for sync.");
@@ -333,10 +445,10 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       const res = await pg.query(`SELECT 1 FROM ${shapeName} LIMIT 1`);
       shouldInitialUpsert = res.rows.length === 0;
     } catch (e) {
-      console.warn('本地表计数失败，默认进行初始upsert:', e);
+      console.warn("本地表计数失败，默认进行初始upsert:", e);
       shouldInitialUpsert = true;
     }
-    
+
     if (shouldInitialUpsert) {
       await doFullTableSync({
         table: shapeName,
@@ -344,44 +456,38 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         electricProxyUrl,
         token: token!,
         pg,
-        upsertSql: '' // upsertSql 不再需要
+        upsertSql: "", // upsertSql 不再需要
       });
-        console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+      console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
     } else {
-        console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
+      console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
     }
   }
 
-  // 2. 只在初始同步完成后执行一次校验（带补偿）
+  // 2. 只在初始同步完成后执行一次哈希校验（带补偿）
   for (const shapeDef of shapes) {
     const { name: shapeName, columns } = shapeDef;
 
-    /* ---------- 远程行数 ---------- */
+    /* ---------- 远程数据哈希 ---------- */
     const remoteRows = await getFullShapeRows({
       table: shapeName,
       columns,
       electricProxyUrl,
-      token: token!
+      token: token!,
     });
-    const remoteCount = remoteRows.length;
+    const remoteHash = calculateDataHash(remoteRows);
 
-    /* ---------- 本地行数 ---------- */
-    let localCount = 0;
-    try {
-      const res = await pg.query(`SELECT COUNT(*)::int AS count FROM ${shapeName}`);
-      localCount = res.rows[0]?.count ?? 0;
-    } catch {
-      localCount = 0;
-    }
+    /* ---------- 本地数据哈希 ---------- */
+    const localHash = await getLocalDataHash(shapeName, pg);
 
     console.log(
-      `📊 ${shapeName} 校验 -> 远程:${remoteCount} 本地:${localCount}`
+      `📊 ${shapeName} 哈希校验 -> 远程:${remoteHash} 本地:${localHash}`
     );
 
-    /* ---------- 不一致时补偿 ---------- */
-    if (localCount !== remoteCount) {
+    /* ---------- 哈希不一致时补偿 ---------- */
+    if (localHash !== remoteHash) {
       console.warn(
-        `⚠️ ${shapeName} 行数不一致，准备强制全量同步...`
+        `⚠️ ${shapeName} 数据哈希不一致，准备强制全量同步...`
       );
 
       await doFullTableSync({
@@ -390,32 +496,34 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         electricProxyUrl,
         token,
         pg,
-        upsertSql: '' // upsertSql 不再需要
+        upsertSql: "", // upsertSql 不再需要
       });
 
-      /* 再次校验 */
+      /* 再次校验并缓存哈希 */
       try {
-        const finalRes = await pg.query(
-          `SELECT COUNT(*)::int AS count FROM ${shapeName}`
-        );
+        const finalHash = await getLocalDataHash(shapeName, pg);
         console.log(
-          `✅ ${shapeName} 补偿后本地记录数: ${finalRes.rows[0]?.count}`
+          `✅ ${shapeName} 补偿后哈希: ${finalHash}`
         );
+        // 缓存同步成功后的哈希值
+        setLastSyncHash(shapeName, finalHash);
       } catch (e) {
         console.error(`❌ ${shapeName} 补偿后校验失败:`, e);
       }
     } else {
-      console.log(`✅ ${shapeName} 行数一致，无需补偿`);
+      console.log(`✅ ${shapeName} 数据哈希一致，无需补偿`);
+      // 缓存当前哈希值
+      setLastSyncHash(shapeName, localHash);
     }
   }
 
   // 3. 标记初始同步完成
   if (!initialSyncDone) {
     initialSyncDone = true;
-    updateSyncStatus('initial-sync', 'Creating indexes...');
+    updateSyncStatus("initial-sync", "Creating indexes...");
     await postInitialSync(pg as unknown as PGlite);
-    updateSyncStatus('done');
-    console.log('✅ 初始同步完成，准备开始实时同步...');
+    updateSyncStatus("done");
+    console.log("✅ 初始同步完成，准备开始实时同步...");
   }
 
   // 5. 在 initialSyncDone 后订阅变动
@@ -452,7 +560,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       currentStream = new ShapeStream({
         url: `${electricProxyUrl}/v1/shape`,
         params: { table: shapeName, columns },
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       lastMessageTime = Date.now();
@@ -473,27 +581,30 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
             if (!messages?.length) return;
             for (const msg of messages) {
               /// 处理消息的逻辑...
-              if (msg.headers?.control === 'must-refetch') {
-                console.warn(`[must-refetch] ${shapeName} 收到 must-refetch 控制消息，需要全量同步！`);
+              if (msg.headers?.control === "must-refetch") {
+                console.warn(
+                  `[must-refetch] ${shapeName} 收到 must-refetch 控制消息，需要全量同步！`
+                );
               }
-              
+
               const msgLsn = msg.headers.global_last_seen_lsn;
               const lastSeenLsn = getGlobalLastSeenLsn(shapeName);
               if (lastSeenLsn !== msg.headers.global_last_seen_lsn) {
-                if (typeof msgLsn === 'string') {
+                if (typeof msgLsn === "string") {
                   setGlobalLastSeenLsn(shapeName, msgLsn);
                 }
               }
-              
-              if (!('value' in msg && 'lsn' in msg.headers)) continue;
-              
+
+              if (!("value" in msg && "lsn" in msg.headers)) continue;
+
               const rowLsn = msg.headers.lsn;
-              if (rowLsn && compareLsn(String(rowLsn), String(msgLsn)) >= 0) continue;
-              
+              if (rowLsn && compareLsn(String(rowLsn), String(msgLsn)) >= 0)
+                continue;
+
               const row = msg.value;
               const operation = msg.headers?.operation;
               if (!operation) continue;
-               await processShapeChange(shapeName, operation, row, pg);
+              await processShapeChange(shapeName, operation, row, pg);
             }
             console.log(`🔄 ${shapeName} 实时变更已同步`);
           })();
@@ -520,9 +631,9 @@ async function processShapeChange(
   row: Record<string, unknown>,
   pg: PGliteWithExtensions
 ) {
-  if (shapeName === 'lists') {
+  if (shapeName === "lists") {
     switch (operation) {
-      case 'insert':
+      case "insert":
         await pg.query(
           `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
@@ -531,33 +642,29 @@ async function processShapeChange(
             row.name ?? null,
             row.sort_order ?? 0,
             row.is_hidden ?? false,
-            row.modified ?? null
+            row.modified ?? null,
           ]
         );
         break;
-        
-      case 'update':
-        const updateFields = Object.keys(row).filter(key => key !== 'id');
+
+      case "update":
+        const updateFields = Object.keys(row).filter((key) => key !== "id");
         if (updateFields.length > 0) {
-          const setClause = updateFields.map((key, idx) => `${key} = $${idx + 2}`).join(', ');
-          const values = [row.id, ...updateFields.map(key => row[key])];
-          await pg.query(
-            `UPDATE lists SET ${setClause} WHERE id = $1`,
-            values
-          );
+          const setClause = updateFields
+            .map((key, idx) => `${key} = $${idx + 2}`)
+            .join(", ");
+          const values = [row.id, ...updateFields.map((key) => row[key])];
+          await pg.query(`UPDATE lists SET ${setClause} WHERE id = $1`, values);
         }
         break;
-        
-      case 'delete':
-        await pg.query(
-          `DELETE FROM lists WHERE id = $1`,
-          [row.id ?? null]
-        );
+
+      case "delete":
+        await pg.query(`DELETE FROM lists WHERE id = $1`, [row.id ?? null]);
         break;
     }
-  } else if (shapeName === 'todos') {
+  } else if (shapeName === "todos") {
     switch (operation) {
-      case 'insert':
+      case "insert":
         await pg.query(
           `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -575,28 +682,24 @@ async function processShapeChange(
             row.created_time ?? null,
             row.completed_time ?? null,
             row.start_date ?? null,
-            row.list_id ?? null
+            row.list_id ?? null,
           ]
         );
         break;
-        
-      case 'update':
-        const updateFields = Object.keys(row).filter(key => key !== 'id');
+
+      case "update":
+        const updateFields = Object.keys(row).filter((key) => key !== "id");
         if (updateFields.length > 0) {
-          const setClause = updateFields.map((key, idx) => `${key} = $${idx + 2}`).join(', ');
-          const values = [row.id, ...updateFields.map(key => row[key])];
-          await pg.query(
-            `UPDATE todos SET ${setClause} WHERE id = $1`,
-            values
-          );
+          const setClause = updateFields
+            .map((key, idx) => `${key} = $${idx + 2}`)
+            .join(", ");
+          const values = [row.id, ...updateFields.map((key) => row[key])];
+          await pg.query(`UPDATE todos SET ${setClause} WHERE id = $1`, values);
         }
         break;
-        
-      case 'delete':
-        await pg.query(
-          `DELETE FROM todos WHERE id = $1`,
-          [row.id ?? null]
-        );
+
+      case "delete":
+        await pg.query(`DELETE FROM todos WHERE id = $1`, [row.id ?? null]);
         break;
     }
   }
@@ -604,41 +707,45 @@ async function processShapeChange(
 
 export function updateSyncStatus(newStatus: SyncStatus, message?: string) {
   // Guard against SSR
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+  if (typeof window === "undefined" || typeof localStorage === "undefined") {
     return;
   }
-  console.log(`Sync status: ${newStatus} - ${message || ''}`)
-  localStorage.setItem('syncStatus', JSON.stringify([newStatus, message]))
+  console.log(`Sync status: ${newStatus} - ${message || ""}`);
+  localStorage.setItem("syncStatus", JSON.stringify([newStatus, message]));
   window.dispatchEvent(
-    new StorageEvent('storage', {
-      key: 'syncStatus',
+    new StorageEvent("storage", {
+      key: "syncStatus",
       newValue: JSON.stringify([newStatus, message]),
     })
-  )
+  );
 }
 
 export function useSyncStatus(): [SyncStatus, string | undefined] {
-  const [syncStatus, setSyncStatus] = useState<[SyncStatus, string | undefined]>(['initial-sync', 'Starting sync...']);
+  const [syncStatus, setSyncStatus] = useState<
+    [SyncStatus, string | undefined]
+  >(["initial-sync", "Starting sync..."]);
 
   useEffect(() => {
     const getStatus = (): [SyncStatus, string | undefined] => {
       // This will only run on the client, where localStorage is available.
-      const currentSyncStatusJson = localStorage.getItem('syncStatus');
-      return currentSyncStatusJson ? JSON.parse(currentSyncStatusJson) : ['initial-sync', 'Starting sync...'];
+      const currentSyncStatusJson = localStorage.getItem("syncStatus");
+      return currentSyncStatusJson
+        ? JSON.parse(currentSyncStatusJson)
+        : ["initial-sync", "Starting sync..."];
     };
 
     setSyncStatus(getStatus());
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'syncStatus' && e.newValue) {
+      if (e.key === "syncStatus" && e.newValue) {
         setSyncStatus(JSON.parse(e.newValue));
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
@@ -653,30 +760,32 @@ export function waitForInitialSyncDone() {
       return;
     }
     // Guard against SSR
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return;
     }
     const checkStatus = () => {
-        const currentSyncStatusJson = localStorage.getItem('syncStatus');
-        const [currentStatus] = currentSyncStatusJson ? JSON.parse(currentSyncStatusJson) : ['initial-sync'];
-        if (currentStatus === 'done') {
-            initialSyncDone = true;
-            resolve();
-            return true;
-        }
-        return false;
+      const currentSyncStatusJson = localStorage.getItem("syncStatus");
+      const [currentStatus] = currentSyncStatusJson
+        ? JSON.parse(currentSyncStatusJson)
+        : ["initial-sync"];
+      if (currentStatus === "done") {
+        initialSyncDone = true;
+        resolve();
+        return true;
+      }
+      return false;
     };
     if (checkStatus()) return;
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'syncStatus' && e.newValue) {
+      if (e.key === "syncStatus" && e.newValue) {
         if (checkStatus()) {
-          window.removeEventListener('storage', handleStorageChange);
+          window.removeEventListener("storage", handleStorageChange);
         }
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
   });
 }
 
