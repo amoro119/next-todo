@@ -270,7 +270,17 @@ export default function TodoListPage() {
   }, [todos, lists]);
   // --- FIX END ---
 
-  const todayStrInUTC8 = useMemo(() => dateCache.getTodayString(), [])
+  // 修复：添加一个状态来跟踪当前日期，并定期更新
+  const [todayStrInUTC8, setTodayStrInUTC8] = useState(() => dateCache.getTodayString());
+  
+  // 定期更新日期状态
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTodayStrInUTC8(dateCache.getTodayString());
+    }, 60000); // 每分钟检查一次
+    
+    return () => clearInterval(interval);
+  }, []);
   // --- FIX: Use todosWithListNames for all subsequent calculations ---
   const uncompletedTodos = useMemo(() => 
 // ... (no changes in this block)
