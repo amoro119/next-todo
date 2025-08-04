@@ -418,7 +418,10 @@ export default function TodoListPage() {
     await db.insert('todos', newTodoData);
     
     setNewTodoTitle('');
-    setNewTodoDate(null);
+    // 修复：只有在非日历视图下才重置日期，保持日历视图中的日期状态
+    if (currentView !== 'calendar') {
+      setNewTodoDate(null);
+    }
   }, [newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8, db]);
   
   const handleUpdateTodo = useCallback(async (todoId: string, updates: Partial<Omit<Todo, 'id' | 'list_name'>>) => {
