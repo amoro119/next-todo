@@ -2261,6 +2261,9 @@ span.shortcut-name {
       background-color: #fff;
       font-weight: 600;
     }
+    .error{
+      border-color:#ff4d4f;
+    }
     
     .frequency-select {
       flex: 1;
@@ -2321,10 +2324,10 @@ span.shortcut-name {
   // 月选择标签
   .monthly-tabs {
     display: flex;
-    background: #f5f5f5;
     border-radius: var(--border-radius);
     padding: 4px;
     margin-bottom: 20px;
+    border:var(--border);
     
     .tab-btn {
       flex: 1;
@@ -2339,8 +2342,7 @@ span.shortcut-name {
       color: var(--font-color);
 
       &.active {
-        background: #fff;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        background: $bg-submit;
         font-weight: 600;
       }
     }

@@ -68,7 +68,14 @@ export default function RecurrenceSelector({
   const displayText = currentOption
     ? currentOption.label
     : value
-    ? "自定义重复"
+    ? (() => {
+        try {
+          return RRuleEngine.generateHumanReadableDescription(value);
+        } catch (error) {
+          console.error('Error generating human readable description:', error);
+          return "自定义重复";
+        }
+      })()
     : "设置重复规则";
   const hasValue = !!value;
 
@@ -226,7 +233,7 @@ function CustomRecurrenceModal({
         result.frequency = parsed.freq;
       }
       
-      if (parsed.interval) {
+      if (parsed.interval !== undefined) {
         result.interval = parsed.interval;
       }
       
@@ -255,14 +262,14 @@ function CustomRecurrenceModal({
   
   // 核心状态
   const [frequency, setFrequency] = useState(initialVals.frequency);
-  const [interval, setInterval] = useState(initialVals.interval);
+  const [interval, setInterval] = useState<number | null>(initialVals.interval);
   
   // 周重复状态
   const [selectedDays, setSelectedDays] = useState<number[]>(initialVals.selectedDays); 
   
   // 月重复状态
   const [monthlyMode, setMonthlyMode] = useState<"date" | "weekday" | "workday">(initialVals.monthlyMode);
-  const [selectedDate, setSelectedDate] = useState(initialVals.selectedDate);
+  const [selectedDate, setSelectedDate] = useState<number | null>(initialVals.selectedDate);
   const [selectedWeekday, setSelectedWeekday] = useState(initialVals.selectedWeekday);
   const [weekPosition, setWeekPosition] = useState<"first" | "last">(initialVals.weekPosition);
   const [workdayPosition, setWorkdayPosition] = useState<"first" | "last">(initialVals.workdayPosition);
@@ -273,6 +280,10 @@ function CustomRecurrenceModal({
   // 跳过选项
   const [skipHolidays, setSkipHolidays] = useState(initialVals.skipHolidays);
   const [skipWeekends, setSkipWeekends] = useState(initialVals.skipWeekends);
+  
+  // 错误状态
+  const [intervalError, setIntervalError] = useState(false);
+  const [dateError, setDateError] = useState(false);
 
   const weekDays = [
     { label: "日", value: 0 },
@@ -324,10 +335,10 @@ function CustomRecurrenceModal({
         // 根据频率设置默认的重复模式
         if (parsed.freq === "MONTHLY") {
           if (parsed.bymonthday) {
-            setRepeatMode("按日期");
+            setMonthlyMode("date");
             setSelectedDate(parsed.bymonthday[0] || 1);
           } else if (parsed.byday) {
-            setRepeatMode("按星期");
+            setMonthlyMode("weekday");
           }
         }
       } catch (error) {
@@ -352,7 +363,9 @@ function CustomRecurrenceModal({
   };
 
   const generateRRule = () => {
-    let rrule = `FREQ=${frequency};INTERVAL=${interval}`;
+    // 处理interval为null的情况，默认为1
+    const intervalValue = interval === null ? 1 : interval;
+    let rrule = `FREQ=${frequency};INTERVAL=${intervalValue}`;
 
     switch (frequency) {
       case "DAILY":
@@ -372,10 +385,13 @@ function CustomRecurrenceModal({
       case "MONTHLY":
         switch (monthlyMode) {
           case "date":
-            if (selectedDate === -1) {
-              rrule += `;BYMONTHDAY=-1`;
-            } else {
-              rrule += `;BYMONTHDAY=${selectedDate}`;
+            // 处理selectedDate为null的情况
+            if (selectedDate !== null) {
+              if (selectedDate === -1) {
+                rrule += `;BYMONTHDAY=-1`;
+              } else {
+                rrule += `;BYMONTHDAY=${selectedDate}`;
+              }
             }
             break;
           case "weekday":
@@ -391,7 +407,10 @@ function CustomRecurrenceModal({
         break;
         
       case "YEARLY":
-        rrule += `;BYMONTH=${selectedMonth};BYMONTHDAY=${selectedDate}`;
+        // 处理selectedDate为null的情况
+        if (selectedDate !== null) {
+          rrule += `;BYMONTH=${selectedMonth};BYMONTHDAY=${selectedDate}`;
+        }
         break;
     }
 
@@ -557,9 +576,23 @@ function CustomRecurrenceModal({
                   type="number"
                   min="1"
                   max="31"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(parseInt(e.target.value) || 1)}
-                  className="date-input"
+                  value={selectedDate === null ? '' : selectedDate}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '') {
+                      setSelectedDate(null);
+                    } else {
+                      const numValue = parseInt(value);
+                      if (!isNaN(numValue) && numValue >= 1 && numValue <= 31) {
+                        setSelectedDate(numValue);
+                      }
+                    }
+                    // 清除错误状态
+                    if (dateError) {
+                      setDateError(false);
+                    }
+                  }}
+                  className={`date-input ${dateError ? 'error' : ''}`}
                 />
                 <span>日</span>
               </div>
@@ -597,9 +630,23 @@ function CustomRecurrenceModal({
                 type="number"
                 min="1"
                 max="99"
-                value={interval}
-                onChange={(e) => setInterval(parseInt(e.target.value) || 1)}
-                className="interval-input"
+                value={interval === null ? '' : interval}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '') {
+                    setInterval(null);
+                  } else {
+                    const numValue = parseInt(value);
+                    if (!isNaN(numValue) && numValue >= 1 && numValue <= 99) {
+                      setInterval(numValue);
+                    }
+                  }
+                  // 清除错误状态
+                  if (intervalError) {
+                    setIntervalError(false);
+                  }
+                }}
+                className={`interval-input ${intervalError ? 'error' : ''}`}
               />
               <select
                 value={frequency}
@@ -646,7 +693,37 @@ function CustomRecurrenceModal({
           <button className="btn-small" onClick={onCancel}>
             取消
           </button>
-          <button className="btn-small confirm" onClick={handleSave}>
+          <button className="btn-small confirm" onClick={() => {
+            // 重置错误状态
+            setIntervalError(false);
+            setDateError(false);
+            
+            // 验证输入框不为空
+            let hasError = false;
+            
+            if (interval === null || interval === '') {
+              setIntervalError(true);
+              hasError = true;
+            }
+            
+            if (frequency === "MONTHLY" && monthlyMode === "date" && selectedDate === null) {
+              setDateError(true);
+              hasError = true;
+            }
+            
+            if (frequency === "YEARLY" && selectedDate === null) {
+              setDateError(true);
+              hasError = true;
+            }
+            
+            // 如果有错误，显示提示并返回
+            if (hasError) {
+              alert('请填写所有必填项');
+              return;
+            }
+            
+            handleSave();
+          }}>
             确定
           </button>
         </div>
