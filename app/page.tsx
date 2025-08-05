@@ -179,8 +179,6 @@ function formatDbDate(val: unknown): string | null {
 }
 
 const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
-// ... (no changes in this function)
-// ...
   id: String(raw.id),
   title: String(raw.title || ''),
   completed: Boolean(raw.completed),
@@ -195,6 +193,13 @@ const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
   start_date: formatDbDate(raw.start_date),
   list_id: raw.list_id ? String(raw.list_id) : null,
   list_name: raw.list_name ? String(raw.list_name) : null,
+  // 重复任务相关字段
+  repeat: raw.repeat ? String(raw.repeat) : null,
+  reminder: raw.reminder ? String(raw.reminder) : null,
+  is_recurring: Boolean(raw.is_recurring),
+  recurring_parent_id: raw.recurring_parent_id ? String(raw.recurring_parent_id) : null,
+  instance_number: raw.instance_number ? Number(raw.instance_number) : null,
+  next_due_date: formatDbDate(raw.next_due_date),
 });
 
 const normalizeList = (raw: Record<string, unknown>): List => ({

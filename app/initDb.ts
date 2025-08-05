@@ -32,38 +32,11 @@ export async function initDb(): Promise<PGlite> {
 }
 
 async function runMigrations(db: PGlite): Promise<void> {
-  // Run your migrations here
-  // This is a placeholder for your actual migration logic
+  // Import and run the proper migrations
   console.log('Running migrations...');
   
-  // Example migration: Create tables if they don't exist
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS lists (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      is_hidden BOOLEAN NOT NULL DEFAULT FALSE,
-      modified TEXT
-    )
-  `);
-  
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS todos (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      completed BOOLEAN NOT NULL DEFAULT FALSE,
-      deleted BOOLEAN NOT NULL DEFAULT FALSE,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      due_date TEXT,
-      content TEXT,
-      tags TEXT,
-      priority INTEGER NOT NULL DEFAULT 0,
-      created_time TEXT,
-      completed_time TEXT,
-      start_date TEXT,
-      list_id TEXT REFERENCES lists(id)
-    )
-  `);
+  const { migrate } = await import('../db/migrations-client/index.js');
+  await migrate(db);
   
   console.log('Migrations completed');
 }

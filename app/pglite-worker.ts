@@ -16,16 +16,11 @@ worker({
       // 不指定 dataDir，让 PGlite 自动使用 IndexedDB
     })
 
-    // Check if the 'todos' table exists. If not, it's a fresh DB, so apply migrations.
-    const tables = await pg.query(
-      `SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'todos';`
-    )
-
-    if (tables.rows.length === 0) {
-      console.log('Applying client-side database schema...')
-      await migrate(pg)
-      console.log('Client-side schema applied.')
-    }
+    // Always run migrations to ensure schema is up to date
+    // This handles both fresh databases and existing databases that need updates
+    console.log('Applying/updating client-side database schema...')
+    await migrate(pg)
+    console.log('Client-side schema applied/updated.')
     
     return pg
   },
