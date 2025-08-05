@@ -598,23 +598,6 @@ h1 {
   font-size: 16px;
 }
 
-.btn-stop-recurring {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem;
-  margin-left: 0.25rem;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-  opacity: 0.7;
-  transition: opacity 0.2s ease;
-
-  &:hover {
-    opacity: 1;
-    background-color: #fee2e2;
-  }
-}
-
 // Message and input styles
 .bar-message-text {
   display: inline-block;
@@ -1892,10 +1875,6 @@ span.shortcut-name {
   }
 
   &:hover {
-    .btn-stop-recurring {
-      opacity: 1;
-    }
-
     .recurring-badge,
     .recurring-instance-badge {
       opacity: 1;
