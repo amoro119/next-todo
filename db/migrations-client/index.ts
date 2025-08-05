@@ -53,12 +53,56 @@ CREATE TABLE IF NOT EXISTS "meta" (
   "value" TEXT
 );
 
--- Indexes for performance
+-- Indexes for performance (basic indexes only, recurring task indexes will be created after columns are added)
 CREATE INDEX IF NOT EXISTS "lists_id_idx" ON "lists" ("id");
 CREATE INDEX IF NOT EXISTS "todos_id_idx" ON "todos" ("id");
 CREATE INDEX IF NOT EXISTS "todos_list_id_idx" ON "todos" ("list_id");
 
--- 为重复任务查询优化添加索引
+-- Insert initial slogan
+INSERT INTO "meta" (key, value) VALUES ('slogan', '今日事今日毕，勿将今事待明日!.☕') ON CONFLICT (key) DO NOTHING;
+
+-- Add missing columns to existing tables if they don't exist
+-- This must be done before creating triggers that reference these columns
+DO $$
+BEGIN
+    -- Add repeat column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'todos' AND column_name = 'repeat') THEN
+        ALTER TABLE todos ADD COLUMN repeat TEXT;
+        RAISE NOTICE 'Added repeat column to todos table';
+    END IF;
+    
+    -- Add reminder column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'todos' AND column_name = 'reminder') THEN
+        ALTER TABLE todos ADD COLUMN reminder TEXT;
+        RAISE NOTICE 'Added reminder column to todos table';
+    END IF;
+    
+    -- Add is_recurring column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'todos' AND column_name = 'is_recurring') THEN
+        ALTER TABLE todos ADD COLUMN is_recurring BOOLEAN DEFAULT FALSE;
+        RAISE NOTICE 'Added is_recurring column to todos table';
+    END IF;
+    
+    -- Add recurring_parent_id column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'todos' AND column_name = 'recurring_parent_id') THEN
+        ALTER TABLE todos ADD COLUMN recurring_parent_id UUID;
+        RAISE NOTICE 'Added recurring_parent_id column to todos table';
+    END IF;
+    
+    -- Add instance_number column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'todos' AND column_name = 'instance_number') THEN
+        ALTER TABLE todos ADD COLUMN instance_number INTEGER;
+        RAISE NOTICE 'Added instance_number column to todos table';
+    END IF;
+    
+    -- Add next_due_date column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'todos' AND column_name = 'next_due_date') THEN
+        ALTER TABLE todos ADD COLUMN next_due_date TIMESTAMPTZ;
+        RAISE NOTICE 'Added next_due_date column to todos table';
+    END IF;
+END $$;
+
+-- Create indexes for recurring task columns (after columns are added)
 CREATE INDEX IF NOT EXISTS "idx_todos_repeat" ON "todos" ("repeat") WHERE "repeat" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_todos_reminder" ON "todos" ("reminder") WHERE "reminder" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_todos_recurring_parent" ON "todos" ("recurring_parent_id") WHERE "recurring_parent_id" IS NOT NULL;
@@ -66,14 +110,17 @@ CREATE INDEX IF NOT EXISTS "idx_todos_is_recurring" ON "todos" ("is_recurring") 
 CREATE INDEX IF NOT EXISTS "idx_todos_instance_number" ON "todos" ("instance_number") WHERE "instance_number" IS NOT NULL;
 CREATE INDEX IF NOT EXISTS "idx_todos_next_due_date" ON "todos" ("next_due_date") WHERE "next_due_date" IS NOT NULL;
 
--- Insert initial slogan
-INSERT INTO "meta" (key, value) VALUES ('slogan', '今日事今日毕，勿将今事待明日!.☕') ON CONFLICT (key) DO NOTHING;
-
 -- Trigger to handle INSERT conflicts during ElectricSQL sync
 CREATE OR REPLACE FUNCTION handle_sync_insert_conflict()
-RETURNS TRIGGER AS $
+RETURNS TRIGGER AS $$
 DECLARE
     is_syncing BOOLEAN;
+    has_repeat BOOLEAN := FALSE;
+    has_reminder BOOLEAN := FALSE;
+    has_is_recurring BOOLEAN := FALSE;
+    has_recurring_parent_id BOOLEAN := FALSE;
+    has_instance_number BOOLEAN := FALSE;
+    has_next_due_date BOOLEAN := FALSE;
 BEGIN
     -- The 'electric.syncing' flag is set by the sync process.
     -- We only want this trigger to run for operations coming from Electric.
@@ -86,26 +133,77 @@ BEGIN
         -- to avoid a primary key conflict.
         
         IF TG_TABLE_NAME = 'todos' THEN
-            UPDATE todos SET
-                title = NEW.title,
-                completed = NEW.completed,
-                deleted = NEW.deleted,
-                sort_order = NEW.sort_order,
-                due_date = NEW.due_date,
-                content = NEW.content,
-                tags = NEW.tags,
-                priority = NEW.priority,
-                created_time = NEW.created_time,
-                completed_time = NEW.completed_time,
-                start_date = NEW.start_date,
-                list_id = NEW.list_id,
-                repeat = NEW.repeat,
-                reminder = NEW.reminder,
-                is_recurring = NEW.is_recurring,
-                recurring_parent_id = NEW.recurring_parent_id,
-                instance_number = NEW.instance_number,
-                next_due_date = NEW.next_due_date
-            WHERE id = NEW.id;
+            -- Check which columns exist
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'todos' AND column_name = 'repeat'
+            ) INTO has_repeat;
+            
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'todos' AND column_name = 'reminder'
+            ) INTO has_reminder;
+            
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'todos' AND column_name = 'is_recurring'
+            ) INTO has_is_recurring;
+            
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'todos' AND column_name = 'recurring_parent_id'
+            ) INTO has_recurring_parent_id;
+            
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'todos' AND column_name = 'instance_number'
+            ) INTO has_instance_number;
+            
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'todos' AND column_name = 'next_due_date'
+            ) INTO has_next_due_date;
+            
+            -- Build dynamic UPDATE statement based on existing columns
+            IF has_repeat AND has_reminder AND has_is_recurring AND has_recurring_parent_id AND has_instance_number AND has_next_due_date THEN
+                -- All columns exist, use full update
+                UPDATE todos SET
+                    title = NEW.title,
+                    completed = NEW.completed,
+                    deleted = NEW.deleted,
+                    sort_order = NEW.sort_order,
+                    due_date = NEW.due_date,
+                    content = NEW.content,
+                    tags = NEW.tags,
+                    priority = NEW.priority,
+                    created_time = NEW.created_time,
+                    completed_time = NEW.completed_time,
+                    start_date = NEW.start_date,
+                    list_id = NEW.list_id,
+                    repeat = NEW.repeat,
+                    reminder = NEW.reminder,
+                    is_recurring = NEW.is_recurring,
+                    recurring_parent_id = NEW.recurring_parent_id,
+                    instance_number = NEW.instance_number,
+                    next_due_date = NEW.next_due_date
+                WHERE id = NEW.id;
+            ELSE
+                -- Some columns missing, use basic update
+                UPDATE todos SET
+                    title = NEW.title,
+                    completed = NEW.completed,
+                    deleted = NEW.deleted,
+                    sort_order = NEW.sort_order,
+                    due_date = NEW.due_date,
+                    content = NEW.content,
+                    tags = NEW.tags,
+                    priority = NEW.priority,
+                    created_time = NEW.created_time,
+                    completed_time = NEW.completed_time,
+                    start_date = NEW.start_date,
+                    list_id = NEW.list_id
+                WHERE id = NEW.id;
+            END IF;
             
             IF FOUND THEN
                 RETURN NULL; -- The update was successful, so we cancel the original INSERT.
@@ -129,7 +227,7 @@ BEGIN
     -- proceed with the original INSERT.
     RETURN NEW;
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 -- Apply the trigger to the 'todos' table
 DROP TRIGGER IF EXISTS todos_handle_sync_insert_conflict_trigger ON todos;

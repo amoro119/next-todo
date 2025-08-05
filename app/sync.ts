@@ -218,8 +218,6 @@ async function getLocalDataHash(
   }
 }
 
-
-
 /**
  * [MODIFIED] 拉取全量数据并与本地数据库进行三步协调（删除、更新、插入）
  * 这是修正后的实现。
@@ -297,9 +295,9 @@ async function doFullTableSync({
           );
         } else if (table === "todos") {
           await tx.query(
-            `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+            `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19`,
             [
               row.id ?? null,
               row.title ?? null,
@@ -314,6 +312,12 @@ async function doFullTableSync({
               row.completed_time ?? null,
               row.start_date ?? null,
               row.list_id ?? null,
+              row.repeat ?? null,
+              row.reminder ?? null,
+              row.is_recurring ?? false,
+              row.recurring_parent_id ?? null,
+              row.instance_number ?? null,
+              row.next_due_date ?? null,
             ]
           );
         }
@@ -486,9 +490,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
 
     /* ---------- 哈希不一致时补偿 ---------- */
     if (localHash !== remoteHash) {
-      console.warn(
-        `⚠️ ${shapeName} 数据哈希不一致，准备强制全量同步...`
-      );
+      console.warn(`⚠️ ${shapeName} 数据哈希不一致，准备强制全量同步...`);
 
       await doFullTableSync({
         table: shapeName,
@@ -502,9 +504,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       /* 再次校验并缓存哈希 */
       try {
         const finalHash = await getLocalDataHash(shapeName, pg);
-        console.log(
-          `✅ ${shapeName} 补偿后哈希: ${finalHash}`
-        );
+        console.log(`✅ ${shapeName} 补偿后哈希: ${finalHash}`);
         // 缓存同步成功后的哈希值
         setLastSyncHash(shapeName, finalHash);
       } catch (e) {
@@ -666,9 +666,9 @@ async function processShapeChange(
     switch (operation) {
       case "insert":
         await pg.query(
-          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19`,
           [
             row.id ?? null,
             row.title ?? null,
@@ -683,6 +683,12 @@ async function processShapeChange(
             row.completed_time ?? null,
             row.start_date ?? null,
             row.list_id ?? null,
+            row.repeat ?? null,
+            row.reminder ?? null,
+            row.is_recurring ?? false,
+            row.recurring_parent_id ?? null,
+            row.instance_number ?? null,
+            row.next_due_date ?? null,
           ]
         );
         break;
