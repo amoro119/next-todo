@@ -97,6 +97,13 @@ export interface TodoChange {
   completed_time?: string | null
   start_date?: string | null
   list_id?: string | null
+  // 重复任务相关字段
+  repeat?: string | null
+  reminder?: string | null
+  is_recurring?: boolean | null
+  recurring_parent_id?: string | null
+  instance_number?: number | null
+  next_due_date?: string | null
   modified_columns?: string[] | null
   new?: boolean | null
 }

@@ -32,6 +32,13 @@ const todoChangeSchema = z.object({
   completed_time: z.string().nullable().optional(),
   start_date: z.string().nullable().optional(),
   list_id: z.string().nullable().optional(),
+  // 重复任务相关字段
+  repeat: z.string().nullable().optional(),
+  reminder: z.string().nullable().optional(),
+  is_recurring: z.boolean().nullable().optional(),
+  recurring_parent_id: z.string().nullable().optional(),
+  instance_number: z.number().nullable().optional(),
+  next_due_date: z.string().nullable().optional(),
   // local-first fields
   modified_columns: z.array(z.string()).nullable().optional(),
   new: z.boolean().nullable().optional(),

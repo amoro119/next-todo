@@ -120,15 +120,27 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
       sanitized.completed_time = data.completed_time || null
       sanitized.start_date = data.start_date || null
       sanitized.list_id = data.list_id || null
+      // 重复任务相关字段
+      sanitized.repeat = data.repeat || null
+      sanitized.reminder = data.reminder || null
+      sanitized.is_recurring = Boolean(data.is_recurring)
+      sanitized.recurring_parent_id = data.recurring_parent_id || null
+      sanitized.instance_number = data.instance_number !== undefined ? Number(data.instance_number) : null
+      sanitized.next_due_date = data.next_due_date || null
     } else if (operation === 'update') {
       // 更新操作只包含变更的字段
-      const updatableFields = ['title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'completed_time', 'start_date', 'list_id']
+      const updatableFields = [
+        'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 
+        'tags', 'priority', 'completed_time', 'start_date', 'list_id',
+        // 重复任务相关字段
+        'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date'
+      ]
       
       for (const field of updatableFields) {
         if (field in data && data[field] !== undefined) {
-          if (field === 'completed' || field === 'deleted') {
+          if (field === 'completed' || field === 'deleted' || field === 'is_recurring') {
             sanitized[field] = Boolean(data[field])
-          } else if (field === 'sort_order' || field === 'priority') {
+          } else if (field === 'sort_order' || field === 'priority' || field === 'instance_number') {
             sanitized[field] = Number(data[field]) || 0
           } else {
             sanitized[field] = data[field]
@@ -300,7 +312,12 @@ export class DatabaseWrapper {
 
   private async executeInsert(table: string, data: Record<string, unknown>): Promise<unknown> {
     if (table === 'todos') {
-      const columns = ['id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id']
+      const columns = [
+        'id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 
+        'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id',
+        // 重复任务相关字段
+        'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date'
+      ]
       const values = columns.map(col => data[col] ?? null)
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
       return this.db.query(
