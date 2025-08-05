@@ -312,7 +312,7 @@ export default function TodoListPage() {
       case 'inbox':
         // --- FIX: Correct inbox logic ---
         return uncompletedTodos
-          .filter((t: Todo) => !t.list_id || !!t.due_date)
+          .filter((t: Todo) => (!t.list_id || !!t.due_date) && !t.repeat && !t.recurring_parent_id)
           .sort((a, b) => {
             const aHasDueDate = !!a.due_date;
             const bHasDueDate = !!b.due_date;
@@ -733,7 +733,7 @@ export default function TodoListPage() {
               currentView={currentView}
               setCurrentView={setCurrentView}
               lists={lists}
-              inboxCount={uncompletedTodos.filter(t => !t.list_id || !!t.due_date).length}
+              inboxCount={uncompletedTodos.filter(t => (!t.list_id || !!t.due_date) && !t.repeat && !t.recurring_parent_id).length}
               todayCount={todosWithListNames.filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8).length}
               todosByList={todosByList}
             />

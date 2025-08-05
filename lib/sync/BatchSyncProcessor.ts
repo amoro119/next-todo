@@ -269,6 +269,13 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
       completed_time: data.completed_time,
       start_date: data.start_date,
       list_id: data.list_id,
+      // 重复任务相关字段
+      repeat: data.repeat,
+      reminder: data.reminder,
+      is_recurring: data.is_recurring,
+      recurring_parent_id: data.recurring_parent_id,
+      instance_number: data.instance_number,
+      next_due_date: data.next_due_date,
       modified_columns: modifiedColumns,
       new: isNew
     };
