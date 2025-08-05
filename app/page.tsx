@@ -263,6 +263,21 @@ export default function TodoListPage() {
     }
   }, [sloganResult?.rows])
 
+  // 定义收件箱过滤函数
+  const filterInboxTodos = (todos: Todo[]): Todo[] => {
+    // 获取今年的最后一天
+    const currentYear = new Date().getFullYear();
+    const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999); // 12月31日 23:59:59.999
+    
+    return todos.filter((t: Todo) => 
+      (!t.list_id || !!t.due_date) && 
+      !t.repeat && 
+      !t.recurring_parent_id &&
+      // 过滤掉due_date晚于今年最后一天的任务
+      (!t.due_date || new Date(t.due_date) <= endOfYear)
+    );
+  };
+
   // --- FIX START: Create todos with list names ---
   const todosWithListNames = useMemo(() => {
 // ... (no changes in this block)
@@ -311,8 +326,7 @@ export default function TodoListPage() {
     switch (currentView) {
       case 'inbox':
         // --- FIX: Correct inbox logic ---
-        return uncompletedTodos
-          .filter((t: Todo) => (!t.list_id || !!t.due_date) && !t.repeat && !t.recurring_parent_id)
+        return filterInboxTodos(uncompletedTodos)
           .sort((a, b) => {
             const aHasDueDate = !!a.due_date;
             const bHasDueDate = !!b.due_date;
@@ -733,7 +747,7 @@ export default function TodoListPage() {
               currentView={currentView}
               setCurrentView={setCurrentView}
               lists={lists}
-              inboxCount={uncompletedTodos.filter(t => (!t.list_id || !!t.due_date) && !t.repeat && !t.recurring_parent_id).length}
+              inboxCount={filterInboxTodos(uncompletedTodos).length}
               todayCount={todosWithListNames.filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8).length}
               todosByList={todosByList}
             />

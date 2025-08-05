@@ -69,7 +69,7 @@ export default function RecurrenceSelector({
     ? currentOption.label
     : value
     ? "自定义重复"
-    : "重复";
+    : "设置重复规则";
   const hasValue = !!value;
 
   useEffect(() => {
