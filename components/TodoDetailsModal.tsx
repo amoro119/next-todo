@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import type { Todo, List } from '../lib/types';
+import { RRuleEngine } from '../lib/recurring/RRuleEngine';
 import { RecurringTaskGenerator } from '../lib/recurring/RecurringTaskGenerator';
 import RecurrenceSelector from './RecurrenceSelector';
 
@@ -293,11 +294,22 @@ export default function TodoDetailsModal({
                         value={editableTodo.is_recurring ? editableTodo.repeat : null}
                         onChange={(rrule) => {
                             if (rrule) {
+                                // 计算下一个到期日期
+                                let nextDueDate = null;
+                                if (editableTodo.due_date) {
+                                    try {
+                                        const currentDueDate = new Date(editableTodo.due_date);
+                                        nextDueDate = RRuleEngine.calculateNextDueDate(rrule, currentDueDate, currentDueDate);
+                                    } catch (error) {
+                                        console.error('Error calculating next due date:', error);
+                                    }
+                                }
+                                
                                 setEditableTodo(prev => ({
                                     ...prev,
                                     is_recurring: true,
                                     repeat: rrule,
-                                    next_due_date: prev.due_date
+                                    next_due_date: nextDueDate ? nextDueDate.toISOString() : null
                                 }));
                             } else {
                                 setEditableTodo(prev => ({

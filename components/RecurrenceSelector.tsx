@@ -193,26 +193,86 @@ function CustomRecurrenceModal({
   onSave,
   onCancel,
 }: CustomRecurrenceModalProps) {
+  // 初始化状态的默认值
+  const getDefaultValues = () => {
+    const now = new Date();
+    return {
+      frequency: "WEEKLY",
+      interval: 1,
+      selectedDays: [now.getDay()],
+      monthlyMode: "date" as const,
+      selectedDate: now.getDate(),
+      selectedWeekday: now.getDay(),
+      weekPosition: "first" as const,
+      workdayPosition: "first" as const,
+      selectedMonth: now.getMonth() + 1,
+      skipHolidays: false,
+      skipWeekends: false
+    };
+  };
+
+  // 根据initialValue解析RRule
+  const parseRRule = (rrule: string | null) => {
+    if (!rrule) return getDefaultValues();
+    
+    try {
+      const parsed = RRuleEngine.parseRRule(rrule);
+      const defaults = getDefaultValues();
+      
+      // 根据解析的RRule更新状态
+      const result = { ...defaults };
+      
+      if (parsed.freq) {
+        result.frequency = parsed.freq;
+      }
+      
+      if (parsed.interval) {
+        result.interval = parsed.interval;
+      }
+      
+      if (parsed.byweekday && parsed.byweekday.length > 0) {
+        result.selectedDays = parsed.byweekday;
+      }
+      
+      if (parsed.bymonthday && parsed.bymonthday.length > 0) {
+        result.selectedDate = parsed.bymonthday[0];
+        result.monthlyMode = "date";
+      }
+      
+      if (parsed.bymonth && parsed.bymonth.length > 0) {
+        result.selectedMonth = parsed.bymonth[0];
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error parsing RRule:', error);
+      return getDefaultValues();
+    }
+  };
+
+  // 根据initialValue初始化状态
+  const initialVals = parseRRule(initialValue);
+  
   // 核心状态
-  const [frequency, setFrequency] = useState("WEEKLY");
-  const [interval, setInterval] = useState(1);
+  const [frequency, setFrequency] = useState(initialVals.frequency);
+  const [interval, setInterval] = useState(initialVals.interval);
   
   // 周重复状态
-  const [selectedDays, setSelectedDays] = useState<number[]>([new Date().getDay()]); 
+  const [selectedDays, setSelectedDays] = useState<number[]>(initialVals.selectedDays); 
   
   // 月重复状态
-  const [monthlyMode, setMonthlyMode] = useState<"date" | "weekday" | "workday">("date");
-  const [selectedDate, setSelectedDate] = useState(new Date().getDate());
-  const [selectedWeekday, setSelectedWeekday] = useState(new Date().getDay());
-  const [weekPosition, setWeekPosition] = useState<"first" | "last">("first");
-  const [workdayPosition, setWorkdayPosition] = useState<"first" | "last">("first");
+  const [monthlyMode, setMonthlyMode] = useState<"date" | "weekday" | "workday">(initialVals.monthlyMode);
+  const [selectedDate, setSelectedDate] = useState(initialVals.selectedDate);
+  const [selectedWeekday, setSelectedWeekday] = useState(initialVals.selectedWeekday);
+  const [weekPosition, setWeekPosition] = useState<"first" | "last">(initialVals.weekPosition);
+  const [workdayPosition, setWorkdayPosition] = useState<"first" | "last">(initialVals.workdayPosition);
   
   // 年重复状态
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedMonth, setSelectedMonth] = useState(initialVals.selectedMonth);
   
   // 跳过选项
-  const [skipHolidays, setSkipHolidays] = useState(false);
-  const [skipWeekends, setSkipWeekends] = useState(false);
+  const [skipHolidays, setSkipHolidays] = useState(initialVals.skipHolidays);
+  const [skipWeekends, setSkipWeekends] = useState(initialVals.skipWeekends);
 
   const weekDays = [
     { label: "日", value: 0 },
