@@ -14,6 +14,8 @@ interface QuickActionsProps {
   showMarkAllCompleted: boolean;
   onManageLists: () => void;
   onImport: (file: File) => void;
+  onOpenSearch: () => void;
+  onExport: () => void;
 }
 
 export default function QuickActions({ 
@@ -25,7 +27,9 @@ export default function QuickActions({
     onMarkAllCompleted,
     showMarkAllCompleted,
     onManageLists,
-    onImport
+    onImport,
+    onOpenSearch,
+    onExport
 }: QuickActionsProps) {
   const [isFolded, setIsFolded] = useState(false);
   const jsonInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +75,9 @@ export default function QuickActions({
           <div className="todo-footer-box">
             <ul className="todo-func-list filter">
               <li>
+                  <input className="btn-small action-search" type="button" value="搜索任务" onClick={onOpenSearch} />
+              </li>
+              <li>
                   <input className="btn-small" type="button" value="管理清单" onClick={onManageLists} />
               </li>
               {recycleBinCount > 0 && (
@@ -107,7 +114,7 @@ export default function QuickActions({
             </ul>
             <ul className="todo-func-list datasave">
               <li>
-                <input type="button" value="导出数据" className="btn-small action-download" id="download" />
+                <input type="button" value="导出数据" className="btn-small action-download" id="download" onClick={onExport} />
               </li>
               <li>
                 <input value="导入(txt/json)" type="button" className="btn-small action-import" onClick={() => jsonInputRef.current?.click()} />
