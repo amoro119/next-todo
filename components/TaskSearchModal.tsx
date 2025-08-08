@@ -177,15 +177,15 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
       </div>
       
       {/* Todo content with highlighting */}
-      {todo.content && (
+      {/* {todo.content && (
         <div 
           className="search-todo-content-text"
           dangerouslySetInnerHTML={{ __html: highlightText(todo.content) }}
         />
-      )}
+      )} */}
       
       {/* Tags */}
-      {todo.tags && (
+      {/* {todo.tags && (
         <div className="search-todo-tags">
           {todo.tags.split(',').map((tag, idx) => (
             <span 
@@ -195,7 +195,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
             />
           ))}
         </div>
-      )}
+      )} */}
     </div>
   );
 });
