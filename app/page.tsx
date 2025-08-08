@@ -54,7 +54,7 @@ function getDatabaseAPI(): DatabaseAPI {
       transaction: async (queries) => {
         // 警告：原始事务不会被离线队列拦截
         console.warn('Executing a raw transaction which is not intercepted for offline sync.');
-        await dbWrapper.raw.transaction(async (tx: any) => {
+        await dbWrapper.raw.transaction(async (tx: unknown) => {
           for (const { sql, params } of queries) {
             await tx.query(sql, params);
           }
@@ -239,6 +239,7 @@ export default function TodoListPage() {
   const [originalSlogan, setOriginalSlogan] = useState('')
   const [slogan, setSlogan] = useState('今日事今日毕，勿将今事待明日!.☕')
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [searchRefreshTrigger, setSearchRefreshTrigger] = useState(0);
   const addTodoInputRef = useRef<HTMLInputElement>(null)
 
   // --- START: BUG FIX ---
@@ -491,6 +492,9 @@ export default function TodoListPage() {
     if (newCompletedFlag) {
       await RecurringTaskIntegration.handleTaskUpdate(todo.id, updates, db);
     }
+    
+    // 触发搜索结果刷新
+    setSearchRefreshTrigger(prev => prev + 1);
   }, [handleUpdateTodo, db]);
   
   const handleDeleteTodo = useCallback(async (todoId: string) => {
@@ -499,6 +503,8 @@ export default function TodoListPage() {
     setLastAction({ type: 'delete', data: todoToDelete });
     if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     await db.update('todos', todoId, { deleted: true });
+    // 触发搜索结果刷新
+    setSearchRefreshTrigger(prev => prev + 1);
   }, [todos, selectedTodo, db]);
   
   const handleRestoreTodo = useCallback(async (todoId: string) => {
@@ -507,6 +513,8 @@ export default function TodoListPage() {
     setLastAction({ type: 'restore', data: todoToRestore });
     if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
     await db.update('todos', todoId, { deleted: false });
+    // 触发搜索结果刷新
+    setSearchRefreshTrigger(prev => prev + 1);
   }, [recycledTodos, selectedTodo, db]);
   
   const handlePermanentDeleteTodo = useCallback(async (todoId: string) => {
@@ -520,12 +528,12 @@ export default function TodoListPage() {
   }, [recycledTodos, selectedTodo, db]);
 
   const handleSaveTodoDetails = useCallback(async (updatedTodo: Todo) => {
-// ... (no changes in this block)
-// ...
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { list_name: _, ...updateData } = updatedTodo;
       await handleUpdateTodo(updatedTodo.id, updateData);
       setSelectedTodo(null);
+      // 触发搜索结果刷新
+      setSearchRefreshTrigger(prev => prev + 1);
   }, [handleUpdateTodo]);
 
   const handleAddList = useCallback(async (name: string): Promise<List | null> => {
@@ -877,6 +885,7 @@ export default function TodoListPage() {
               onToggleComplete={handleToggleComplete}
               onDelete={handleDeleteTodo}
               currentView={currentView}
+              refreshTrigger={searchRefreshTrigger}
             />
           )}
         </div>

@@ -8,16 +8,14 @@ import { RRuleEngine } from './RRuleEngine';
  */
 export class RecurringTaskGenerator {
   /**
-   * 从原始重复任务生成新的任务实例
-   * @param originalTask 原始重复任务
-   * @param dueDate 新实例的到期日期
-   * @param instanceNumber 实例序号
-   * @returns 新的任务实例
+   * 从重复任务生成新的重复任务（具有相同重复规则）
+   * @param originalTask 原重复任务
+   * @param dueDate 新任务的到期日期
+   * @returns 新的重复任务
    */
-  static generateTaskInstance(
+  static generateNextRecurringTask(
     originalTask: Todo,
-    dueDate: Date,
-    instanceNumber: number
+    dueDate: Date
   ): Omit<Todo, 'id'> {
     if (!originalTask.repeat || !originalTask.is_recurring) {
       throw new Error('Task is not a recurring task');
@@ -34,10 +32,21 @@ export class RecurringTaskGenerator {
       startDate = newStartDate.toISOString();
     }
 
-    // 创建新的任务实例
-    const newInstance: Omit<Todo, 'id'> = {
+    // 计算下次到期日期
+    let nextDueDate: string | null = null;
+    try {
+      const nextDate = RRuleEngine.calculateNextDueDate(originalTask.repeat, dueDate, dueDate);
+      if (nextDate) {
+        nextDueDate = nextDate.toISOString();
+      }
+    } catch (error) {
+      console.error('Error calculating next due date:', error);
+    }
+
+    // 创建新的重复任务（不是实例，是独立的重复任务）
+    const newRecurringTask: Omit<Todo, 'id'> = {
       title: originalTask.title,
-      completed: false, // 新实例总是未完成状态
+      completed: false,
       deleted: false,
       sort_order: originalTask.sort_order,
       due_date: dueDate.toISOString(),
@@ -49,16 +58,16 @@ export class RecurringTaskGenerator {
       start_date: startDate,
       list_id: originalTask.list_id,
       
-      // 重复任务相关字段
-      repeat: null, // 实例不包含重复规则
-      reminder: originalTask.reminder, // 继承提醒设置
-      is_recurring: false, // 实例不是重复任务
-      recurring_parent_id: originalTask.id, // 指向原始任务
-      instance_number: instanceNumber,
-      next_due_date: null // 实例不需要计算下次到期日期
+      // 重复任务相关字段 - 继承相同的重复规则
+      repeat: originalTask.repeat, // 继承重复规则
+      reminder: originalTask.reminder,
+      is_recurring: true, // 新任务也是重复任务
+      recurring_parent_id: null, // 不需要父任务关系
+      instance_number: null, // 不需要实例编号
+      next_due_date: nextDueDate // 计算下次到期日期
     };
 
-    return newInstance;
+    return newRecurringTask;
   }
 
   /**
@@ -245,18 +254,29 @@ export class RecurringTaskGenerator {
   }
 
   /**
-   * 检查任务是否为重复任务实例
+   * 检查任务是否为重复任务
+   * @param task 要检查的任务
+   * @returns 是否为重复任务
+   */
+  static isRecurringTask(task: Todo): boolean {
+    return !!(task.repeat && task.is_recurring);
+  }
+
+  /**
+   * 检查任务是否为重复任务实例（向后兼容，实际上不再需要区分）
    * @param task 要检查的任务
    * @returns 是否为实例
+   * @deprecated 不再区分实例和原始任务
    */
   static isTaskInstance(task: Todo): boolean {
     return !!(task.recurring_parent_id && !task.is_recurring);
   }
 
   /**
-   * 检查任务是否为原始重复任务
+   * 检查任务是否为原始重复任务（向后兼容，实际上不再需要区分）
    * @param task 要检查的任务
    * @returns 是否为原始重复任务
+   * @deprecated 不再区分实例和原始任务
    */
   static isOriginalRecurringTask(task: Todo): boolean {
     return !!(task.repeat && task.is_recurring && !task.recurring_parent_id);
@@ -287,55 +307,48 @@ export class RecurringTaskGenerator {
   }
 
   /**
-   * 处理原始重复任务完成事件
-   * @param originalTask 原始重复任务
+   * 处理重复任务完成事件
+   * @param completedTask 已完成的重复任务
    * @param currentDate 当前日期
    * @returns 生成结果
    */
-  static handleOriginalTaskCompletion(
-    originalTask: Todo,
+  static handleRecurringTaskCompletion(
+    completedTask: Todo,
     currentDate: Date = new Date()
   ): {
     shouldGenerateNext: boolean;
-    newInstance?: Omit<Todo, 'id'>;
-    parentTaskUpdates?: Partial<Todo>;
+    newRecurringTask?: Omit<Todo, 'id'>;
   } {
-    if (!this.isOriginalRecurringTask(originalTask)) {
+    if (!completedTask.repeat || !completedTask.is_recurring) {
       return { shouldGenerateNext: false };
     }
 
     try {
       // 检查重复是否已结束
-      const instanceCount = originalTask.instance_number || 0;
-      if (RRuleEngine.isRecurrenceEnded(originalTask.repeat!, currentDate, instanceCount)) {
+      if (RRuleEngine.isRecurrenceEnded(completedTask.repeat, currentDate, 0)) {
         return { shouldGenerateNext: false };
       }
 
       // 计算下一个到期日期
-      const baseDate = new Date(originalTask.due_date || originalTask.created_time || currentDate);
-      const nextDueDate = RRuleEngine.calculateNextDueDate(originalTask.repeat!, currentDate, baseDate);
+      const baseDate = new Date(completedTask.due_date || completedTask.created_time || currentDate);
+      const nextDueDate = RRuleEngine.calculateNextDueDate(completedTask.repeat, currentDate, baseDate);
 
       if (!nextDueDate) {
         return { shouldGenerateNext: false };
       }
 
-      // 生成新实例
-      const newInstance = this.generateTaskInstance(
-        originalTask,
-        nextDueDate,
-        instanceCount + 1
+      // 生成新的重复任务
+      const newRecurringTask = this.generateNextRecurringTask(
+        completedTask,
+        nextDueDate
       );
-
-      // 更新原始任务
-      const parentTaskUpdates = this.updateNextDueDate(originalTask, nextDueDate);
 
       return {
         shouldGenerateNext: true,
-        newInstance,
-        parentTaskUpdates
+        newRecurringTask
       };
     } catch (error) {
-      console.error('Error handling original task completion:', error);
+      console.error('Error handling recurring task completion:', error);
       return { shouldGenerateNext: false };
     }
   }

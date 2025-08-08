@@ -51,36 +51,15 @@ export class TaskCompletionHandler {
   ): Promise<TaskCompletionResult> {
     let result: TaskCompletionResult;
 
-    if (RecurringTaskGenerator.isOriginalRecurringTask(task)) {
-      // 处理原始重复任务完成
-      const generationResult = RecurringTaskGenerator.handleOriginalTaskCompletion(task, currentDate);
+    if (RecurringTaskGenerator.isRecurringTask(task)) {
+      // 处理重复任务完成（不再区分原始任务和实例）
+      const generationResult = RecurringTaskGenerator.handleRecurringTaskCompletion(task, currentDate);
       result = {
         completedTask: task,
         isRecurringTask: true,
-        ...generationResult
+        shouldGenerateNext: generationResult.shouldGenerateNext,
+        newInstance: generationResult.newRecurringTask
       };
-    } else if (RecurringTaskGenerator.isTaskInstance(task) && task.recurring_parent_id) {
-      // 处理重复任务实例完成
-      const originalTask = originalTasks.get(task.recurring_parent_id);
-      if (originalTask) {
-        const generationResult = RecurringTaskGenerator.handleInstanceTaskCompletion(
-          task,
-          originalTask,
-          currentDate
-        );
-        result = {
-          completedTask: task,
-          isRecurringTask: false,
-          originalTask,
-          ...generationResult
-        };
-      } else {
-        result = {
-          completedTask: task,
-          isRecurringTask: false,
-          shouldGenerateNext: false
-        };
-      }
     } else {
       // 普通任务完成，无需处理
       result = {

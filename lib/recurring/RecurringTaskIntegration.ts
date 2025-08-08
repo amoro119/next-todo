@@ -22,23 +22,16 @@ export class RecurringTaskIntegration {
 
     // 注册任务完成处理回调
     taskCompletionHandler.onTaskCompletion(async (result) => {
-      if (result.shouldGenerateNext && result.newInstance && result.parentTaskUpdates) {
+      if (result.shouldGenerateNext && result.newInstance) {
         try {
-          // 生成新的任务实例
+          // 生成新的重复任务
           const newTaskId = this.generateUUID();
           const newTask = { ...result.newInstance, id: newTaskId };
           
           await databaseAPI.insert('todos', newTask);
-          console.log('Generated new recurring task instance:', newTask.title);
-
-          // 更新原始任务
-          if (result.originalTask || result.isRecurringTask) {
-            const taskToUpdate = result.originalTask || result.completedTask;
-            await databaseAPI.update('todos', taskToUpdate.id, result.parentTaskUpdates);
-            console.log('Updated original recurring task:', taskToUpdate.title);
-          }
+          console.log('Generated new recurring task:', newTask.title);
         } catch (error) {
-          console.error('Error generating recurring task instance:', error);
+          console.error('Error generating recurring task:', error);
         }
       }
     });

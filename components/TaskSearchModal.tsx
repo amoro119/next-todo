@@ -1,14 +1,17 @@
 // components/TaskSearchModal.tsx
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
-import type { Todo } from '../lib/types';
-import { useDebounce } from '../lib/hooks/useDebounce';
-import { searchTodos, type SearchResult } from '../lib/search/searchService';
-import { SearchHistoryManager, SearchHighlighter } from '../lib/search/searchUtils';
-import { RecurringTaskGenerator } from '../lib/recurring/RecurringTaskGenerator';
-import Image from 'next/image';
-import React from 'react';
+import { useState, useEffect, useRef } from "react";
+import type { Todo } from "../lib/types";
+import { useDebounce } from "../lib/hooks/useDebounce";
+import { searchTodos, type SearchResult } from "../lib/search/searchService";
+import {
+  SearchHistoryManager,
+  SearchHighlighter,
+} from "../lib/search/searchUtils";
+import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator";
+import Image from "next/image";
+import React from "react";
 
 interface TaskSearchModalProps {
   isOpen: boolean;
@@ -17,6 +20,7 @@ interface TaskSearchModalProps {
   onToggleComplete?: (todo: Todo) => void;
   onDelete?: (todoId: string) => void;
   currentView?: string;
+  refreshTrigger?: number; // 用于触发搜索结果刷新
 }
 
 interface TaskSearchModalState {
@@ -30,22 +34,24 @@ interface TaskSearchModalState {
 
 // Helper function for date formatting
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
-  if (!utcDate) return '';
+  if (!utcDate) return "";
   try {
     const date = new Date(utcDate);
     if (isNaN(date.getTime())) {
       const dateOnlyMatch = utcDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (dateOnlyMatch) return utcDate;
-      return '';
+      return "";
     }
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric', month: '2-digit', day: '2-digit'
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     });
     return formatter.format(date);
   } catch (e) {
     console.error("Error formatting date:", utcDate, e);
-    return '';
+    return "";
   }
 };
 
@@ -65,7 +71,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
   onDelete,
   onSelectTodo,
   searchQuery,
-  index
+  index,
 }: SearchTodoItemProps) {
   const handleToggleComplete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -90,30 +96,36 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
   // Highlight search terms in text
   const highlightText = (text: string) => {
     if (!searchQuery.trim()) return text;
-    return SearchHighlighter.highlight(text, searchQuery, 'search-highlight');
+    return SearchHighlighter.highlight(text, searchQuery, "search-highlight");
   };
 
   return (
-    <div 
-      className={`search-todo-item ${todo.completed ? 'completed' : ''} ${todo.deleted ? 'deleted' : ''}`}
+    <div
+      className={`search-todo-item ${todo.completed ? "completed" : ""} ${
+        todo.deleted ? "deleted" : ""
+      }`}
       onClick={handleSelectTodo}
       style={{ animationDelay: `${index * 50}ms` }}
     >
-      <div className={`search-todo-content ${todo.completed ? "completed" : ""}`}>
+      <div
+        className={`search-todo-content ${todo.completed ? "completed" : ""}`}
+      >
         {/* Toggle Complete Button */}
         {!todo.deleted && (
           <button
-            className={`search-todo-btn ${todo.completed ? 'btn-unfinish' : 'btn-finish'}`}
+            className={`search-todo-btn ${
+              todo.completed ? "btn-unfinish" : "btn-finish"
+            }`}
             onClick={handleToggleComplete}
-            title={todo.completed ? '标为未完成' : '标为完成'}
+            title={todo.completed ? "标为未完成" : "标为完成"}
           >
             {todo.completed && (
-              <Image 
-                src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" 
-                alt="标为未完成" 
+              <Image
+                src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
+                alt="标为未完成"
                 className="icon-finish"
-                width={24} 
-                height={18} 
+                width={24}
+                height={18}
                 draggable={false}
               />
             )}
@@ -124,33 +136,32 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
         {todo.list_name && (
           <span className="search-todo-list-name">[{todo.list_name}] </span>
         )}
-        
-        {/* Recurring task badges */}
-        {RecurringTaskGenerator.isOriginalRecurringTask(todo) && (
-          <span className="recurring-badge" title={RecurringTaskGenerator.getTaskRecurrenceDescription(todo)}>
+
+        {/* Recurring task badge - unified for both original and instances */}
+        {RecurringTaskGenerator.isRecurringTask(todo) && (
+          <span
+            className="recurring-badge"
+            title={RecurringTaskGenerator.getTaskRecurrenceDescription(todo)}
+          >
             🔄
           </span>
         )}
-        
-        {RecurringTaskGenerator.isTaskInstance(todo) && (
-          <span className="recurring-instance-badge" title="重复任务实例">
-            📅
-          </span>
-        )}
-        
+
         {/* Todo title with highlighting */}
-        <span 
-          className={`search-todo-title ${todo.completed ? 'completed' : ''}`}
+        <span
+          className={`search-todo-title ${todo.completed ? "completed" : ""}`}
           dangerouslySetInnerHTML={{ __html: highlightText(todo.title) }}
         />
-        
+
         {/* Next due date for recurring tasks */}
-        {RecurringTaskGenerator.isOriginalRecurringTask(todo) && todo.next_due_date && !todo.deleted && (
-          <span className="search-todo-next-due" title="下次到期时间">
-            下次: {utcToLocalDateString(todo.next_due_date)}
-          </span>
-        )}
-        
+        {RecurringTaskGenerator.isRecurringTask(todo) &&
+          todo.next_due_date &&
+          !todo.deleted && (
+            <span className="search-todo-next-due" title="下次到期时间">
+              下次: {utcToLocalDateString(todo.next_due_date)}
+            </span>
+          )}
+
         {/* Due date */}
         {todo.due_date && !todo.deleted && (
           <span className="search-todo-due-date">
@@ -165,17 +176,17 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
             onClick={handleDelete}
             title="删除"
           >
-            <Image 
-              src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNS4wOTkzIDE3Ljc1OTdDMTUuNzk0OSAxOC4yMDk4IDE2LjcyMzUgMTguMDEwOCAxNy4xNzM2IDE3LjMxNTJDMTcuNjIzNiAxNi42MTk3IDE3LjQyNDYgMTUuNjkxMSAxNi43MjkxIDE1LjI0MUMxMy4zMDc5IDEzLjAyNzMgMTAuODIwOSAxMC45OTU5IDguOTIyNTEgOS4wMzczOUM5LjA5NzQyIDguODQ5ODIgOS4yNzI5MSA4LjY2NTcxIDkuNDQ4ODggOC40ODUzNEMxMS44ODY0IDUuOTg2OTIgMTQuMjQ3MiA0LjM4MDY2IDE2LjI5NDQgMy45NzEyMkMxNy4xMDY3IDMuODA4NzUgMTcuNjMzNSAzLjAxODUyIDE3LjQ3MTEgMi4yMDYxOEMxNy4zMDg2IDEuMzkzODQgMTYuNTE4NCAwLjg2NzAxMyAxNS4wNjYgMS4wMjk0OEMxMi4yNTMyIDEuNjIwMDUgOS44NjQwNiAzLjc2Mzc5IDcuMzAxNTQgNi4zOTA0N0M3LjE4MTUxIDYuNTEzNCA3LjA2MTgxIDYuNjM3ODkgNi45NDI0OSA2Ljc2Mzc1QzUuNDIwMDEgNC44MDQzMyA0LjM3MDU4IDIuODc2MzIgMy40MjU5MSAwLjg2MzE2NEMzLjA3Mzk5IDAuMTEzMjAyIDIuMTgwNzMgLTAuMjA5NDc1IDEuNDMwNzcgMC4xNDI0NDVDMC42ODA4MDkgMC40OTQzNjUgMC4zNTgxMzIgMS4zODc2MiAwLjcxMDA1MSAyLjEzNzU4QzEuODIwODggNC41MDQ4MSAzLjA3ODk5IDYuNzY1MTEgNC45MjkzMiA5LjA1MzA2QzMuMjIyMDYgMTEuMTM0MSAxLjYyNjY5IDEzLjQzMjggMC4yMjI3MjMgMTUuNzE0MkMtMC4yMTE0NTMgMTYuNDE5NyAwLjAwODUyNzUyIDE3LjM0MzcgMC43MTQwNjQgMTcuNzc3OEMxLjQxOTYgMTguMjEyIDIuMzQzNTIgMTcuOTkyIDIuNzc3NyAxNy4yODY1QzQuMDQ4MTkgMTUuMjIyIDUuNDY0MDUgMTMuMTcyNiA2Ljk1NTU5IDExLjMxNjhDOC45ODUgMTMuMzc2NSAxMS41OTU5IDE1LjQ5MjggMTUuMDk5MyAxNy43NTk3WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K" 
-              alt="删除" 
-              width={18} 
-              height={18} 
+            <Image
+              src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNS4wOTkzIDE3Ljc1OTdDMTUuNzk0OSAxOC4yMDk4IDE2LjcyMzUgMTguMDEwOCAxNy4xNzM2IDE3LjMxNTJDMTcuNjIzNiAxNi42MTk3IDE3LjQyNDYgMTUuNjkxMSAxNi43MjkxIDE1LjI0MUMxMy4zMDc5IDEzLjAyNzMgMTAuODIwOSAxMC45OTU5IDguOTIyNTEgOS4wMzczOUM5LjA5NzQyIDguODQ5ODIgOS4yNzI5MSA4LjY2NTcxIDkuNDQ4ODggOC40ODUzNEMxMS44ODY0IDUuOTg2OTIgMTQuMjQ3MiA0LjM4MDY2IDE2LjI5NDQgMy45NzEyMkMxNy4xMDY3IDMuODA4NzUgMTcuNjMzNSAzLjAxODUyIDE3LjQ3MTEgMi4yMDYxOEMxNy4zMDg2IDEuMzkzODQgMTYuNTE4NCAwLjg2NzAxMyAxNS4wNjYgMS4wMjk0OEMxMi4yNTMyIDEuNjIwMDUgOS44NjQwNiAzLjc2Mzc5IDcuMzAxNTQgNi4zOTA0N0M3LjE4MTUxIDYuNTEzNCA3LjA2MTgxIDYuNjM3ODkgNi45NDI0OSA2Ljc2Mzc1QzUuNDIwMDEgNC44MDQzMyA0LjM3MDU4IDIuODc2MzIgMy40MjU5MSAwLjg2MzE2NEMzLjA3Mzk5IDAuMTEzMjAyIDIuMTgwNzMgLTAuMjA5NDc1IDEuNDMwNzcgMC4xNDI0NDVDMC42ODA4MDkgMC40OTQzNjUgMC4zNTgxMzIgMS4zODc2MiAwLjcxMDA1MSAyLjEzNzU4QzEuODIwODggNC41MDQ4MSAzLjA3ODk5IDYuNzY1MTEgNC45MjkzMiA5LjA1MzA2QzMuMjIyMDYgMTEuMTM0MSAxLjYyNjY5IDEzLjQzMjggMC4yMjI3MjMgMTUuNzE0MkMtMC4yMTE0NTMgMTYuNDE5NyAwLjAwODUyNzUyIDE3LjM0MzcgMC43MTQwNjQgMTcuNzc3OEMxLjQxOTYgMTguMjEyIDIuMzQzNTIgMTcuOTkyIDIuNzc3NyAxNy4yODY1QzQuMDQ4MTkgMTUuMjIyIDUuNDY0MDUgMTMuMTcyNiA2Ljk1NTU5IDExLjMxNjhDOC45ODUgMTMuMzc2NSAxMS41OTU5IDE1LjQ5MjggMTUuMDk5MyAxNy43NTk3WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
+              alt="删除"
+              width={18}
+              height={18}
               draggable={false}
             />
           </button>
         )}
       </div>
-      
+
       {/* Todo content with highlighting */}
       {/* {todo.content && (
         <div 
@@ -183,7 +194,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
           dangerouslySetInnerHTML={{ __html: highlightText(todo.content) }}
         />
       )} */}
-      
+
       {/* Tags */}
       {/* {todo.tags && (
         <div className="search-todo-tags">
@@ -214,7 +225,7 @@ const SearchResultsList = React.memo(function SearchResultsList({
   searchQuery,
   onToggleComplete,
   onDelete,
-  onSelectTodo
+  onSelectTodo,
 }: SearchResultsListProps) {
   return (
     <>
@@ -239,15 +250,16 @@ export default function TaskSearchModal({
   onSelectTodo,
   onToggleComplete,
   onDelete,
-  currentView
+  currentView,
+  refreshTrigger,
 }: TaskSearchModalProps) {
   const [state, setState] = useState<TaskSearchModalState>({
-    searchQuery: '',
+    searchQuery: "",
     searchResults: [],
     isLoading: false,
     isVisible: false,
     searchError: null,
-    lastSearchTime: 0
+    lastSearchTime: 0,
   });
 
   const modalRef = useRef<HTMLDivElement>(null);
@@ -263,27 +275,27 @@ export default function TaskSearchModal({
     if (isOpen) {
       // Store the previously focused element
       previousActiveElement.current = document.activeElement as HTMLElement;
-      
+
       // Set modal as visible
-      setState(prev => ({ ...prev, isVisible: true }));
-      
+      setState((prev) => ({ ...prev, isVisible: true }));
+
       // Focus the search input after a brief delay to ensure modal is rendered
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 100);
-      
+
       // Prevent background scrolling
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
       // Reset state when closing
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         isVisible: false,
-        searchQuery: '',
+        searchQuery: "",
         searchResults: [],
         isLoading: false,
         searchError: null,
-        lastSearchTime: 0
+        lastSearchTime: 0,
       }));
 
       // 取消正在进行的搜索
@@ -291,10 +303,10 @@ export default function TaskSearchModal({
         searchAbortController.current.abort();
         searchAbortController.current = null;
       }
-      
+
       // Restore background scrolling
-      document.body.style.overflow = '';
-      
+      document.body.style.overflow = "";
+
       // Restore focus to previously focused element
       if (previousActiveElement.current) {
         previousActiveElement.current.focus();
@@ -303,7 +315,7 @@ export default function TaskSearchModal({
 
     // Cleanup on unmount
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = "";
     };
   }, [isOpen]);
 
@@ -312,20 +324,20 @@ export default function TaskSearchModal({
     if (!isOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
         onClose();
       }
-      
+
       // Handle Ctrl/Cmd+K to close modal when already open
-      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
         event.preventDefault();
         onClose();
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
   // Focus trap implementation
@@ -336,12 +348,14 @@ export default function TaskSearchModal({
     const focusableElements = modal.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    
+
     const firstElement = focusableElements[0] as HTMLElement;
-    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+    const lastElement = focusableElements[
+      focusableElements.length - 1
+    ] as HTMLElement;
 
     const handleTabKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
+      if (e.key !== "Tab") return;
 
       if (e.shiftKey) {
         if (document.activeElement === firstElement) {
@@ -356,8 +370,8 @@ export default function TaskSearchModal({
       }
     };
 
-    modal.addEventListener('keydown', handleTabKey);
-    return () => modal.removeEventListener('keydown', handleTabKey);
+    modal.addEventListener("keydown", handleTabKey);
+    return () => modal.removeEventListener("keydown", handleTabKey);
   }, [isOpen]);
 
   // 执行搜索的效果
@@ -366,14 +380,14 @@ export default function TaskSearchModal({
 
     const performSearch = async () => {
       const query = debouncedSearchQuery.trim();
-      
+
       // 如果查询为空，清空结果
       if (!query) {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           searchResults: [],
           isLoading: false,
-          searchError: null
+          searchError: null,
         }));
         return;
       }
@@ -389,20 +403,20 @@ export default function TaskSearchModal({
 
       try {
         // 设置加载状态
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           isLoading: true,
-          searchError: null
+          searchError: null,
         }));
 
         const startTime = Date.now();
 
         // 执行搜索
         const searchResult: SearchResult = await searchTodos(query, {
-          fields: ['title', 'content', 'tags'],
+          fields: ["title", "content", "tags"],
           includeCompleted: true,
           includeDeleted: false,
-          limit: 50
+          limit: 50,
         });
 
         // 检查请求是否被取消
@@ -414,28 +428,27 @@ export default function TaskSearchModal({
         SearchHistoryManager.addToHistory(query);
 
         // 更新搜索结果
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           searchResults: searchResult.todos,
           isLoading: false,
           searchError: null,
-          lastSearchTime: Date.now() - startTime
+          lastSearchTime: Date.now() - startTime,
         }));
-
       } catch (error) {
         // 检查是否是取消错误
         if (currentController.signal.aborted) {
           return;
         }
 
-        console.error('Search failed:', error);
-        
-        setState(prev => ({
+        console.error("Search failed:", error);
+
+        setState((prev) => ({
           ...prev,
           searchResults: [],
           isLoading: false,
-          searchError: '搜索失败，请重试',
-          lastSearchTime: 0
+          searchError: "搜索失败，请重试",
+          lastSearchTime: 0,
         }));
       }
     };
@@ -451,13 +464,80 @@ export default function TaskSearchModal({
     };
   }, [debouncedSearchQuery, isOpen]);
 
+  // 监听refreshTrigger变化，重新执行搜索
+  useEffect(() => {
+    if (!isOpen || refreshTrigger <= 0 || !state.searchQuery.trim()) return;
+
+    const performRefreshSearch = async () => {
+      const query = state.searchQuery.trim();
+
+      // 取消之前的搜索请求
+      if (searchAbortController.current) {
+        searchAbortController.current.abort();
+      }
+
+      // 创建新的 AbortController
+      searchAbortController.current = new AbortController();
+      const currentController = searchAbortController.current;
+
+      try {
+        // 设置加载状态
+        setState((prev) => ({
+          ...prev,
+          isLoading: true,
+          searchError: null,
+        }));
+
+        const startTime = Date.now();
+
+        // 执行搜索（强制刷新，跳过缓存）
+        const searchResult: SearchResult = await searchTodos(query, {
+          fields: ["title", "content", "tags"],
+          includeCompleted: true,
+          includeDeleted: false,
+          limit: 50,
+          forceRefresh: true, // 强制刷新
+        });
+
+        // 检查请求是否被取消
+        if (currentController.signal.aborted) {
+          return;
+        }
+
+        // 更新搜索结果
+        setState((prev) => ({
+          ...prev,
+          searchResults: searchResult.todos,
+          isLoading: false,
+          searchError: null,
+          lastSearchTime: Date.now() - startTime,
+        }));
+      } catch (error) {
+        // 检查是否是取消错误
+        if (currentController.signal.aborted) {
+          return;
+        }
+
+        console.error("Refresh search failed:", error);
+
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          searchError: "刷新搜索失败，请重试",
+        }));
+      }
+    };
+
+    performRefreshSearch();
+  }, [refreshTrigger, isOpen, state.searchQuery]);
+
   // Handle search input changes
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const query = event.target.value;
-    setState(prev => ({ 
-      ...prev, 
+    setState((prev) => ({
+      ...prev,
       searchQuery: query,
-      searchError: null // 清除之前的错误
+      searchError: null, // 清除之前的错误
     }));
   };
 
@@ -479,14 +559,14 @@ export default function TaskSearchModal({
   }
 
   return (
-    <div 
-      className="search-modal-overlay" 
+    <div
+      className="search-modal-overlay"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="search-modal-title"
     >
-      <div 
+      <div
         ref={modalRef}
         className="search-modal-content"
         onClick={(e) => e.stopPropagation()}
@@ -496,8 +576,8 @@ export default function TaskSearchModal({
           <h2 id="search-modal-title" className="search-modal-title">
             搜索任务
           </h2>
-          <button 
-            className="search-modal-close" 
+          <button
+            className="search-modal-close"
             onClick={handleCloseClick}
             aria-label="关闭搜索"
           >
@@ -532,9 +612,11 @@ export default function TaskSearchModal({
           {!state.isLoading && state.searchError && (
             <div className="search-error">
               <p>{state.searchError}</p>
-              <button 
+              <button
                 className="search-retry-btn"
-                onClick={() => setState(prev => ({ ...prev, searchError: null }))}
+                onClick={() =>
+                  setState((prev) => ({ ...prev, searchError: null }))
+                }
               >
                 重试
               </button>
@@ -542,52 +624,55 @@ export default function TaskSearchModal({
           )}
 
           {/* 无结果状态 */}
-          {!state.isLoading && !state.searchError && state.searchQuery && state.searchResults.length === 0 && (
-            <div className="search-no-results">
-              <p>暂无匹配任务</p>
-              <p className="search-no-results-hint">
-                尝试使用不同的关键词或检查拼写
-              </p>
-            </div>
-          )}
+          {!state.isLoading &&
+            !state.searchError &&
+            state.searchQuery &&
+            state.searchResults.length === 0 && (
+              <div className="search-no-results">
+                <p>暂无匹配任务</p>
+                <p className="search-no-results-hint">
+                  尝试使用不同的关键词或检查拼写
+                </p>
+              </div>
+            )}
 
           {/* 空状态 */}
           {!state.isLoading && !state.searchError && !state.searchQuery && (
             <div className="search-empty-state">
               <p>开始输入以搜索任务</p>
-              <p className="search-empty-hint">
-                可以搜索任务标题、内容、标签
-              </p>
+              <p className="search-empty-hint">可以搜索任务标题、内容、标签</p>
             </div>
           )}
 
           {/* 搜索结果 */}
-          {!state.isLoading && !state.searchError && state.searchResults.length > 0 && (
-            <div className="search-results">
-              <div className="search-results-header">
-                <span className="search-results-count">
-                  找到 {state.searchResults.length} 个匹配任务
-                </span>
-                {state.lastSearchTime > 0 && (
-                  <span className="search-results-time">
-                    ({state.lastSearchTime}ms)
+          {!state.isLoading &&
+            !state.searchError &&
+            state.searchResults.length > 0 && (
+              <div className="search-results">
+                <div className="search-results-header">
+                  <span className="search-results-count">
+                    找到 {state.searchResults.length} 个匹配任务
                   </span>
-                )}
-              </div>
-              
-              <div className="search-results-list">
-                <div className="search-todo-list">
-                  <SearchResultsList
-                    searchResults={state.searchResults}
-                    searchQuery={state.searchQuery}
-                    onToggleComplete={onToggleComplete}
-                    onDelete={onDelete}
-                    onSelectTodo={onSelectTodo}
-                  />
+                  {state.lastSearchTime > 0 && (
+                    <span className="search-results-time">
+                      ({state.lastSearchTime}ms)
+                    </span>
+                  )}
+                </div>
+
+                <div className="search-results-list">
+                  <div className="search-todo-list">
+                    <SearchResultsList
+                      searchResults={state.searchResults}
+                      searchQuery={state.searchQuery}
+                      onToggleComplete={onToggleComplete}
+                      onDelete={onDelete}
+                      onSelectTodo={onSelectTodo}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
         </div>
       </div>
     </div>
