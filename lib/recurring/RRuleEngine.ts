@@ -137,70 +137,100 @@ export class RRuleEngine {
    * @returns 下一个到期日期，如果重复已结束则返回null
    */
   static calculateNextDueDate(
-  rrule: string,
-  currentDate: Date,
-  startDate?: Date,
-  maxIterations = 100 // 限制最大递归深度
-): Date | null {
-  const parsed = this.parseRRule(rrule);
-  const baseDate = startDate || currentDate;
-  const interval = parsed.interval || 1;
+    rrule: string,
+    currentDate: Date,
+    startDate?: Date,
+    maxIterations = 100 // 限制最大递归深度
+  ): Date | null {
+    const parsed = this.parseRRule(rrule);
+    const baseDate = startDate || currentDate;
+    const interval = parsed.interval || 1;
 
-  if (parsed.until && currentDate >= parsed.until) {
-    return null;
-  }
-
-  let nextDate = new Date(baseDate);
-  let iterations = 0;
-
-  while (iterations < maxIterations) {
-    iterations++;
-
-    switch (parsed.freq) {
-      case 'DAILY':
-        nextDate.setDate(nextDate.getDate() + interval);
-        break;
-      case 'WEEKLY':
-        nextDate.setDate(nextDate.getDate() + 7 * interval);
-        break;
-      case 'MONTHLY':
-        if (parsed.bymonthday?.length) {
-          const targetDay = parsed.bymonthday[0];
-          nextDate.setMonth(nextDate.getMonth() + interval);
-          nextDate.setDate(targetDay);
-          if (nextDate.getDate() !== targetDay) {
-            nextDate.setDate(0); // fallback to last day of previous month
-          }
-        } else {
-          nextDate.setMonth(nextDate.getMonth() + interval);
-        }
-        break;
-      case 'YEARLY':
-        if (parsed.bymonth?.length && parsed.bymonthday?.length) {
-          const targetMonth = parsed.bymonth[0] - 1;
-          const targetDay = parsed.bymonthday[0];
-          nextDate.setFullYear(nextDate.getFullYear() + interval);
-          nextDate.setMonth(targetMonth);
-          nextDate.setDate(targetDay);
-        } else {
-          nextDate.setFullYear(nextDate.getFullYear() + interval);
-        }
-        break;
-      default:
-        throw new Error(`Unsupported frequency: ${parsed.freq}`);
+    if (parsed.until && currentDate >= parsed.until) {
+      return null;
     }
 
-    if (nextDate > currentDate) {
+    let nextDate = new Date(baseDate);
+    let iterations = 0;
+
+    // 对于月度重复任务，确保从正确的基准日期开始计算
+    if (parsed.freq === 'MONTHLY' && parsed.bymonthday?.length) {
+      const targetDay = parsed.bymonthday[0];
+      
+      // 如果当前日期已经过了本月的目标日期，从下个月开始计算
+      if (nextDate.getDate() > targetDay) {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      }
+      nextDate.setDate(targetDay);
+      
+      // 如果设置日期失败（比如2月30日），回退到该月最后一天
+      if (nextDate.getDate() !== targetDay) {
+        nextDate.setDate(0); // 回退到上个月最后一天
+        nextDate.setMonth(nextDate.getMonth() + 1); // 然后到下个月
+        nextDate.setDate(targetDay);
+        if (nextDate.getDate() !== targetDay) {
+          nextDate.setDate(0); // 如果还是失败，使用该月最后一天
+        }
+      }
+      
+      // 如果计算出的日期已经过期，继续计算下一个周期
+      while (nextDate <= currentDate && iterations < maxIterations) {
+        iterations++;
+        nextDate.setMonth(nextDate.getMonth() + interval);
+        nextDate.setDate(targetDay);
+        if (nextDate.getDate() !== targetDay) {
+          nextDate.setDate(0);
+        }
+      }
+      
       if (parsed.until && nextDate > parsed.until) {
         return null;
       }
-      return nextDate;
+      
+      return nextDate > currentDate ? nextDate : null;
     }
-  }
 
-  console.warn('Max iterations reached in calculateNextDueDate');
-  return null;
-}
+    // 其他频率的处理逻辑
+    while (iterations < maxIterations) {
+      iterations++;
+
+      switch (parsed.freq) {
+        case 'DAILY':
+          nextDate.setDate(nextDate.getDate() + interval);
+          break;
+        case 'WEEKLY':
+          nextDate.setDate(nextDate.getDate() + 7 * interval);
+          break;
+        case 'MONTHLY':
+          // 非特定日期的月度重复
+          nextDate.setMonth(nextDate.getMonth() + interval);
+          break;
+        case 'YEARLY':
+          if (parsed.bymonth?.length && parsed.bymonthday?.length) {
+            const targetMonth = parsed.bymonth[0] - 1;
+            const targetDay = parsed.bymonthday[0];
+            nextDate.setFullYear(nextDate.getFullYear() + interval);
+            nextDate.setMonth(targetMonth);
+            nextDate.setDate(targetDay);
+          } else {
+            nextDate.setFullYear(nextDate.getFullYear() + interval);
+          }
+          break;
+        default:
+          throw new Error(`Unsupported frequency: ${parsed.freq}`);
+      }
+
+      if (nextDate > currentDate) {
+        if (parsed.until && nextDate > parsed.until) {
+          return null;
+        }
+        return nextDate;
+      }
+    }
+
+    console.warn('Max iterations reached in calculateNextDueDate');
+    return null;
+  }
 
   /**
    * 计算指定范围内的所有到期日期

@@ -16,6 +16,7 @@ import CalendarView from '../components/CalendarView'
 import type { Todo, List } from '../lib/types'
 import dynamic from 'next/dynamic'
 import { getDbWrapper } from '../lib/sync/initOfflineSync'
+import { RecurringTaskIntegration } from '../lib/recurring/RecurringTaskIntegration'
 
 // 动态导入调试组件，避免服务端渲染问题
 const OfflineSyncDebugger = dynamic(() => import('../components/OfflineSyncDebugger'), { ssr: false })
@@ -221,6 +222,11 @@ type LastAction =
 
 export default function TodoListPage() {
   const db = getDatabaseAPI();
+  
+  // 初始化重复任务系统
+  useEffect(() => {
+    RecurringTaskIntegration.initialize(db);
+  }, [db]);
   
   const [currentView, setCurrentView] = useState<string>('today')
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
@@ -477,8 +483,15 @@ export default function TodoListPage() {
     setLastAction({ type: 'toggle-complete', data: { id: todo.id, previousCompletedTime: todo.completed_time, previousCompleted: !!todo.completed } });
     const newCompletedTime = todo.completed_time ? null : new Date().toISOString();
     const newCompletedFlag = !todo.completed;
-    await handleUpdateTodo(todo.id, { completed_time: newCompletedTime, completed: newCompletedFlag });
-  }, [handleUpdateTodo]);
+    const updates = { completed_time: newCompletedTime, completed: newCompletedFlag };
+    
+    await handleUpdateTodo(todo.id, updates);
+    
+    // 处理重复任务生成
+    if (newCompletedFlag) {
+      await RecurringTaskIntegration.handleTaskUpdate(todo.id, updates, db);
+    }
+  }, [handleUpdateTodo, db]);
   
   const handleDeleteTodo = useCallback(async (todoId: string) => {
     const todoToDelete = todos.find((t: Todo) => t.id === todoId);
