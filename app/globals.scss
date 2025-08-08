@@ -965,13 +965,13 @@ span.shortcut-name {
 
 // State classes
 .completed {
-  background: $bg-completed;
+  background: $bg-completed!important;
   color: $font-color-complete;
   text-decoration: line-through;
 }
 
 .deleted {
-  background: $bg-deleted;
+  background: $bg-deleted!important;
 }
 
 .empty {
@@ -2458,5 +2458,733 @@ span.shortcut-name {
     span {
       user-select: none;
     }
+  }
+}
+// Task Search Modal Styles
+.search-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(51, 50, 46, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 10vh;
+  z-index: 1000;
+  animation: modalOverlayFadeIn 0.2s ease-out;
+  backdrop-filter: blur(2px);
+}
+
+@keyframes modalOverlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(2px);
+  }
+}
+
+.search-modal-content {
+  background: white;
+  border-radius: $border-radius;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  box-shadow: $box-shadow;
+  border: $border;
+  animation: popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: $border;
+  background: $bg-normal;
+}
+
+.search-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: $font-color;
+}
+
+.search-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+  color: $font-color;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(51, 50, 46, 0.1);
+  }
+
+  &:focus {
+    outline: 2px solid $completed;
+    outline-offset: 2px;
+  }
+}
+
+.search-input-container {
+  padding: 0;
+}
+
+.search-input {
+  width: 100%;
+  padding: 16px 20px;
+  font-size: 16px;
+  outline: none;
+  background: white;
+  color: $font-color;
+  font-family: $font;
+  transition: all 0.2s ease;
+  border-radius: 0;
+  border: none;
+  border-bottom: $border;
+
+  &::placeholder {
+    color: $placeholder;
+    transition: color 0.2s ease;
+  }
+
+  &:focus {
+    background: white;
+    border-color: #a28352;
+    outline: 0;
+    
+    &::placeholder {
+      color: rgba(51, 50, 46, 0.3);
+    }
+  }
+}
+
+.search-results-container {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 200px;
+  max-height: 400px;
+  transition: all 0.3s ease;
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $completed;
+    border-radius: 3px;
+    transition: background 0.2s ease;
+
+    &:hover {
+      background: #7bc4bb;
+    }
+  }
+}
+
+.search-results {
+  padding: 0;
+}
+
+.search-results-placeholder {
+  padding: 20px;
+  text-align: center;
+  color: $font-color;
+  font-size: 14px;
+}
+
+.search-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: $font-color;
+  font-size: 14px;
+  gap: 12px;
+  animation: loadingPulse 2s ease-in-out infinite;
+}
+
+@keyframes loadingPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid $completed;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.search-no-results {
+  padding: 40px 20px;
+  text-align: center;
+  color: $font-color;
+
+  p {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+  }
+
+  .search-no-results-hint {
+    font-size: 14px;
+    color: $placeholder;
+    margin: 0;
+  }
+}
+
+.search-empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: $font-color;
+
+  p {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+  }
+
+  .search-empty-hint {
+    font-size: 14px;
+    color: $placeholder;
+    margin: 0;
+  }
+}
+
+// Search results will use existing todo-item styles when integrated
+.search-results .todo-item {
+  margin: 0 8px 4px;
+  border-radius: $border-radius;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: #f3f4f6;
+    box-shadow: none;
+  }
+}
+
+// Responsive design for search modal
+@media (max-width: 768px) {
+  .search-modal-overlay {
+    padding-top: 5vh;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .search-modal-content {
+    width: 100%;
+    max-width: none;
+    max-height: 90vh;
+    border-radius: 8px;
+  }
+
+  .search-modal-header {
+    padding: 12px 16px;
+  }
+
+  .search-input {
+    padding: 12px 16px;
+    font-size: 16px; // Prevent zoom on iOS
+  }
+
+  .search-modal-title {
+    font-size: 16px;
+  }
+
+  .search-results-container {
+    max-height: 60vh;
+  }
+}
+
+// Enhanced tablet styles
+@media (max-width: 1024px) and (min-width: 769px) {
+  .search-modal-content {
+    width: 85%;
+    max-width: 500px;
+  }
+}
+
+// Large screen optimizations
+@media (min-width: 1200px) {
+  .search-modal-content {
+    max-width: 700px;
+  }
+  
+  .search-results-container {
+    max-height: 500px;
+  }
+}
+
+//Additional search modal styles for task 4
+.search-error {
+  padding: 40px 20px;
+  text-align: center;
+  color: $font-color;
+
+  p {
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    color: $deleted;
+  }
+}
+
+.search-retry-btn {
+  padding: 8px 16px;
+  border: $border;
+  border-radius: $border-radius;
+  background: $bg-submit;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    box-shadow: $box-shadow;
+    transform: translate(-2px, -2px);
+  }
+}
+
+.search-results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  font-size: 14px;
+  animation: slideInFromTop 0.3s ease-out;
+}
+
+@keyframes slideInFromTop {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.search-results-count {
+  font-weight: 600;
+  color: $font-color;
+}
+
+.search-results-time {
+  color: $placeholder;
+  font-size: 12px;
+}
+
+.search-results-list {
+  padding: 8px 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.search-todo-list {
+  padding: 20px 36px 36px;
+  min-height: 200px;
+  transition: all .5s ease;
+}
+
+// Placeholder styles for search results (will be replaced in task 5)
+.search-result-item-placeholder {
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: #f9fafb;
+  }
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.search-result-title {
+  font-weight: 600;
+  color: $font-color;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.search-result-content {
+  color: $placeholder;
+  font-size: 13px;
+  margin-bottom: 4px;
+  line-height: 1.4;
+  max-height: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.search-result-list {
+  color: #a28352;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+// Improved loading spinner animation
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid $completed;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+// Search results scrollbar styling
+.search-results-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-results-list::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.search-results-list::-webkit-scrollbar-thumb {
+  background: $completed;
+  border-radius: 3px;
+
+  &:hover {
+    background: #7bc4bb;
+  }
+}
+
+// Responsive improvements for search modal
+@media (max-width: 768px) {
+  .search-results-header {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .search-result-item-placeholder {
+    padding: 10px 16px;
+  }
+
+  .search-result-title {
+    font-size: 13px;
+  }
+
+  .search-result-content {
+    font-size: 12px;
+  }
+}
+// SearchTodoItem styles - unified with TodoList styles
+.search-todo-item {
+  position: relative;
+  border: $border;
+  border-radius: $border-radius;
+  box-shadow: $box-shadow;
+  width: 100%;
+  transition: all .5s ease;
+  display: block;
+  margin-bottom: 16px;
+  animation: searchItemFadeIn 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(10px);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    box-shadow: none;
+  }
+
+  &.completed {
+    opacity: 0.7;
+  }
+
+  &.deleted {
+    opacity: 0.5;
+    background-color: $bg-deleted;
+  }
+}
+
+@keyframes searchItemFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.search-todo-content {
+  padding: $padding;
+  background: $bg-normal;
+  border-radius: $border-radius;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  padding-left: 56px;
+  padding-right: 56px;
+  cursor: pointer;
+  min-height: 60px;
+}
+
+.search-todo-btn {
+  position: absolute;
+  background: #fff;
+  display: block;
+  cursor: pointer;
+  border: $border;
+  transition: all .2s;
+
+  &:hover {
+    box-shadow: $box-shadow;
+    transform: translate(-2px, -2px);
+  }
+
+  &.btn-finish {
+    left: 14px;
+    top: 16px;
+    width: 30px;
+    height: 30px;
+    border-radius: 20px;
+
+    &:hover {
+      background: $completed;
+      box-shadow: $box-shadow-reverse;
+      transform: translate(2px, -2px);
+    }
+  }
+
+  &.btn-unfinish {
+    left: 14px;
+    top: 16px;
+    width: 30px;
+    height: 30px;
+    border-radius: 20px;
+    background: $completed;
+
+    &:hover {
+      box-shadow: $box-shadow-reverse;
+      transform: translate(2px, -2px);
+    }
+
+    img {
+      position: relative;
+      left: 4px;
+      top: 2px;
+      width: 26px;
+      height: auto;
+    }
+  }
+
+  &.btn-delete {
+    background: #fff;
+    right: 12px;
+    top: 16px;
+    height: 30px;
+    width: 30px;
+    border-radius: $border-radius;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &:hover {
+      background: $deleted;
+    }
+
+    img {
+      display: block;
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
+
+// Search todo content styling - unified with TodoList
+.search-todo-list-name {
+  color: #a28352;
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.search-todo-title {
+  color: $font-color;
+  
+  &.completed {
+    text-decoration: line-through;
+    color: $font-color-complete;
+  }
+}
+
+.search-todo-due-date {
+  position: absolute;
+  right: 60px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: $deleted;
+  color: #333;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.search-todo-next-due {
+  background-color: $bg-submit;
+  color: #333;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+// Additional content styling for search results
+.search-todo-content-text {
+  color: $placeholder;
+  font-size: 13px;
+  line-height: 1.4;
+  margin-top: 8px;
+  max-height: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.search-todo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.search-todo-tag {
+  background-color: #e5e7eb;
+  color: #374151;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+// Search highlighting styles
+.search-highlight {
+  background-color: #fef3c7;
+  color: #92400e;
+  font-weight: 600;
+  padding: 1px 2px;
+  border-radius: 2px;
+  animation: highlightGlow 0.5s ease-out;
+  position: relative;
+}
+
+@keyframes highlightGlow {
+  0% {
+    background-color: #fbbf24;
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+  }
+  100% {
+    background-color: #fef3c7;
+    box-shadow: none;
+  }
+}
+
+// Remove placeholder styles since we're using real TodoItems now
+.search-results-placeholder,
+.search-result-item-placeholder,
+.search-result-title,
+.search-result-content,
+.search-result-list {
+  display: none;
+}
+
+// Responsive design for search todo items
+@media (max-width: 768px) {
+  .search-todo-content {
+    padding: 16px 20px;
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+
+  .search-todo-btn {
+    &.btn-finish,
+    &.btn-unfinish {
+      left: 10px;
+      top: 12px;
+      width: 26px;
+      height: 26px;
+    }
+
+    &.btn-delete {
+      right: 10px;
+      top: 12px;
+      width: 26px;
+      height: 26px;
+    }
+  }
+
+  .search-todo-title {
+    font-size: 14px;
+  }
+
+  .search-todo-content-text {
+    font-size: 12px;
+  }
+
+  .search-todo-due-date {
+    right: 50px;
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  .search-todo-next-due {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+}
+// Search button styling for QuickActions
+.action-search {
+  &:hover, &.selected {
+    background: #e0f2fe;
   }
 }

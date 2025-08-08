@@ -11,6 +11,7 @@ import { ViewSwitcher } from '../components/ViewSwitcher'
 import QuickActions from '../components/QuickActions'
 import TodoDetailsModal from '../components/TodoDetailsModal'
 import ManageListsModal from '../components/ManageListsModal'
+import TaskSearchModal from '../components/TaskSearchModal'
 import CalendarView from '../components/CalendarView'
 import type { Todo, List } from '../lib/types'
 import dynamic from 'next/dynamic'
@@ -224,6 +225,7 @@ export default function TodoListPage() {
   const [currentView, setCurrentView] = useState<string>('today')
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
   const [isManageListsOpen, setIsManageListsOpen] = useState(false)
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false)
   const [newTodoTitle, setNewTodoTitle] = useState('')
   const [newTodoDate, setNewTodoDate] = useState<string | null>(null)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
@@ -300,6 +302,19 @@ export default function TodoListPage() {
     }, 60000); // 每分钟检查一次
     
     return () => clearInterval(interval);
+  }, []);
+
+  // Keyboard shortcut for search modal (Ctrl+K / Cmd+K)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+        event.preventDefault();
+        setIsSearchModalOpen(prev => !prev);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
   // --- FIX: Use todosWithListNames for all subsequent calculations ---
   const uncompletedTodos = useMemo(() => 
@@ -715,6 +730,10 @@ export default function TodoListPage() {
     URL.revokeObjectURL(url);
   }, [todos, recycledTodos]);
 
+  const handleOpenSearch = useCallback(() => {
+    setIsSearchModalOpen(true);
+  }, []);
+
   return (
     <>
       <div className="bg-pattern"></div>
@@ -808,6 +827,7 @@ export default function TodoListPage() {
               showMarkAllCompleted={displayTodos.some((t: Todo) => !t.completed_time)}
               onManageLists={() => setIsManageListsOpen(true)}
               onImport={handleImport}
+              onOpenSearch={handleOpenSearch}
               onExport={handleExport}
             />
           </div>
@@ -833,6 +853,17 @@ export default function TodoListPage() {
               onUpdateList={handleUpdateList}
               onUpdateListsOrder={handleUpdateListsOrder}
               onClose={() => setIsManageListsOpen(false)}
+            />
+          )}
+
+          {isSearchModalOpen && (
+            <TaskSearchModal
+              isOpen={isSearchModalOpen}
+              onClose={() => setIsSearchModalOpen(false)}
+              onSelectTodo={setSelectedTodo}
+              onToggleComplete={handleToggleComplete}
+              onDelete={handleDeleteTodo}
+              currentView={currentView}
             />
           )}
         </div>
