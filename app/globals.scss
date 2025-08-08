@@ -1875,14 +1875,12 @@ span.shortcut-name {
   }
 
   &:hover {
-    .recurring-badge,
-    .recurring-instance-badge {
+    .recurring-badge {
       opacity: 1;
     }
   }
 
-  .recurring-badge,
-  .recurring-instance-badge {
+  .recurring-badge {
     opacity: 0.8;
     transition: opacity 0.2s ease;
   }
@@ -1961,31 +1959,7 @@ span.shortcut-name {
   font-weight: 500;
 }
 
-.recurring-instance-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  background-color: #fef3c7;
-  border: 1px solid #f59e0b;
-  border-radius: 0.5rem;
-}
 
-.instance-badge {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  background-color: #f59e0b;
-  color: white;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.instance-number {
-  font-size: 0.875rem;
-  color: #92400e;
-  font-weight: 500;
-}
 
 .recurring-badge {
   display: inline-block;
@@ -1994,12 +1968,7 @@ span.shortcut-name {
   cursor: help;
 }
 
-.recurring-instance-badge {
-  display: inline-block;
-  margin-right: 0.25rem;
-  font-size: 0.875rem;
-  cursor: help;
-}
+
 
 .next-due-date {
   font-size: 0.75rem;
@@ -3068,13 +3037,10 @@ span.shortcut-name {
 }
 
 .search-todo-next-due {
-  background-color: $bg-submit;
-  color: #333;
-  padding: 2px 6px;
-  border-radius: 4px;
+  color: #6b7280;
   font-size: 11px;
-  font-weight: 600;
   margin-left: 8px;
+  font-style: italic;
 }
 
 // Additional content styling for search results

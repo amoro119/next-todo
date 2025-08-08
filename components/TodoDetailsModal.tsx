@@ -286,8 +286,8 @@ export default function TodoDetailsModal({
                 />
             </div>
 
-            {/* 重复任务配置 */}
-            {!isRecycled && !RecurringTaskGenerator.isTaskInstance(editableTodo) && (
+            {/* 重复任务配置 - 统一处理原始任务和实例 */}
+            {!isRecycled && (
                 <div className="form-group">
                     <label>重复</label>
                     <RecurrenceSelector
@@ -309,14 +309,20 @@ export default function TodoDetailsModal({
                                     ...prev,
                                     is_recurring: true,
                                     repeat: rrule,
-                                    next_due_date: nextDueDate ? nextDueDate.toISOString() : null
+                                    next_due_date: nextDueDate ? nextDueDate.toISOString() : null,
+                                    // 如果是重复任务实例，转换为原始重复任务
+                                    recurring_parent_id: null,
+                                    instance_number: null
                                 }));
                             } else {
                                 setEditableTodo(prev => ({
                                     ...prev,
                                     is_recurring: false,
                                     repeat: null,
-                                    next_due_date: null
+                                    next_due_date: null,
+                                    // 清除重复任务相关字段
+                                    recurring_parent_id: null,
+                                    instance_number: null
                                 }));
                             }
                         }}
@@ -325,17 +331,7 @@ export default function TodoDetailsModal({
                 </div>
             )}
 
-            {/* 显示重复任务实例信息 */}
-            {RecurringTaskGenerator.isTaskInstance(editableTodo) && (
-                <div className="form-group">
-                    <div className="recurring-instance-info">
-                        <span className="instance-badge">重复任务实例</span>
-                        {editableTodo.instance_number && (
-                            <span className="instance-number">第 {editableTodo.instance_number} 次</span>
-                        )}
-                    </div>
-                </div>
-            )}
+
         </div>
         <div className="modal-footer">         {isRecycled ? (
             <>

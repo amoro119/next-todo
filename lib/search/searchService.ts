@@ -7,6 +7,7 @@ export interface SearchOptions {
   includeCompleted: boolean;
   includeDeleted: boolean;
   limit?: number;
+  forceRefresh?: boolean; // 强制刷新，跳过缓存
 }
 
 export interface SearchResult {
@@ -63,10 +64,10 @@ export class TaskSearchService {
     }
     this.searchAbortController = new AbortController();
 
-    // 检查缓存
+    // 检查缓存（除非强制刷新）
     const cacheKey = this.generateCacheKey(query, options);
     const cachedEntry = this.searchCache.get(cacheKey);
-    if (cachedEntry && Date.now() - cachedEntry.timestamp < this.CACHE_DURATION) {
+    if (!options?.forceRefresh && cachedEntry && Date.now() - cachedEntry.timestamp < this.CACHE_DURATION) {
       return {
         ...cachedEntry.result,
         executionTime: Date.now() - startTime
