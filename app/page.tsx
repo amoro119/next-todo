@@ -34,17 +34,12 @@ interface DatabaseAPI {
 }
 
 function getDatabaseAPI(): DatabaseAPI {
-  // 检查是否在Electron环境中
-  if (typeof window !== 'undefined' && (window as unknown).electron?.db) {
-    // Electron环境 (假设它也提供了类似的API)
-    // 注意：如果Electron环境也需要离线支持，这里也需要进行类似的包装
-    return (window as unknown).electron.db;
-  } else if (typeof window !== 'undefined' && (window as unknown).pg) {
-    // Web环境 - 使用PGlite
+  // 优先使用渲染进程中的 PGlite（与 useLiveQuery 使用的实例一致），避免读写落在不同数据库
+  if (typeof window !== 'undefined' && (window as unknown).pg) {
     const dbWrapper = getDbWrapper();
-    
+
     if (!dbWrapper) {
-      // 免费模式下直接使用 PGlite，不使用离线同步
+      // 免费模式或未启用离线包装：直接使用 PGlite 实例
       const pg = (window as unknown as { pg: any }).pg;
       return {
         query: (sql, params) => pg.query(sql, params),
@@ -63,7 +58,6 @@ function getDatabaseAPI(): DatabaseAPI {
         delete: (table, id) => pg.query(`DELETE FROM ${table} WHERE id = $1`, [id]),
         rawWrite: (sql, params) => pg.query(sql, params),
         transaction: async (queries) => {
-          // 警告：原始事务不会被离线队列拦截
           console.warn('Executing a raw transaction which is not intercepted for offline sync.');
           await pg.transaction(async (tx: unknown) => {
             for (const { sql, params } of queries) {
@@ -81,7 +75,6 @@ function getDatabaseAPI(): DatabaseAPI {
       delete: (table, id) => dbWrapper.delete(table, id),
       rawWrite: (sql, params) => dbWrapper.raw.query(sql, params),
       transaction: async (queries) => {
-        // 警告：原始事务不会被离线队列拦截
         console.warn('Executing a raw transaction which is not intercepted for offline sync.');
         await dbWrapper.raw.transaction(async (tx: unknown) => {
           for (const { sql, params } of queries) {
@@ -90,10 +83,15 @@ function getDatabaseAPI(): DatabaseAPI {
         });
       }
     };
-  } else {
-    // 环境不可用
-    throw new Error('Database API not available. Please ensure the application is properly initialized.');
   }
+
+  // 回退到 Electron IPC（仅当没有渲染进程 PGlite 可用时）
+  if (typeof window !== 'undefined' && (window as unknown).electron?.db) {
+    return (window as unknown).electron.db as DatabaseAPI;
+  }
+
+  // 环境不可用
+  throw new Error('Database API not available. Please ensure the application is properly initialized.');
 }
 
 // --- 日期缓存类 ---
