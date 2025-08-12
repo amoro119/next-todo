@@ -341,6 +341,18 @@ export default function CalendarView({
       });
     });
 
+    // Sort todos by priority within each date (higher priority first)
+    Object.keys(map).forEach(dateStr => {
+      map[dateStr].sort((a, b) => {
+        // First sort by completion status (uncompleted first)
+        if (a.completed !== b.completed) {
+          return a.completed ? 1 : -1;
+        }
+        // Then sort by priority (higher priority first)
+        return (b.priority || 0) - (a.priority || 0);
+      });
+    });
+
     // 缓存结果
     calendarCache.setTodosByDateCache(todos, currentDate, map);
     
