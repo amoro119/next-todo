@@ -33,11 +33,11 @@ interface DatabaseAPI {
 
 function getDatabaseAPI(): DatabaseAPI {
   // 检查是否在Electron环境中
-  if (typeof window !== 'undefined' && (window as any).electron?.db) {
+  if (typeof window !== 'undefined' && (window as unknown).electron?.db) {
     // Electron环境 (假设它也提供了类似的API)
     // 注意：如果Electron环境也需要离线支持，这里也需要进行类似的包装
-    return (window as any).electron.db;
-  } else if (typeof window !== 'undefined' && (window as any).pg) {
+    return (window as unknown).electron.db;
+  } else if (typeof window !== 'undefined' && (window as unknown).pg) {
     // Web环境 - 使用PGlite
     const dbWrapper = getDbWrapper();
     
@@ -367,8 +367,12 @@ export default function TodoListPage() {
         return todosWithListNames
           .filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
           .sort((a, b) => {
-            if (a.completed === b.completed) return 0;
-            return a.completed ? 1 : -1;
+            // First sort by completion status (uncompleted first)
+            if (a.completed !== b.completed) {
+              return a.completed ? 1 : -1;
+            }
+            // Then sort by priority (higher priority first)
+            return (b.priority || 0) - (a.priority || 0);
           });
       case 'calendar':
         return uncompletedTodos
@@ -640,11 +644,34 @@ export default function TodoListPage() {
         if (file.name.endsWith('.csv')) {
           const { todos, removedTodos } = parseDidaCsv(content);
           todosToImport = [...todos, ...removedTodos].map(t => ({...t, deleted: !!(t as unknown as { removed?: boolean }).removed}));
+        } else if (file.name.endsWith('.sql')) {
+          // 处理 SQL 文件导入
+          const confirmed = confirm('导入 SQL 文件将会覆盖当前所有数据，是否继续？');
+          if (!confirmed) {
+            return;
+          }
+          
+          // 执行 SQL 语句
+          const sqlStatements = content
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('--')) // 过滤注释和空行
+            .join('\n')
+            .split(';')
+            .map(stmt => stmt.trim())
+            .filter(stmt => stmt);
+          
+          for (const statement of sqlStatements) {
+            if (statement) {
+              await db.exec(statement);
+            }
+          }
+          
+          alert('SQL 文件导入成功！');
+          return; // SQL 导入直接返回，不需要后续处理
         } else {
-          const data = JSON.parse(content);
-          const importedTodos = data.todos || (Array.isArray(data) ? data : []);
-          const importedRecycleBin = data.recycleBin || [];
-          todosToImport = [...importedTodos, ...importedRecycleBin];
+          alert('不支持的文件格式。请选择 .csv 或 .sql 文件。');
+          return;
         }
         if (todosToImport.length === 0) { alert('没有找到可导入的事项。'); return; }
         
@@ -732,24 +759,73 @@ export default function TodoListPage() {
     reader.readAsText(file);
   }, [lists, db]);
 
-  const handleExport = useCallback(() => {
-// ... (no changes in this block)
-// ...
-    const data = {
-      todos: todos.filter((t: Todo) => !t.deleted),
-      recycleBin: recycledTodos,
-      exportDate: new Date().toISOString()
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `todos-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [todos, recycledTodos]);
+  const handleExport = useCallback(async () => {
+    try {
+      // 导出为 SQL 格式
+      const allTodos = todos; // 包含已删除的任务
+      const allLists = lists;
+      
+      let sqlContent = '-- Todo App Database Export\n';
+      sqlContent += `-- Export Date: ${new Date().toISOString()}\n\n`;
+      
+      // 清空现有数据
+      sqlContent += '-- Clear existing data\n';
+      sqlContent += 'DELETE FROM todos;\n';
+      sqlContent += 'DELETE FROM lists;\n\n';
+      
+      // 导出 lists 表
+      sqlContent += '-- Insert lists\n';
+      for (const list of allLists) {
+        const name = list.name.replace(/'/g, "''"); // 转义单引号
+        sqlContent += `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ('${list.id}', '${name}', ${list.sort_order}, ${list.is_hidden}, '${list.modified || new Date().toISOString()}');\n`;
+      }
+      
+      sqlContent += '\n-- Insert todos\n';
+      // 导出 todos 表
+      for (const todo of allTodos) {
+        const title = todo.title.replace(/'/g, "''");
+        const content = todo.content ? todo.content.replace(/'/g, "''") : null;
+        const tags = todo.tags ? todo.tags.replace(/'/g, "''") : null;
+        const repeat = todo.repeat ? todo.repeat.replace(/'/g, "''") : null;
+        const reminder = todo.reminder ? todo.reminder.replace(/'/g, "''") : null;
+        
+        sqlContent += `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date) VALUES (`;
+        sqlContent += `'${todo.id}', `;
+        sqlContent += `'${title}', `;
+        sqlContent += `${todo.completed}, `;
+        sqlContent += `${todo.deleted}, `;
+        sqlContent += `${todo.sort_order}, `;
+        sqlContent += `${todo.due_date ? `'${todo.due_date}'` : 'NULL'}, `;
+        sqlContent += `${content ? `'${content}'` : 'NULL'}, `;
+        sqlContent += `${tags ? `'${tags}'` : 'NULL'}, `;
+        sqlContent += `${todo.priority}, `;
+        sqlContent += `'${todo.created_time}', `;
+        sqlContent += `${todo.completed_time ? `'${todo.completed_time}'` : 'NULL'}, `;
+        sqlContent += `${todo.start_date ? `'${todo.start_date}'` : 'NULL'}, `;
+        sqlContent += `${todo.list_id ? `'${todo.list_id}'` : 'NULL'}, `;
+        sqlContent += `${repeat ? `'${repeat}'` : 'NULL'}, `;
+        sqlContent += `${reminder ? `'${reminder}'` : 'NULL'}, `;
+        sqlContent += `${todo.is_recurring || false}, `;
+        sqlContent += `${todo.recurring_parent_id ? `'${todo.recurring_parent_id}'` : 'NULL'}, `;
+        sqlContent += `${todo.instance_number || 'NULL'}, `;
+        sqlContent += `${todo.next_due_date ? `'${todo.next_due_date}'` : 'NULL'}`;
+        sqlContent += ');\n';
+      }
+      
+      const blob = new Blob([sqlContent], { type: 'application/sql' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `todos-${new Date().toISOString().split('T')[0]}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert(`导出失败: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [todos, lists]);
 
   const handleOpenSearch = useCallback(() => {
     setIsSearchModalOpen(true);
