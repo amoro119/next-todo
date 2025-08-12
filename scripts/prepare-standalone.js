@@ -5,7 +5,17 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-console.log('🚀 准备独立的 Next.js 服务器...');
+// 获取分发版本参数
+const distribution = process.env.DISTRIBUTION || process.argv[2] || 'premium';
+const validDistributions = ['free', 'premium'];
+
+if (!validDistributions.includes(distribution)) {
+  console.error(`❌ 无效的分发版本: ${distribution}`);
+  console.error(`✅ 有效值: ${validDistributions.join(', ')}`);
+  process.exit(1);
+}
+
+console.log(`🚀 准备独立的 Next.js 服务器 (${distribution} 版本)...`);
 
 const projectRoot = process.cwd();
 const standaloneDir = path.join(projectRoot, '.next', 'standalone');
@@ -88,7 +98,37 @@ try {
     console.warn('⚠️ 源数据库目录不存在，跳过复制。');
   }
 
-  console.log('✅ Standalone 目录准备完成！');
+  // 7. 生成分发配置文件
+  console.log(`🔧 生成 ${distribution} 版本配置文件...`);
+  const distributionConfigs = {
+    free: {
+      defaultSubscription: 'free',
+      syncEnabled: false,
+      showUpgradePrompts: true,
+      features: ['basic-export'],
+      appName: 'Todo App (Free)',
+      version: '1.0.0',
+      buildType: 'free',
+    },
+    premium: {
+      defaultSubscription: 'premium',
+      syncEnabled: true,
+      showUpgradePrompts: false,
+      features: ['sync', 'export', 'themes', 'advanced-search'],
+      appName: 'Todo App',
+      version: '1.0.0',
+      buildType: 'premium',
+    }
+  };
+
+  const configPath = path.join(publicDest, 'config.json');
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify(distributionConfigs[distribution], null, 2)
+  );
+  console.log(`✅ ${distribution} 版本配置文件已生成: ${configPath}`);
+
+  console.log(`✅ Standalone 目录准备完成 (${distribution} 版本)！`);
 
 } catch (error) {
   console.error('❌ 构建准备失败:', error.message);

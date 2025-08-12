@@ -1,0 +1,9 @@
+{
+  "defaultSubscription": "free",
+  "syncEnabled": false,
+  "showUpgradePrompts": true,
+  "features": ["basic-export"],
+  "appName": "Todo App (Free) - Dev",
+  "version": "1.0.0-dev",
+  "buildType": "free"
+}

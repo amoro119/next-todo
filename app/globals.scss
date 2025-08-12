@@ -3154,3 +3154,12 @@ span.shortcut-name {
     background: #e0f2fe;
   }
 }
+
+// 升级按钮样式
+.action-upgrade {
+  display: none;
+  &:hover, &.selected {
+    background: #ffd6e9;
+    color: #d63384;
+  }
+}

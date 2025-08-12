@@ -7,13 +7,53 @@ import { useEffect, useState } from "react";
 import { ShapeStream, Shape } from "@electric-sql/client";
 import { getAuthToken, getCachedAuthToken, invalidateToken } from "../lib/auth"; // <--- 导入新的认证模块
 
-type SyncStatus = "initial-sync" | "done" | "error";
+type SyncStatus = "initial-sync" | "done" | "error" | "disabled" | "local-only";
 
 type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
 
 // --- 认证逻辑现在已移至 lib/auth.ts ---
 
+/**
+ * 检查同步配置并返回详细信息
+ */
+export async function checkSyncConfig() {
+  const { getSyncConfig, getSyncDisabledMessage } = await import('../lib/config/syncConfig');
+  const syncConfig = getSyncConfig();
+  
+  return {
+    enabled: syncConfig.enabled,
+    reason: syncConfig.reason,
+    message: syncConfig.enabled ? '同步已启用' : getSyncDisabledMessage(syncConfig.reason),
+  };
+}
+
+/**
+ * 重新评估同步状态并更新状态显示
+ * 用于用户状态变化时重新检查同步配置
+ */
+export async function refreshSyncStatus() {
+  const configCheck = await checkSyncConfig();
+  
+  if (!configCheck.enabled) {
+    console.log(`同步状态更新: ${configCheck.reason}`);
+    updateSyncStatus('done', configCheck.message);
+  } else {
+    console.log('同步配置已启用，当前状态保持不变');
+  }
+  
+  return configCheck;
+}
+
 export async function startSync(pg: PGliteWithExtensions) {
+  // 首先检查同步配置
+  const configCheck = await checkSyncConfig();
+  
+  if (!configCheck.enabled) {
+    console.log(`同步已禁用: ${configCheck.reason}`);
+    updateSyncStatus('done', configCheck.message);
+    return;
+  }
+
   console.log("Starting ElectricSQL sync...");
   updateSyncStatus("initial-sync", "Starting sync...");
 
@@ -55,17 +95,26 @@ export async function startSync(pg: PGliteWithExtensions) {
     await startBidirectionalSync(pg);
   } catch (error) {
     console.error("Sync failed:", error);
-    // 当认证失败时，确保清除缓存的令牌
-    invalidateToken();
-    const errorMessage =
-      error instanceof Error ? error.message : "同步失败，但应用仍可使用";
-    if (
-      errorMessage.includes("认证失败") ||
-      errorMessage.includes("认证令牌")
-    ) {
-      updateSyncStatus("error", "认证失败，无法同步数据");
-    } else {
-      updateSyncStatus("error", "同步失败，但应用仍可使用");
+    
+    // 使用专门的同步错误处理
+    const { handleSyncStartupError, getSyncStatusFromError } = await import('../lib/sync/syncErrorHandling');
+    const errorResult = handleSyncStartupError(error as Error);
+    
+    console.log(`同步错误类型: ${errorResult.type}, 消息: ${errorResult.message}`);
+    
+    // 根据错误类型进行特殊处理
+    if (errorResult.type === 'auth') {
+      // 认证失败时清除缓存的令牌
+      invalidateToken();
+    }
+    
+    // 设置相应的同步状态
+    const syncStatus = getSyncStatusFromError(errorResult);
+    updateSyncStatus(syncStatus, errorResult.message);
+    
+    // 记录是否可以重试
+    if (errorResult.canRetry) {
+      console.log('此错误可以重试，同步将在条件改善后自动重试');
     }
   }
 }
@@ -756,6 +805,43 @@ export function useSyncStatus(): [SyncStatus, string | undefined] {
   }, []);
 
   return syncStatus;
+}
+
+/**
+ * 获取同步状态的详细信息
+ */
+export function getSyncStatusInfo(status: SyncStatus, message?: string) {
+  const statusInfo = {
+    status,
+    message: message || '',
+    isActive: false,
+    isError: false,
+    isDisabled: false,
+    canRetry: false,
+  };
+
+  switch (status) {
+    case 'initial-sync':
+      statusInfo.isActive = true;
+      statusInfo.message = message || '正在同步数据...';
+      break;
+    case 'done':
+      statusInfo.isActive = false;
+      statusInfo.message = message || '同步完成';
+      break;
+    case 'error':
+      statusInfo.isError = true;
+      statusInfo.canRetry = true;
+      statusInfo.message = message || '同步出错';
+      break;
+    case 'disabled':
+    case 'local-only':
+      statusInfo.isDisabled = true;
+      statusInfo.message = message || '本地模式';
+      break;
+  }
+
+  return statusInfo;
 }
 
 let initialSyncDone = false;
