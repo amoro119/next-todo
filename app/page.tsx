@@ -28,7 +28,7 @@ interface DatabaseAPI {
   update: (table: 'todos' | 'lists', id: string, data: Record<string, any>) => Promise<any>
   delete: (table: 'todos' | 'lists', id: string) => Promise<any>
   transaction: (queries: { sql: string; params?: any[] }[]) => Promise<void>
-  rawWrite: (sql: string, params?: any[]) => Promise<any>
+  rawWrite: (sql: string, params?: any[]) => Promise<unknown>
 }
 
 function getDatabaseAPI(): DatabaseAPI {
@@ -365,7 +365,29 @@ export default function TodoListPage() {
         return recycledTodos
       case 'today':
         return todosWithListNames
-          .filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8)
+          .filter((t: Todo) => {
+            if (t.deleted) return false;
+            
+            const startDateStr = utcToLocalDateString(t.start_date);
+            const dueDateStr = utcToLocalDateString(t.due_date);
+            
+            // If task has both start_date and due_date, check if today falls within the range
+            if (startDateStr && dueDateStr) {
+              return startDateStr <= todayStrInUTC8 && todayStrInUTC8 <= dueDateStr;
+            }
+            
+            // If task only has due_date, check if it matches today
+            if (dueDateStr) {
+              return dueDateStr === todayStrInUTC8;
+            }
+            
+            // If task only has start_date, check if it matches today
+            if (startDateStr) {
+              return startDateStr === todayStrInUTC8;
+            }
+            
+            return false;
+          })
           .sort((a, b) => {
             // First sort by completion status (uncompleted first)
             if (a.completed !== b.completed) {
