@@ -16,10 +16,7 @@ export {
 } from './syncConfig';
 
 export { 
-  isNetworkError, 
-  withNetworkErrorHandling, 
-  handleSyncError, 
-  retryWithBackoff 
+  isNetworkError
 } from '../network/errorHandling';
 
 export {
