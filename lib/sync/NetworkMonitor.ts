@@ -46,12 +46,24 @@ export class NetworkMonitorImpl implements NetworkMonitor {
   private reconnectAttempts = 0;
   
   constructor() {
-    this.lastOnlineStatus = navigator.onLine;
-    this.loadNetworkStatus();
+    // 检查是否在浏览器环境中
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
+      this.lastOnlineStatus = navigator.onLine;
+      this.loadNetworkStatus();
+    } else {
+      // 服务端环境，默认为在线状态
+      this.lastOnlineStatus = true;
+    }
   }
 
   startMonitoring(): void {
     if (this.isMonitoring) return;
+    
+    // 检查是否在浏览器环境中
+    if (typeof window === 'undefined') {
+      console.warn('NetworkMonitor: Cannot start monitoring in server environment');
+      return;
+    }
     
     this.isMonitoring = true;
     
@@ -70,14 +82,23 @@ export class NetworkMonitorImpl implements NetworkMonitor {
     
     this.isMonitoring = false;
     
-    // 移除事件监听器
-    window.removeEventListener('online', this.handleOnline);
-    window.removeEventListener('offline', this.handleOffline);
+    // 检查是否在浏览器环境中
+    if (typeof window !== 'undefined') {
+      // 移除事件监听器
+      window.removeEventListener('online', this.handleOnline);
+      window.removeEventListener('offline', this.handleOffline);
+    }
     
     console.log('NetworkMonitor: Stopped monitoring network status');
   }
 
   isOnline(): boolean {
+    // 检查是否在浏览器环境中
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      // 服务端环境，默认返回在线状态
+      return true;
+    }
+    
     // 结合浏览器状态和服务器连接状态
     const browserOnline = navigator.onLine;
     const cachedStatus = this.getCachedNetworkStatus();
@@ -217,6 +238,11 @@ export class NetworkMonitorImpl implements NetworkMonitor {
   }
 
   private getCachedNetworkStatus(): NetworkStatusCache | null {
+    // 检查是否在浏览器环境中
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return null;
+    }
+    
     try {
       const cached = localStorage.getItem(NETWORK_STATUS_KEY);
       return cached ? JSON.parse(cached) : null;
@@ -227,9 +253,14 @@ export class NetworkMonitorImpl implements NetworkMonitor {
   }
 
   private updateNetworkStatus(status: Partial<NetworkStatusCache>): void {
+    // 检查是否在浏览器环境中
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      return;
+    }
+    
     try {
       const current = this.getCachedNetworkStatus() || {
-        isOnline: navigator.onLine,
+        isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
         serverReachable: true,
         reconnectAttempts: 0,
         lastChecked: new Date().toISOString()
