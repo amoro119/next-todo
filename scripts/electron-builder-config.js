@@ -22,7 +22,7 @@ const baseConfig = {
     category: "public.app-category.productivity"
   },
   win: {
-    target: "nsis"
+    target: ["nsis", "zip"]
   },
   linux: {
     target: "AppImage"

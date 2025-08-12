@@ -30,7 +30,7 @@
     "prepare:electron:free": "DISTRIBUTION=free node scripts/prepare-standalone.js",
     "prepare:electron:premium": "DISTRIBUTION=premium node scripts/prepare-standalone.js",
 
-    "electron:build": "electron-builder --config scripts/electron-builder-config.js",
+    "electron:build": "electron-builder --config scripts/electron-builder-config.js --mac --win",
     "electron:build:free": "DISTRIBUTION=free npm run electron:build",
     "electron:build:premium": "DISTRIBUTION=premium npm run electron:build",
     "validate:build": "node scripts/validate-build.js",
@@ -64,7 +64,7 @@
       "category": "public.app-category.productivity"
     },
     "win": {
-      "target": "nsis"
+      "target": ["nsis", "zip"]
     },
     "linux": {
       "target": "AppImage"
