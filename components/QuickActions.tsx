@@ -2,7 +2,9 @@
 import { useState, useRef } from "react";
 import type { PGliteWithLive } from "@electric-sql/pglite/live";
 import type { PGliteWithSync } from "@electric-sql/pglite-sync";
-import { getAuthToken, getCachedAuthToken, invalidateToken } from "../lib/auth";
+import { getAuthToken, getCachedAuthToken } from "../lib/auth";
+import { useAppConfig } from "../lib/hooks/useAppConfig";
+import { updateUserState } from "../lib/user/userState";
 
 interface QuickActionsProps {
   currentView: string;
@@ -34,6 +36,7 @@ export default function QuickActions({
   const [isFolded, setIsFolded] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const sqlInputRef = useRef<HTMLInputElement>(null);
+  const { user, sync } = useAppConfig();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -45,6 +48,20 @@ export default function QuickActions({
   };
 
   type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
+
+  const handleUpgradeClick = () => {
+    // 触发升级对话框
+    window.dispatchEvent(new CustomEvent('showUpgradeDialog'));
+  };
+
+  const handleEnableSync = () => {
+    // 启用同步
+    updateUserState({ syncEnabled: true });
+    localStorage.setItem('sync_enabled', 'true');
+    
+    // 触发配置更新事件
+    window.dispatchEvent(new CustomEvent('syncConfigChanged'));
+  };
 
   return (
     <>
@@ -128,7 +145,7 @@ export default function QuickActions({
               <li>
                 <input
                   type="button"
-                  value="导出数据(sql)"
+                  value="备份数据(sql)"
                   className="btn-small action-download"
                   id="download"
                   onClick={onExport}
@@ -136,7 +153,7 @@ export default function QuickActions({
               </li>
               <li>
                 <input
-                  value="导入数据(sql)"
+                  value="恢复数据(sql)"
                   type="button"
                   className="btn-small action-import"
                   onClick={() => sqlInputRef.current?.click()}
@@ -162,86 +179,101 @@ export default function QuickActions({
                   />
                 </li>
               )}
-              <li>
-                <input
-                  value="手动全量同步"
-                  type="button"
-                  className="btn-small action-sync"
-                  onClick={async () => {
-                    try {
-                      const win = window as unknown as {
-                        pg?: PGliteWithExtensions;
-                      };
-                      const pg = win.pg;
-                      if (!pg) {
-                        alert("数据库未初始化，无法同步");
-                        return;
-                      }
-                      const mod = await import("../app/sync");
-                      if (mod && typeof mod.forceFullTableSync === "function") {
-                        const electricProxyUrl =
-                          process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
-                        let token = getCachedAuthToken && getCachedAuthToken();
-                        if (!token && getAuthToken) {
-                          token = await getAuthToken();
-                        }
-                        if (!electricProxyUrl || !token) {
-                          alert("缺少同步配置");
+              {/* 条件显示同步相关操作 */}
+              {sync.enabled ? (
+                <li>
+                  <input
+                    value="手动全量同步"
+                    type="button"
+                    className="btn-small action-sync"
+                    onClick={async () => {
+                      try {
+                        const win = window as unknown as {
+                          pg?: PGliteWithExtensions;
+                        };
+                        const pg = win.pg;
+                        if (!pg) {
+                          alert("数据库未初始化，无法同步");
                           return;
                         }
-                        // lists表
-                        await mod.forceFullTableSync({
-                          table: "lists",
-                          columns: [
-                            "id",
-                            "name",
-                            "sort_order",
-                            "is_hidden",
-                            "modified",
-                          ],
-                          electricProxyUrl,
-                          token,
-                          pg,
-                          upsertSql: `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                            ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-                        });
-                        // todos表
-                        await mod.forceFullTableSync({
-                          table: "todos",
-                          columns: [
-                            "id",
-                            "title",
-                            "completed",
-                            "deleted",
-                            "sort_order",
-                            "due_date",
-                            "content",
-                            "tags",
-                            "priority",
-                            "created_time",
-                            "completed_time",
-                            "start_date",
-                            "list_id",
-                          ],
-                          electricProxyUrl,
-                          token,
-                          pg,
-                          upsertSql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
-                            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-                            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
-                        });
-                        alert("全量同步已完成");
-                      } else {
-                        alert("找不到同步方法");
+                        const mod = await import("../app/sync");
+                        if (mod && typeof mod.forceFullTableSync === "function") {
+                          const electricProxyUrl =
+                            process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
+                          let token = getCachedAuthToken && getCachedAuthToken();
+                          if (!token && getAuthToken) {
+                            token = await getAuthToken();
+                          }
+                          if (!electricProxyUrl || !token) {
+                            alert("缺少同步配置");
+                            return;
+                          }
+                          // lists表
+                          await mod.forceFullTableSync({
+                            table: "lists",
+                            columns: [
+                              "id",
+                              "name",
+                              "sort_order",
+                              "is_hidden",
+                              "modified",
+                            ],
+                            electricProxyUrl,
+                            token,
+                            pg,
+                            upsertSql: `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
+                              ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
+                          });
+                          // todos表
+                          await mod.forceFullTableSync({
+                            table: "todos",
+                            columns: [
+                              "id",
+                              "title",
+                              "completed",
+                              "deleted",
+                              "sort_order",
+                              "due_date",
+                              "content",
+                              "tags",
+                              "priority",
+                              "created_time",
+                              "completed_time",
+                              "start_date",
+                              "list_id",
+                            ],
+                            electricProxyUrl,
+                            token,
+                            pg,
+                            upsertSql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id)
+                              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                              ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13`,
+                          });
+                          alert("全量同步已完成");
+                        } else {
+                          alert("找不到同步方法");
+                        }
+                      } catch (e) {
+                        alert(
+                          "同步失败: " + (e instanceof Error ? e.message : e)
+                        );
                       }
-                    } catch (e) {
-                      alert(
-                        "同步失败: " + (e instanceof Error ? e.message : e)
-                      );
-                    }
-                  }}
-                />
-              </li>
+                    }}
+                  />
+                </li>
+              ) : (
+                // 同步被禁用时显示相应的提示或升级按钮
+                sync.reason === 'free_user' && (
+                  <li>
+                    <input
+                      value="升级解锁同步"
+                      type="button"
+                      className="btn-small action-upgrade"
+                      onClick={() => handleUpgradeClick()}
+                    />
+                  </li>
+                )
+              )}
             </ul>
           </div>
         )}

@@ -1,0 +1,9 @@
+{
+  "defaultSubscription": "premium",
+  "syncEnabled": true,
+  "showUpgradePrompts": false,
+  "features": ["sync", "export", "themes", "advanced-search"],
+  "appName": "Todo App - Dev",
+  "version": "1.0.0-dev",
+  "buildType": "premium"
+}

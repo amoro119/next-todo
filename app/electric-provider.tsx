@@ -5,8 +5,9 @@ import { PGliteProvider } from '@electric-sql/pglite-react'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
 import { live } from '@electric-sql/pglite/live'
 import { electricSync } from '@electric-sql/pglite-sync'
-import { startSync, useSyncStatus } from './sync'
+import { startSync, useSyncStatus, updateSyncStatus } from './sync'
 import { initOfflineSync } from '../lib/sync/initOfflineSync'
+import { getSyncConfig, getSyncDisabledMessage, type SyncConfig, initializeAppConfig } from '../lib/config'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PGliteWithExtensions = PGliteWorker & { live: any; sync: any }
 const LoadingScreen = ({ children }: { children: React.ReactNode }) => {
@@ -19,92 +20,155 @@ const LoadingScreen = ({ children }: { children: React.ReactNode }) => {
 }
 export function ElectricProvider({ children }: { children: React.ReactNode }) {
   const [pg, setPg] = useState<PGliteWithExtensions | null>(null)
+  const [syncConfig, setSyncConfig] = useState<SyncConfig>({ enabled: false })
   const [syncStatus, syncMessage] = useSyncStatus()
+  // 检查同步配置并监听变化
+  useEffect(() => {
+    const updateConfig = () => {
+      const config = getSyncConfig()
+      setSyncConfig(config)
+      console.log('同步配置更新:', config)
+    }
+
+    // 初始化应用配置
+    const initConfig = async () => {
+      try {
+        await initializeAppConfig()
+        updateConfig()
+      } catch (error) {
+        console.error('配置初始化失败:', error)
+        updateConfig() // 即使初始化失败也要更新配置
+      }
+    }
+
+    initConfig()
+
+    // 监听用户状态变化
+    const handleUserStateChange = () => updateConfig()
+    window.addEventListener('userStateChanged', handleUserStateChange)
+
+    // 监听同步配置变化
+    const handleSyncConfigChange = () => updateConfig()
+    window.addEventListener('syncConfigChanged', handleSyncConfigChange)
+
+    // 注意：我们不再监听网络状态变化来改变同步配置
+    // 网络状态由同步系统内部处理
+
+    return () => {
+      window.removeEventListener('userStateChanged', handleUserStateChange)
+      window.removeEventListener('syncConfigChanged', handleSyncConfigChange)
+    }
+  }, [])
+
+  // 初始化 PGlite 数据库 (始终初始化，包含所有扩展)
   useEffect(() => {
     let isMounted = true
     let leaderSub: (() => void) | undefined
     let worker: Worker | undefined;
+    
     const init = async () => {
-      // 使用标准的 Web Worker API 和 URL 对象来创建 worker
-      worker = new Worker(new URL('./pglite-worker.ts', import.meta.url), {
-        type: 'module',
-      });
-      // PGliteWorker.create 接受一个标准的 Worker 实例
-      const db = (await PGliteWorker.create(worker, {
-        extensions: {
-          live,
-          sync: electricSync(),
-        },
-      })) as PGliteWithExtensions
-      if (!isMounted) return
-
-      // 创建同步队列表
-      console.log('Creating sync queue table...')
       try {
-        await db.query(`
-          CREATE TABLE IF NOT EXISTS sync_queue (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            table_name TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            record_id TEXT NOT NULL,
-            data JSONB NOT NULL,
-            timestamp TEXT NOT NULL,
-            retry_count INTEGER NOT NULL DEFAULT 0,
-            max_retries INTEGER NOT NULL DEFAULT 3,
-            status TEXT NOT NULL DEFAULT 'pending',
-            error_message TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-          )
-        `)
+        // 使用标准的 Web Worker API 和 URL 对象来创建 worker
+        worker = new Worker(new URL('./pglite-worker.ts', import.meta.url), {
+          type: 'module',
+        });
         
-        await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);`)
-        await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_timestamp ON sync_queue(timestamp);`)
-        await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_table_record ON sync_queue(table_name, record_id);`)
+        // PGliteWorker.create 接受一个标准的 Worker 实例
+        const db = (await PGliteWorker.create(worker, {
+          extensions: {
+            live,
+            sync: electricSync(), // 始终包含，但可能不启动
+          },
+        })) as PGliteWithExtensions
         
-        console.log('Sync queue table created successfully')
-      } catch (error) {
-        console.error('Failed to create sync queue table:', error)
-      }
+        if (!isMounted) return
 
-      // 初始化离线同步系统
-      console.log('Initializing offline sync system...')
-      try {
-        initOfflineSync(db)
-        console.log('Offline sync system initialized successfully')
-      } catch (error) {
-        console.error('Failed to initialize offline sync system:', error)
-      }
+        // 创建同步队列表
+        console.log('Creating sync queue table...')
+        try {
+          await db.query(`
+            CREATE TABLE IF NOT EXISTS sync_queue (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              table_name TEXT NOT NULL,
+              operation TEXT NOT NULL,
+              record_id TEXT NOT NULL,
+              data JSONB NOT NULL,
+              timestamp TEXT NOT NULL,
+              retry_count INTEGER NOT NULL DEFAULT 0,
+              max_retries INTEGER NOT NULL DEFAULT 3,
+              status TEXT NOT NULL DEFAULT 'pending',
+              error_message TEXT,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+          `)
+          
+          await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);`)
+          await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_timestamp ON sync_queue(timestamp);`)
+          await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_table_record ON sync_queue(table_name, record_id);`)
+          
+          console.log('Sync queue table created successfully')
+        } catch (error) {
+          console.error('Failed to create sync queue table:', error)
+        }
 
-      setPg(db)
-      // 将 PGlite 实例暴露到 window 对象上，方便调试
-      if (typeof window !== 'undefined') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).pg = db;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (globalThis as any).pg = db;
+        // 始终初始化离线同步系统（即使在免费模式下也需要 DatabaseWrapper）
+        console.log('Initializing offline sync system...')
+        try {
+          // 类型转换：PGliteWorker 可以作为 PGlite 使用，因为它实现了相同的接口
+          initOfflineSync(db as unknown)
+          console.log('Offline sync system initialized successfully')
+        } catch (error) {
+          console.error('Failed to initialize offline sync system:', error)
+        }
+
+        setPg(db)
+        
+        // 将 PGlite 实例暴露到 window 对象上，方便调试
+        if (typeof window !== 'undefined') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).pg = db;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (globalThis as any).pg = db;
+        }
+        
+        // 监听leader变化
+        leaderSub = db.onLeaderChange(() => {
+          console.log('Leader changed, isLeader:', db.isLeader)
+        })
+        
+      } catch (error) {
+        console.error('Failed to initialize PGlite:', error)
+        if (isMounted) {
+          updateSyncStatus('error', '数据库初始化失败')
+        }
       }
-      // 监听leader变化，但同步已经启动
-      leaderSub = db.onLeaderChange(() => {
-        console.log('Leader changed, isLeader:', db.isLeader)
-      })
     }
+    
     init()
+    
     return () => {
       isMounted = false
       leaderSub?.()
       // 在组件卸载时终止 worker，防止内存泄漏
       worker?.terminate()
     }
-  }, [])
-  // 只有 pg 初始化好后再启动同步
+  }, [syncConfig.enabled])
+  // 仅在同步启用时启动同步
   useEffect(() => {
-    if (pg) {
-      // 立即启动同步，不等待leader选举
-      console.log('Starting sync immediately...')
-      startSync(pg)
+    if (pg && syncConfig.enabled) {
+      console.log('启动同步功能...')
+      startSync(pg).catch(error => {
+        console.error('同步启动失败:', error)
+        // 不改变用户设置，只是记录错误
+        // 同步系统会在内部处理网络错误和重试
+      })
+    } else if (pg && !syncConfig.enabled) {
+      console.log(`同步功能已禁用: ${syncConfig.reason}`)
+      // 设置本地模式状态
+      updateSyncStatus('done', getSyncDisabledMessage(syncConfig.reason))
     }
-  }, [pg])
+  }, [pg, syncConfig])
   if (!pg) {
     // 初始加载由 `electric-client-provider` 的 loading 处理
     return null

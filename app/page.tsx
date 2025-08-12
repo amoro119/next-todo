@@ -17,6 +17,8 @@ import type { Todo, List } from '../lib/types'
 import dynamic from 'next/dynamic'
 import { getDbWrapper } from '../lib/sync/initOfflineSync'
 import { RecurringTaskIntegration } from '../lib/recurring/RecurringTaskIntegration'
+import { UpgradePrompt } from '../components/UpgradePrompt'
+import { ModeIndicator } from '../components/ModeIndicator'
 
 // 动态导入调试组件，避免服务端渲染问题
 const OfflineSyncDebugger = dynamic(() => import('../components/OfflineSyncDebugger'), { ssr: false })
@@ -42,7 +44,34 @@ function getDatabaseAPI(): DatabaseAPI {
     const dbWrapper = getDbWrapper();
     
     if (!dbWrapper) {
-      throw new Error('DatabaseWrapper not initialized. Offline sync will not work.');
+      // 免费模式下直接使用 PGlite，不使用离线同步
+      const pg = (window as unknown as { pg: any }).pg;
+      return {
+        query: (sql, params) => pg.query(sql, params),
+        insert: (table, data) => {
+          const keys = Object.keys(data);
+          const values = Object.values(data);
+          const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+          return pg.query(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`, values);
+        },
+        update: (table, id, data) => {
+          const keys = Object.keys(data);
+          const values = Object.values(data);
+          const setClause = keys.map((key, i) => `${key} = $${i + 2}`).join(', ');
+          return pg.query(`UPDATE ${table} SET ${setClause} WHERE id = $1`, [id, ...values]);
+        },
+        delete: (table, id) => pg.query(`DELETE FROM ${table} WHERE id = $1`, [id]),
+        rawWrite: (sql, params) => pg.query(sql, params),
+        transaction: async (queries) => {
+          // 警告：原始事务不会被离线队列拦截
+          console.warn('Executing a raw transaction which is not intercepted for offline sync.');
+          await pg.transaction(async (tx: unknown) => {
+            for (const { sql, params } of queries) {
+              await (tx as any).query(sql, params);
+            }
+          });
+        }
+      };
     }
 
     return {
@@ -56,7 +85,7 @@ function getDatabaseAPI(): DatabaseAPI {
         console.warn('Executing a raw transaction which is not intercepted for offline sync.');
         await dbWrapper.raw.transaction(async (tx: unknown) => {
           for (const { sql, params } of queries) {
-            await tx.query(sql, params);
+            await (tx as unknown).query(sql, params);
           }
         });
       }
@@ -858,6 +887,8 @@ export default function TodoListPage() {
       <div className="bg-pattern"></div>
       {/* 添加离线同步调试器 */}
       {process.env.NODE_ENV !== 'production' && <OfflineSyncDebugger />}
+      {/* 开发模式下显示模式指示器 */}
+      {process.env.NODE_ENV === "development" && <ModeIndicator />}
       <div className="todo-wrapper">
         <div id="todo-app" className="todo-app">
           <div className="container header">
@@ -986,6 +1017,9 @@ export default function TodoListPage() {
               refreshTrigger={searchRefreshTrigger}
             />
           )}
+
+          {/* 升级提示组件 */}
+          <UpgradePrompt />
         </div>
       </div>
     </>
