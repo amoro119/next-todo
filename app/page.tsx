@@ -61,7 +61,7 @@ function getDatabaseAPI(): DatabaseAPI {
           console.warn('Executing a raw transaction which is not intercepted for offline sync.');
           await pg.transaction(async (tx: unknown) => {
             for (const { sql, params } of queries) {
-              await (tx as any).query(sql, params);
+              await (tx as unknown).query(sql, params);
             }
           });
         }
@@ -609,13 +609,18 @@ export default function TodoListPage() {
     const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`);
     if (!confirmed) return;
     
-    // This operation is not intercepted for offline sync due to using a transaction.
+    // 先获取需要更新的待办事项
     const todosToUpdateQuery = await db.query<{ id: string }>(`SELECT id FROM todos WHERE list_id = $1`, [listId]);
     const todosToUpdate = todosToUpdateQuery.rows;
-    await db.transaction([
-      { sql: `UPDATE todos SET list_id = NULL WHERE list_id = $1`, params: [listId] },
-      { sql: `DELETE FROM lists WHERE id = $1`, params: [listId] },
-    ]);
+    
+    // 使用包装器方法来确保同步拦截器能够捕获操作
+    // 1. 先将清单下的所有待办事项移至收件箱
+    for (const todo of todosToUpdate) {
+      await db.update('todos', todo.id, { list_id: null });
+    }
+    
+    // 2. 删除清单（这将被同步拦截器捕获并同步到远程）
+    await db.delete('lists', listId);
     
     if (currentView === listToDelete.name) setCurrentView('inbox');
   }, [lists, currentView, db]);
@@ -626,12 +631,11 @@ export default function TodoListPage() {
   }, [db]);
 
   const handleUpdateListsOrder = useCallback(async (reorderedLists: List[]) => {
-      // This operation is not intercepted for offline sync due to using a transaction.
-      const queries = reorderedLists.map((list, index) => ({
-        sql: 'UPDATE lists SET sort_order = $1 WHERE id = $2',
-        params: [index, list.id]
-      }));
-      await db.transaction(queries);
+      // 使用包装器方法来确保同步拦截器能够捕获操作
+      for (let index = 0; index < reorderedLists.length; index++) {
+        const list = reorderedLists[index];
+        await db.update('lists', list.id, { sort_order: index });
+      }
   }, [db]);
   
   const handleAddTodoFromCalendar = useCallback((date: string) => {
@@ -656,12 +660,13 @@ export default function TodoListPage() {
           break;
         case 'batch-complete': {
           const lastActionData = lastAction.data;
-          // This operation is not intercepted for offline sync due to using a transaction.
-          const queries = lastActionData.map(d => ({
-            sql: 'UPDATE todos SET completed_time = $1, completed = $2 WHERE id = $3',
-            params: [d.previousCompletedTime, d.previousCompleted, d.id]
-          }));
-          await db.transaction(queries);
+          // 使用包装器方法来确保同步拦截器能够捕获操作
+          for (const d of lastActionData) {
+            await db.update('todos', d.id, { 
+              completed_time: d.previousCompletedTime, 
+              completed: d.previousCompleted 
+            });
+          }
           break;
         }
       }
@@ -750,18 +755,12 @@ export default function TodoListPage() {
         const newListsToCreate = [...listNames].filter(name => !existingListNames.has(name));
         
         const createdLists: List[] = [];
-        const newListsQueries = newListsToCreate.map((listName, i) => {
+        // 使用包装器方法来确保同步拦截器能够捕获操作
+        for (let i = 0; i < newListsToCreate.length; i++) {
+          const listName = newListsToCreate[i];
           const newListData = { id: uuid(), name: listName, is_hidden: false, sort_order: lists.length + i };
           createdLists.push(newListData);
-          return {
-            sql: 'INSERT INTO lists (id, name, is_hidden, sort_order) VALUES ($1, $2, $3, $4)',
-            params: [newListData.id, newListData.name, newListData.is_hidden, newListData.sort_order]
-          };
-        });
-        
-        if(newListsQueries.length > 0) {
-          // This operation is not intercepted for offline sync due to using a transaction.
-          await db.transaction(newListsQueries);
+          await db.insert('lists', newListData);
         }
 
         const currentListsRes = await db.query<List>(`SELECT id, name, sort_order, is_hidden FROM lists`);
@@ -769,7 +768,8 @@ export default function TodoListPage() {
         currentListsRes.rows.forEach((list: List) => listNameToIdMap.set(list.name, list.id));
         
         const createdTodos: Todo[] = [];
-        const newTodoQueries = todosToImport.map(todo => {
+        // 使用包装器方法来确保同步拦截器能够捕获操作
+        for (const todo of todosToImport) {
             const listId = todo.list_name ? listNameToIdMap.get(todo.list_name) || null : null;
             const newTodoData = {
               id: uuid(), title: todo.title || '', completed: !!todo.completed, deleted: !!todo.deleted, sort_order: todo.sort_order || 0,
@@ -784,19 +784,7 @@ export default function TodoListPage() {
               next_due_date: todo.next_due_date || null,
             };
             createdTodos.push(newTodoData as Todo);
-            return {
-              sql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-              params: [newTodoData.id, newTodoData.title, newTodoData.completed, newTodoData.deleted, newTodoData.sort_order,
-                      newTodoData.due_date, newTodoData.content, newTodoData.tags, newTodoData.priority, newTodoData.created_time,
-                      newTodoData.completed_time, newTodoData.start_date, newTodoData.list_id, newTodoData.repeat, newTodoData.reminder,
-                      newTodoData.is_recurring, newTodoData.recurring_parent_id, newTodoData.instance_number, newTodoData.next_due_date]
-            };
-        });
-
-        if (newTodoQueries.length > 0) {
-          // This operation is not intercepted for offline sync due to using a transaction.
-          await db.transaction(newTodoQueries);
+            await db.insert('todos', newTodoData);
         }
 
         alert(`成功导入 ${todosToImport.length} 个事项！`);
