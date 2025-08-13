@@ -14,6 +14,13 @@ import ManageListsModal from '../components/ManageListsModal'
 import TaskSearchModal from '../components/TaskSearchModal'
 import CalendarView from '../components/CalendarView'
 import { CalendarPerformanceDisplay } from '../components/CalendarPerformanceMonitor'
+import { 
+  useOptimizedInboxFilter, 
+  useOptimizedInboxSort, 
+  useInboxCacheCleanup,
+  inboxPerfMonitor,
+  InboxPerformanceDisplay
+} from '../components/InboxPerformanceOptimizer'
 import type { Todo, List } from '../lib/types'
 import dynamic from 'next/dynamic'
 import { getDbWrapper } from '../lib/sync/initOfflineSync'
@@ -30,8 +37,8 @@ interface DatabaseAPI {
   insert: (table: 'todos' | 'lists', data: Record<string, any>) => Promise<any>
   update: (table: 'todos' | 'lists', id: string, data: Record<string, any>) => Promise<any>
   delete: (table: 'todos' | 'lists', id: string) => Promise<any>
-  transaction: (queries: { sql: string; params?: any[] }[]) => Promise<void>
-  rawWrite: (sql: string, params?: any[]) => Promise<unknown>
+  transaction: (queries: { sql: string; params?: unknown[] }[]) => Promise<void>
+  rawWrite: (sql: string, params?: unknown[]) => Promise<unknown>
 }
 
 function getDatabaseAPI(): DatabaseAPI {
@@ -300,20 +307,10 @@ export default function TodoListPage() {
     }
   }, [sloganResult?.rows])
 
-  // 定义收件箱过滤函数
-  const filterInboxTodos = (todos: Todo[]): Todo[] => {
-    // 获取今年的最后一天
-    const currentYear = new Date().getFullYear();
-    const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999); // 12月31日 23:59:59.999
-    
-    return todos.filter((t: Todo) => 
-      (!t.list_id || !!t.due_date) && 
-      !t.repeat && 
-      !t.recurring_parent_id &&
-      // 过滤掉due_date晚于今年最后一天的任务
-      (!t.due_date || new Date(t.due_date) <= endOfYear)
-    );
-  };
+  // 使用优化的收件箱过滤函数
+  const { filterInboxTodos, utcToLocalDateString: optimizedUtcToLocalDateString } = useOptimizedInboxFilter();
+  const { sortInboxTodos } = useOptimizedInboxSort();
+  const { clearFilterCache } = useInboxCacheCleanup();
 
   // --- FIX START: Create todos with list names ---
   const todosWithListNames = useMemo(() => {
@@ -375,18 +372,16 @@ export default function TodoListPage() {
 
     switch (currentView) {
       case 'inbox':
-        // --- FIX: Correct inbox logic ---
-        return filterInboxTodos(uncompletedTodos)
-          .sort((a, b) => {
-            const aHasDueDate = !!a.due_date;
-            const bHasDueDate = !!b.due_date;
-            if (!aHasDueDate && bHasDueDate) return -1;
-            if (aHasDueDate && !bHasDueDate) return 1;
-            if (aHasDueDate && bHasDueDate) {
-              return new Date(b.due_date!).getTime() - new Date(a.due_date!).getTime();
-            }
-            return 0;
-          });
+        // 使用优化的收件箱过滤和排序
+        const endFilter = inboxPerfMonitor.startOperation('filter');
+        const filteredTodos = filterInboxTodos(uncompletedTodos);
+        endFilter(filteredTodos.length);
+        
+        const endSort = inboxPerfMonitor.startOperation('sort');
+        const sortedTodos = sortInboxTodos(filteredTodos);
+        endSort(sortedTodos.length);
+        
+        return sortedTodos;
       case 'completed':
         return completedTodos
       case 'recycle':
@@ -1010,6 +1005,7 @@ export default function TodoListPage() {
           
           {/* 性能监控组件（仅开发环境显示） */}
           <CalendarPerformanceDisplay />
+          <InboxPerformanceDisplay />
         </div>
       </div>
     </>
