@@ -1380,7 +1380,7 @@ span.shortcut-name {
   }
 }
 
-// Calendar view
+// Calendar view - 性能优化版本
 .calendar-view {
   background: #fff;
   border: $border;
@@ -1388,6 +1388,10 @@ span.shortcut-name {
   padding: 20px;
   box-shadow: $box-shadow;
   width: 100%;
+  // 启用硬件加速
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
 }
 
 .calendar-header {
@@ -1404,6 +1408,13 @@ span.shortcut-name {
     border-radius: $border-radius;
     padding: 5px 10px;
     cursor: pointer;
+    // 减少重绘
+    will-change: background-color;
+    transition: background-color 0.2s ease;
+    
+    &:hover {
+      background-color: darken($bg-submit, 5%);
+    }
   }
 }
 
@@ -1411,7 +1422,8 @@ span.shortcut-name {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 5px;
-  will-change: transform;
+  // 优化渲染性能
+  contain: layout style paint;
   transform: translateZ(0);
 
   .day-name,
@@ -1424,6 +1436,7 @@ span.shortcut-name {
   .day-name {
     font-weight: 700;
     background: $bg-normal;
+    // 静态元素不需要will-change
   }
 }
 
@@ -1432,6 +1445,8 @@ span.shortcut-name {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 5px;
   margin-bottom: 5px;
+  // 静态网格优化
+  contain: layout style;
 }
 
 .day-cell {
@@ -1439,7 +1454,8 @@ span.shortcut-name {
   min-height: 120px;
   position: relative;
   background-color: #fff;
-  will-change: transform;
+  // 优化合成层
+  contain: layout style paint;
   transform: translateZ(0);
 
   &.not-current-month {
@@ -1456,6 +1472,13 @@ span.shortcut-name {
     line-height: 24px;
     display: inline-block;
   }
+
+  // 拖拽状态优化
+  &:hover {
+    // 使用transform代替box-shadow以提高性能
+    transform: translateZ(0) scale(1.02);
+    transition: transform 0.15s ease;
+  }
 }
 
 .day-header {
@@ -1463,6 +1486,8 @@ span.shortcut-name {
   justify-content: space-between;
   align-items: center;
   padding: 2px 4px;
+  // 避免重排
+  contain: layout;
 }
 
 .day-number {
@@ -1477,6 +1502,13 @@ span.shortcut-name {
   font-weight: 700;
   color: $font-color;
   padding: 0 5px;
+  // 优化按钮交互
+  will-change: transform;
+  transition: transform 0.1s ease;
+  
+  &:hover {
+    transform: scale(1.1);
+  }
 }
 
 .day-todos {
@@ -1485,8 +1517,26 @@ span.shortcut-name {
   margin: 0;
   text-align: left;
   font-size: 12px;
-  will-change: transform;
-  transform: translateZ(0);
+  // 优化滚动性能
+  contain: layout style;
+  // 虚拟化支持
+  overflow: hidden;
+  max-height: 80px;
+  
+  // 当待办事项过多时显示滚动
+  &.has-many-todos {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: $completed;
+      border-radius: 2px;
+    }
+  }
 }
 
 .calendar-todo-item {
@@ -1498,8 +1548,15 @@ span.shortcut-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  will-change: transform;
-  transform: translateZ(0);
+  // 性能优化
+  contain: layout style paint;
+  will-change: background-color, transform;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+
+  &:hover {
+    transform: translateX(2px);
+    background-color: darken($bg-normal, 5%);
+  }
 
   &.completed {
     text-decoration: line-through;
@@ -1510,6 +1567,31 @@ span.shortcut-name {
       color: inherit;
       font-weight: 400;
     }
+  }
+
+  // 拖拽状态
+  &.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg) scale(0.95);
+    z-index: 1000;
+  }
+}
+
+.more-todos-indicator {
+  padding: 2px 4px;
+  margin-bottom: 2px;
+  background-color: rgba(51, 50, 46, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #666;
+  text-align: center;
+  font-style: italic;
+  contain: layout style paint;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: rgba(51, 50, 46, 0.2);
   }
 }
 

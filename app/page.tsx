@@ -13,6 +13,7 @@ import TodoDetailsModal from '../components/TodoDetailsModal'
 import ManageListsModal from '../components/ManageListsModal'
 import TaskSearchModal from '../components/TaskSearchModal'
 import CalendarView from '../components/CalendarView'
+import { CalendarPerformanceDisplay } from '../components/CalendarPerformanceMonitor'
 import type { Todo, List } from '../lib/types'
 import dynamic from 'next/dynamic'
 import { getDbWrapper } from '../lib/sync/initOfflineSync'
@@ -40,7 +41,7 @@ function getDatabaseAPI(): DatabaseAPI {
 
     if (!dbWrapper) {
       // 免费模式或未启用离线包装：直接使用 PGlite 实例
-      const pg = (window as unknown as { pg: any }).pg;
+      const pg = (window as unknown as { pg: unknown }).pg;
       return {
         query: (sql, params) => pg.query(sql, params),
         insert: (table, data) => {
@@ -1006,6 +1007,9 @@ export default function TodoListPage() {
 
           {/* 升级提示组件 */}
           <UpgradePrompt />
+          
+          {/* 性能监控组件（仅开发环境显示） */}
+          <CalendarPerformanceDisplay />
         </div>
       </div>
     </>
