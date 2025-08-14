@@ -1,9 +1,10 @@
 // components/CalendarView.tsx
 "use client";
 
-import { useMemo, useCallback, memo, useEffect, useRef } from 'react';
+import { useMemo, useCallback, memo, useEffect } from 'react';
 import type { Todo } from '../lib/types';
 import { useCalendarPerformanceMonitor, calendarPerfMonitor } from './CalendarPerformanceMonitor';
+import { useOptimizedClick, useOptimizedDrag, useINPMonitoring } from './INPOptimizer';
 import {
   format,
   startOfMonth,
@@ -15,9 +16,7 @@ import {
   isToday,
   parseISO,
   addMonths,
-  subMonths,
-  max,
-  min
+  subMonths
 } from 'date-fns';
 
 interface CalendarViewProps {
@@ -34,7 +33,12 @@ class CalendarCache {
   private dateCache = new Map<string, string>();
   private utcDateCache = new Map<string, string | null>();
   private todosByDateCache = new Map<string, Record<string, Todo[]>>();
-  private calendarDaysCache = new Map<string, any>();
+  private calendarDaysCache = new Map<string, { calendarDays: Array<{
+    date: string;
+    dayOfMonth: string;
+    isCurrentMonth: boolean;
+    isToday: boolean;
+  }>; visibleInterval: { start: Date; end: Date } }>();
   private lastTodosHash = '';
   private lastCurrentDateKey = '';
 
@@ -63,7 +67,9 @@ class CalendarCache {
     // 限制缓存大小
     if (this.dateCache.size > 1000) {
       const firstKey = this.dateCache.keys().next().value;
-      this.dateCache.delete(firstKey);
+      if (firstKey) {
+        this.dateCache.delete(firstKey);
+      }
     }
     this.dateCache.set(utcDate, result);
   }
@@ -75,22 +81,36 @@ class CalendarCache {
   setUtcDateCache(localDate: string, result: string | null): void {
     if (this.utcDateCache.size > 100) {
       const firstKey = this.utcDateCache.keys().next().value;
-      this.utcDateCache.delete(firstKey);
+      if (firstKey) {
+        this.utcDateCache.delete(firstKey);
+      }
     }
     this.utcDateCache.set(localDate, result);
   }
 
-  getCalendarDaysCache(currentDate: Date): any {
+  getCalendarDaysCache(currentDate: Date): { calendarDays: Array<{
+    date: string;
+    dayOfMonth: string;
+    isCurrentMonth: boolean;
+    isToday: boolean;
+  }>; visibleInterval: { start: Date; end: Date } } | undefined {
     const key = this.generateDateKey(currentDate);
     return this.calendarDaysCache.get(key);
   }
 
-  setCalendarDaysCache(currentDate: Date, result: any): void {
+  setCalendarDaysCache(currentDate: Date, result: { calendarDays: Array<{
+    date: string;
+    dayOfMonth: string;
+    isCurrentMonth: boolean;
+    isToday: boolean;
+  }>; visibleInterval: { start: Date; end: Date } }): void {
     const key = this.generateDateKey(currentDate);
     // 只保留最近3个月的缓存
     if (this.calendarDaysCache.size > 3) {
       const firstKey = this.calendarDaysCache.keys().next().value;
-      this.calendarDaysCache.delete(firstKey);
+      if (firstKey) {
+        this.calendarDaysCache.delete(firstKey);
+      }
     }
     this.calendarDaysCache.set(key, result);
   }
@@ -117,7 +137,9 @@ class CalendarCache {
     // 限制缓存大小
     if (this.todosByDateCache.size > 5) {
       const firstKey = this.todosByDateCache.keys().next().value;
-      this.todosByDateCache.delete(firstKey);
+      if (firstKey) {
+        this.todosByDateCache.delete(firstKey);
+      }
     }
     this.todosByDateCache.set(cacheKey, result);
   }
@@ -228,7 +250,7 @@ const TodoItem = memo<TodoItemProps>(({ todo, onClick, onDragStart }) => {
 });
 TodoItem.displayName = 'TodoItem';
 
-// 优化的日历单元格组件 - 支持虚拟化
+// 优化的日历单元格组件 - 始终显示所有待办事项
 interface DayCellProps {
   day: {
     date: string;
@@ -273,11 +295,7 @@ const DayCell = memo<DayCellProps>(({
     onDragStart(e, todoId, day.date);
   }, [day.date, onDragStart]);
 
-  // 虚拟化处理 - 限制显示的待办事项数量
-  const MAX_VISIBLE_TODOS = 4;
-  const visibleTodos = todos.slice(0, MAX_VISIBLE_TODOS);
-  const hiddenCount = todos.length - MAX_VISIBLE_TODOS;
-
+  // 移除虚拟化限制，始终显示所有待办事项
   return (
     <div
       className={`day-cell ${!day.isCurrentMonth ? 'not-current-month' : ''} ${day.isToday ? 'is-today' : ''}`}
@@ -291,8 +309,8 @@ const DayCell = memo<DayCellProps>(({
           <button className="add-todo-calendar" onClick={handleAddTodo}>+</button>
         )}
       </div>
-      <ul className={`day-todos ${todos.length > MAX_VISIBLE_TODOS ? 'has-many-todos' : ''}`}>
-        {visibleTodos.map((todo) => (
+      <ul className="day-todos show-all">
+        {todos.map((todo) => (
           <TodoItem
             key={todo.id}
             todo={todo}
@@ -300,11 +318,6 @@ const DayCell = memo<DayCellProps>(({
             onDragStart={handleTodoDragStart}
           />
         ))}
-        {hiddenCount > 0 && (
-          <li className="more-todos-indicator" onClick={handleCellClick}>
-            +{hiddenCount} 更多...
-          </li>
-        )}
       </ul>
     </div>
   );
@@ -318,13 +331,13 @@ interface CalendarHeaderProps {
 }
 
 const CalendarHeader = memo<CalendarHeaderProps>(({ currentDate, onDateChange }) => {
-  const handlePrevMonth = useCallback(() => {
+  const handlePrevMonth = useOptimizedClick(() => {
     onDateChange(subMonths(currentDate, 1));
-  }, [currentDate, onDateChange]);
+  }, { priority: 'high' });
 
-  const handleNextMonth = useCallback(() => {
+  const handleNextMonth = useOptimizedClick(() => {
     onDateChange(addMonths(currentDate, 1));
-  }, [currentDate, onDateChange]);
+  }, { priority: 'high' });
 
   return (
     <div className="calendar-header">
@@ -358,8 +371,9 @@ export default function CalendarView({
   // 性能监控
   useCalendarPerformanceMonitor(todos.length);
   
-  // 防抖优化 - 避免频繁的拖拽更新
-  const dragTimeoutRef = useRef<NodeJS.Timeout>();
+  // INP优化
+  const { handleDragStart, handleDrop, handleDragOver } = useOptimizedDrag();
+  const { startInteraction, endInteraction } = useINPMonitoring('CalendarView');
   
   // 优化的日历天数计算 - 使用缓存
   const { calendarDays, visibleInterval } = useMemo(() => {
@@ -384,7 +398,68 @@ export default function CalendarView({
     return result;
   }, [currentDate]);
 
-  // 优化的待办事项分布计算
+  // 批处理函数 - 提取到外部避免重复创建
+  const processTodoBatch = useCallback((
+    batch: Todo[], 
+    map: Map<string, Todo[]>, 
+    visibleInterval: { start: Date; end: Date }
+  ) => {
+    batch.forEach(todo => {
+      const sDateStr = utcToLocalDateString(todo.start_date);
+      const dDateStr = utcToLocalDateString(todo.due_date);
+      
+      // 优化日期解析 - 避免重复创建Date对象
+      let startDate: Date | null = null;
+      let endDate: Date | null = null;
+      
+      if (sDateStr) startDate = parseISO(sDateStr);
+      if (dDateStr) endDate = parseISO(dDateStr);
+      
+      if (!startDate && !endDate) return;
+      
+      startDate = startDate || endDate!;
+      endDate = endDate || startDate;
+
+      if (startDate > endDate) {
+        [startDate, endDate] = [endDate, startDate];
+      }
+
+      // 快速边界检查
+      if (endDate < visibleInterval.start || startDate > visibleInterval.end) {
+        return;
+      }
+
+      // 优化日期范围计算
+      const clampedStart = startDate < visibleInterval.start ? visibleInterval.start : startDate;
+      const clampedEnd = endDate > visibleInterval.end ? visibleInterval.end : endDate;
+      
+      const daysInRange = eachDayOfInterval({ start: clampedStart, end: clampedEnd });
+      
+      // 批量添加到对应日期
+      daysInRange.forEach((day: Date) => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const dayTodos = map.get(dateStr);
+        if (dayTodos) {
+          dayTodos.push(todo);
+        }
+      });
+    });
+
+    // 批量排序 - 使用稳定排序
+    map.forEach((todos) => {
+      if (todos.length > 1) {
+        todos.sort((a, b) => {
+          // 优化比较逻辑
+          if (a.completed !== b.completed) {
+            return a.completed ? 1 : -1;
+          }
+          return (b.priority || 0) - (a.priority || 0);
+        });
+      }
+    });
+  }, []);
+
+  // 高性能待办事项分布计算 - 使用时间切片和批处理
   const todosByDate = useMemo(() => {
     // 检查缓存
     const cached = calendarCache.getTodosByDateCache(todos, currentDate);
@@ -395,166 +470,110 @@ export default function CalendarView({
     
     calendarPerfMonitor.recordCacheMiss();
     
-    // 预分配map以提高性能
-    const map: Record<string, Todo[]> = Object.create(null);
+    // 使用Map提升性能，避免原型链查找
+    const map = new Map<string, Todo[]>();
     calendarDays.forEach(day => {
-      map[day.date] = [];
+      map.set(day.date, []);
     });
 
-    // 优化的过滤和处理
+    // 预过滤有效待办事项
     const validTodos = todos.filter(todo => 
       !todo.deleted && (todo.start_date || todo.due_date)
     );
-    
-    // 批量处理日期转换以减少重复计算
-    const todoDateInfo = validTodos.map(todo => {
-      const sDateStr = utcToLocalDateString(todo.start_date);
-      const dDateStr = utcToLocalDateString(todo.due_date);
-      
-      const sDate = sDateStr ? parseISO(sDateStr) : null;
-      const dDate = dDateStr ? parseISO(dDateStr) : null;
 
-      let startDate = sDate || dDate;
-      let endDate = dDate || sDate;
-      
-      if (!startDate || !endDate) return null;
+    // 直接处理所有待办事项，确保立即显示
+    // 对于大数据量，仍然可以考虑优化，但不能影响显示
+    processTodoBatch(validTodos, map, visibleInterval);
 
-      if (startDate > endDate) {
-        [startDate, endDate] = [endDate, startDate];
-      }
-
-      // 快速跳过不在可见范围内的待办事项
-      if (endDate < visibleInterval.start || startDate > visibleInterval.end) {
-        return null;
-      }
-
-      return {
-        todo,
-        startDate: max([startDate, visibleInterval.start]),
-        endDate: min([endDate, visibleInterval.end])
-      };
-    }).filter(Boolean);
-
-    // 批量分配待办事项到日期
-    todoDateInfo.forEach(({ todo, startDate, endDate }) => {
-      const daysInRange = eachDayOfInterval({ start: startDate, end: endDate });
-      daysInRange.forEach(day => {
-        const dateStr = format(day, 'yyyy-MM-dd');
-        if (map[dateStr]) {
-          map[dateStr].push(todo);
-        }
-      });
-    });
-
-    // 优化排序 - 使用更高效的排序算法
-    const sortTodos = (todos: Todo[]) => {
-      return todos.sort((a, b) => {
-        // 使用位运算优化比较
-        const aCompleted = a.completed ? 1 : 0;
-        const bCompleted = b.completed ? 1 : 0;
-        if (aCompleted !== bCompleted) {
-          return aCompleted - bCompleted;
-        }
-        return (b.priority || 0) - (a.priority || 0);
-      });
-    };
-
-    // 批量排序所有日期的待办事项
-    Object.keys(map).forEach(dateStr => {
-      if (map[dateStr].length > 1) {
-        map[dateStr] = sortTodos(map[dateStr]);
-      }
+    // 转换Map为普通对象以保持兼容性
+    const result: Record<string, Todo[]> = {};
+    map.forEach((todos, date) => {
+      result[date] = todos;
     });
 
     // 缓存结果
-    calendarCache.setTodosByDateCache(todos, currentDate, map);
+    calendarCache.setTodosByDateCache(todos, currentDate, result);
     
-    return map;
-  }, [todos, calendarDays, visibleInterval, currentDate]);
+    return result;
+  }, [todos, calendarDays, visibleInterval, currentDate, processTodoBatch]);
 
   const getTodosForDate = useCallback((dateStr: string) => {
-    return todosByDate[dateStr] || [];
+    const todosForDate = todosByDate[dateStr] || [];
+    // 在开发环境下添加调试信息
+    if (process.env.NODE_ENV === 'development' && todosForDate.length > 0) {
+      console.log(`日期 ${dateStr} 有 ${todosForDate.length} 个任务:`, todosForDate.map(t => t.title));
+    }
+    return todosForDate;
   }, [todosByDate]);
 
-  const handleDragStart = useCallback((e: React.DragEvent<HTMLLIElement>, todoId: string, sourceDate: string) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/json', JSON.stringify({ todoId, sourceDate }));
-  }, []);
+  const optimizedHandleDragStart = useCallback((e: React.DragEvent<HTMLLIElement>, todoId: string, sourceDate: string) => {
+    startInteraction();
+    handleDragStart(e, { todoId, sourceDate }, { priority: 'high' });
+    endInteraction();
+  }, [handleDragStart, startInteraction, endInteraction]);
 
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, dropDateStr: string) => {
-    e.preventDefault();
+  const optimizedHandleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, dropDateStr: string) => {
+    startInteraction();
     
-    // 清除之前的防抖定时器
-    if (dragTimeoutRef.current) {
-      clearTimeout(dragTimeoutRef.current);
-    }
-    
-    // 使用防抖来避免快速拖拽时的多次更新
-    dragTimeoutRef.current = setTimeout(() => {
-      try {
-          const payloadString = e.dataTransfer.getData('application/json');
-          if (!payloadString) return;
+    handleDrop(e, ({ todoId, sourceDate }) => {
+      if (!todoId) return;
 
-          const { todoId, sourceDate } = JSON.parse(payloadString);
-          if (!todoId) return;
+      const todoToUpdate = todos.find(t => t.id === todoId);
+      if (!todoToUpdate) return;
+      
+      const dropDateUTC = localDateToEndOfDayUTC(dropDateStr);
+      if (!dropDateUTC) return;
 
-          const todoToUpdate = todos.find(t => t.id === todoId);
-          if (!todoToUpdate) return;
-          
-          const dropDateUTC = localDateToEndOfDayUTC(dropDateStr);
-          if (!dropDateUTC) return;
+      const isSingleDay = !todoToUpdate.start_date || !todoToUpdate.due_date || 
+                         todoToUpdate.start_date === todoToUpdate.due_date;
 
-          const isSingleDay = !todoToUpdate.start_date || !todoToUpdate.due_date || todoToUpdate.start_date === todoToUpdate.due_date;
-
-          if (isSingleDay) {
-              onUpdateTodo(todoId, { start_date: dropDateUTC, due_date: dropDateUTC });
+      if (isSingleDay) {
+        onUpdateTodo(todoId, { start_date: dropDateUTC, due_date: dropDateUTC });
+      } else {
+        const isDraggingStartDate = sourceDate === utcToLocalDateString(todoToUpdate.start_date);
+        
+        if (isDraggingStartDate) {
+          const newStartDateUTC = dropDateUTC;
+          const dueDateUTC = todoToUpdate.due_date!;
+          if (newStartDateUTC > dueDateUTC) {
+            onUpdateTodo(todoId, { start_date: dueDateUTC, due_date: newStartDateUTC });
           } else {
-              const isDraggingStartDate = sourceDate === utcToLocalDateString(todoToUpdate.start_date);
-              
-              if (isDraggingStartDate) {
-                  const newStartDateUTC = dropDateUTC;
-                  const dueDateUTC = todoToUpdate.due_date!;
-                  if (newStartDateUTC > dueDateUTC) {
-                      onUpdateTodo(todoId, { start_date: dueDateUTC, due_date: newStartDateUTC });
-                  } else {
-                      onUpdateTodo(todoId, { start_date: newStartDateUTC });
-                  }
-              } else {
-                  const newDueDateUTC = dropDateUTC;
-                  const startDateUTC = todoToUpdate.start_date!;
-                  if (newDueDateUTC < startDateUTC) {
-                      onUpdateTodo(todoId, { start_date: newDueDateUTC, due_date: startDateUTC });
-                  } else {
-                      onUpdateTodo(todoId, { due_date: newDueDateUTC });
-                  }
-              }
+            onUpdateTodo(todoId, { start_date: newStartDateUTC });
           }
-      } catch (error) {
-          console.error("Failed to handle drop event:", error);
+        } else {
+          const newDueDateUTC = dropDateUTC;
+          const startDateUTC = todoToUpdate.start_date!;
+          if (newDueDateUTC < startDateUTC) {
+            onUpdateTodo(todoId, { start_date: newDueDateUTC, due_date: startDateUTC });
+          } else {
+            onUpdateTodo(todoId, { due_date: newDueDateUTC });
+          }
+        }
       }
-    }, 100); // 100ms防抖延迟
-  }, [todos, onUpdateTodo]);
-  
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-  }, []);
+    }, { priority: 'normal' });
+    
+    endInteraction();
+  }, [handleDrop, todos, onUpdateTodo, startInteraction, endInteraction]);
 
   // 智能缓存清除策略
   useEffect(() => {
     // 只在todos变化时清除todos相关缓存
     calendarCache.clearTodosCaches();
+    // 在开发环境下添加调试信息
+    if (process.env.NODE_ENV === 'development') {
+      console.log('日历视图: todos变化，清除缓存', { todosCount: todos.length });
+    }
   }, [todos]);
 
   useEffect(() => {
     // 日期变化时不需要清除所有缓存，日期缓存会自动处理
   }, [currentDate]);
 
-  // 清理防抖定时器
+  // 清理资源
   useEffect(() => {
     return () => {
-      if (dragTimeoutRef.current) {
-        clearTimeout(dragTimeoutRef.current);
-      }
+      // 清理缓存等资源
+      calendarCache.clearTodosCaches();
     };
   }, []);
 
@@ -569,10 +588,10 @@ export default function CalendarView({
             day={day}
             todos={getTodosForDate(day.date)}
             onDragOver={handleDragOver}
-            onDrop={handleDrop}
+            onDrop={optimizedHandleDrop}
             onAddTodo={onAddTodo}
             onOpenModal={onOpenModal}
-            onDragStart={handleDragStart}
+            onDragStart={optimizedHandleDragStart}
           />
         ))}
       </div>

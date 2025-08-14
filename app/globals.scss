@@ -1519,9 +1519,6 @@ span.shortcut-name {
   font-size: 12px;
   // 优化滚动性能
   contain: layout style;
-  // 虚拟化支持
-  overflow: hidden;
-  max-height: 80px;
   
   // 当待办事项过多时显示滚动
   &.has-many-todos {

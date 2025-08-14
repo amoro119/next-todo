@@ -13,6 +13,7 @@ import { TransitionGroup, CSSTransition } from "react-transition-group";
 import type { Todo } from "../lib/types";
 import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator";
 import { inboxCache } from "./InboxPerformanceOptimizer";
+import { useINPOptimization, useOptimizedClick, useINPMonitoring } from "./INPOptimizer";
 
 // 优化的日期转换函数 - 使用缓存
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
@@ -69,34 +70,26 @@ const TodoItem = memo(
         };
       }, [delay, animationTrigger]);
 
-      // 缓存事件处理器
-      const handleToggleComplete = useCallback(
-        (e: React.MouseEvent) => {
-          e.stopPropagation();
-          onToggleComplete(todo);
-        },
-        [onToggleComplete, todo]
+      // 使用INP优化的事件处理器
+      const handleToggleComplete = useOptimizedClick(
+        () => onToggleComplete(todo),
+        { stopPropagation: true, priority: 'high' }
       );
 
-      const handleDelete = useCallback(
-        (e: React.MouseEvent) => {
-          e.stopPropagation();
-          onDelete(todo.id);
-        },
-        [onDelete, todo.id]
+      const handleDelete = useOptimizedClick(
+        () => onDelete(todo.id),
+        { stopPropagation: true, priority: 'high' }
       );
 
-      const handleRestore = useCallback(
-        (e: React.MouseEvent) => {
-          e.stopPropagation();
-          onRestore(todo.id);
-        },
-        [onRestore, todo.id]
+      const handleRestore = useOptimizedClick(
+        () => onRestore(todo.id),
+        { stopPropagation: true, priority: 'high' }
       );
 
-      const handleSelectTodo = useCallback(() => {
-        onSelectTodo(todo);
-      }, [onSelectTodo, todo]);
+      const handleSelectTodo = useOptimizedClick(
+        () => onSelectTodo(todo),
+        { priority: 'normal' }
+      );
 
       // 缓存计算结果
       const isRecurringTask = useMemo(
@@ -239,6 +232,10 @@ const TodoListComponent: React.FC<TodoListProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(400);
+  
+  // INP优化
+  const { scheduleInteraction, batchDOMUpdates } = useINPOptimization();
+  const { startInteraction, endInteraction } = useINPMonitoring('TodoList');
 
   // 优化ref管理 - 只为当前todos创建ref
   const nodeRefs = useRef<
