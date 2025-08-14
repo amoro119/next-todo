@@ -364,68 +364,86 @@ export default function TodoListPage() {
 // ...
     todosWithListNames.filter((t: Todo) => t.deleted), [todosWithListNames])
 
-  const displayTodos = useMemo(() => {
-// ... (no changes in this block)
-// ...
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  // 优化的收件箱数据计算 - 使用独立的useMemo
+  const inboxTodos = useMemo(() => {
+    if (currentView !== 'inbox') return [];
+    
+    const endFilter = inboxPerfMonitor.startOperation('filter');
+    const filteredTodos = filterInboxTodos(uncompletedTodos);
+    endFilter(filteredTodos.length);
+    
+    const endSort = inboxPerfMonitor.startOperation('sort');
+    const sortedTodos = sortInboxTodos(filteredTodos);
+    endSort(sortedTodos.length);
+    
+    return sortedTodos;
+  }, [currentView, uncompletedTodos, filterInboxTodos, sortInboxTodos]);
 
+  // 优化的今日任务计算
+  const todayTodos = useMemo(() => {
+    if (currentView !== 'today') return [];
+    
+    return todosWithListNames
+      .filter((t: Todo) => {
+        if (t.deleted) return false;
+        
+        const startDateStr = utcToLocalDateString(t.start_date);
+        const dueDateStr = utcToLocalDateString(t.due_date);
+        
+        // If task has both start_date and due_date, check if today falls within the range
+        if (startDateStr && dueDateStr) {
+          return startDateStr <= todayStrInUTC8 && todayStrInUTC8 <= dueDateStr;
+        }
+        
+        // If task only has due_date, check if it matches today
+        if (dueDateStr) {
+          return dueDateStr === todayStrInUTC8;
+        }
+        
+        // If task only has start_date, check if it matches today
+        if (startDateStr) {
+          return startDateStr === todayStrInUTC8;
+        }
+        
+        return false;
+      })
+      .sort((a, b) => {
+        // First sort by completion status (uncompleted first)
+        if (a.completed !== b.completed) {
+          return a.completed ? 1 : -1;
+        }
+        // Then sort by priority (higher priority first)
+        return (b.priority || 0) - (a.priority || 0);
+      });
+  }, [currentView, todosWithListNames, todayStrInUTC8]);
+
+  // 优化的列表任务计算
+  const listTodos = useMemo(() => {
+    if (['inbox', 'completed', 'recycle', 'today', 'calendar'].includes(currentView)) {
+      return [];
+    }
+    
+    const list = lists.find((l: List) => l.name === currentView);
+    return list ? uncompletedTodos.filter((t: Todo) => t.list_id === list.id) : uncompletedTodos;
+  }, [currentView, lists, uncompletedTodos]);
+
+  // 轻量级的displayTodos计算 - 只做简单的选择
+  const displayTodos = useMemo(() => {
     switch (currentView) {
       case 'inbox':
-        // 使用优化的收件箱过滤和排序
-        const endFilter = inboxPerfMonitor.startOperation('filter');
-        const filteredTodos = filterInboxTodos(uncompletedTodos);
-        endFilter(filteredTodos.length);
-        
-        const endSort = inboxPerfMonitor.startOperation('sort');
-        const sortedTodos = sortInboxTodos(filteredTodos);
-        endSort(sortedTodos.length);
-        
-        return sortedTodos;
+        return inboxTodos;
       case 'completed':
-        return completedTodos
+        return completedTodos;
       case 'recycle':
-        return recycledTodos
+        return recycledTodos;
       case 'today':
-        return todosWithListNames
-          .filter((t: Todo) => {
-            if (t.deleted) return false;
-            
-            const startDateStr = utcToLocalDateString(t.start_date);
-            const dueDateStr = utcToLocalDateString(t.due_date);
-            
-            // If task has both start_date and due_date, check if today falls within the range
-            if (startDateStr && dueDateStr) {
-              return startDateStr <= todayStrInUTC8 && todayStrInUTC8 <= dueDateStr;
-            }
-            
-            // If task only has due_date, check if it matches today
-            if (dueDateStr) {
-              return dueDateStr === todayStrInUTC8;
-            }
-            
-            // If task only has start_date, check if it matches today
-            if (startDateStr) {
-              return startDateStr === todayStrInUTC8;
-            }
-            
-            return false;
-          })
-          .sort((a, b) => {
-            // First sort by completion status (uncompleted first)
-            if (a.completed !== b.completed) {
-              return a.completed ? 1 : -1;
-            }
-            // Then sort by priority (higher priority first)
-            return (b.priority || 0) - (a.priority || 0);
-          });
+        return todayTodos;
       case 'calendar':
-        return uncompletedTodos
+        return uncompletedTodos;
       default:
-        const list = lists.find((l: List) => l.name === currentView)
-        return list ? uncompletedTodos.filter((t: Todo) => t.list_id === list.id) : uncompletedTodos
+        return listTodos;
     }
-  }, [currentView, uncompletedTodos, completedTodos, recycledTodos, lists, todayStrInUTC8, todosWithListNames])
+  }, [currentView, inboxTodos, completedTodos, recycledTodos, todayTodos, uncompletedTodos, listTodos])
   
   const todosByList = useMemo(() => {
 // ... (no changes in this block)
