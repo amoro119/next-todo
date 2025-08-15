@@ -45,12 +45,12 @@ export { networkStatusManager } from '../sync/NetworkStatusManager';
 
 // 便捷的组合函数
 export const getAppConfig = () => {
-  const userState = getUserState();
-  const syncConfig = getSyncConfig();
+  const currentUserState = getUserState();
+  const currentSyncConfig = getSyncConfig();
   
   return {
-    user: userState,
-    sync: syncConfig,
+    user: currentUserState,
+    sync: currentSyncConfig,
     isOnline: networkStatusManager.isOnline(),
   };
 };

@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   // 必须使用 standalone 输出模式
   output: 'standalone',
   
+  // 在开发模式下禁用React严格模式以避免重复初始化
+  reactStrictMode: false,
+  
   // 在 Electron 中，图像优化通常是不必要的，并且可能导致问题
   images: {
     unoptimized: true,

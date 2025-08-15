@@ -245,12 +245,13 @@ CREATE TRIGGER lists_handle_sync_insert_conflict_trigger
 `;
 
 export async function migrate(db: PGlite) {
-  await db.exec(migration)
-  
-  // 创建同步队列表
-  console.log('Creating sync queue table...')
-  try {
-    await db.query(`
+  // 优化：使用事务批量执行，减少往返次数
+  await db.transaction(async (tx) => {
+    await tx.exec(migration);
+    
+    // 在同一事务中创建同步队列表
+    console.log('Creating sync queue table...');
+    await tx.query(`
       CREATE TABLE IF NOT EXISTS sync_queue (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         table_name TEXT NOT NULL,
@@ -265,17 +266,17 @@ export async function migrate(db: PGlite) {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
-    `)
+    `);
     
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);`)
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_timestamp ON sync_queue(timestamp);`)
-    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_table_record ON sync_queue(table_name, record_id);`)
+    // 批量创建索引
+    await tx.exec(`
+      CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
+      CREATE INDEX IF NOT EXISTS idx_sync_queue_timestamp ON sync_queue(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_sync_queue_table_record ON sync_queue(table_name, record_id);
+    `);
     
-    console.log('Sync queue table created successfully')
-  } catch (error) {
-    console.error('Failed to create sync queue table:', error)
-    throw error
-  }
+    console.log('Database migration completed successfully');
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

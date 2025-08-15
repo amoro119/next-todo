@@ -6,6 +6,7 @@ import { postInitialSync } from "../db/migrations-client";
 import { useEffect, useState } from "react";
 import { ShapeStream, Shape } from "@electric-sql/client";
 import { getAuthToken, getCachedAuthToken, invalidateToken } from "../lib/auth"; // <--- 导入新的认证模块
+import { performanceMonitor, measureAsync } from "../lib/performance/performanceMonitor";
 
 type SyncStatus = "initial-sync" | "done" | "error" | "disabled" | "local-only";
 
@@ -45,96 +46,107 @@ export async function refreshSyncStatus() {
 }
 
 export async function startSync(pg: PGliteWithExtensions) {
-  // 首先检查同步配置
-  const configCheck = await checkSyncConfig();
-  
-  if (!configCheck.enabled) {
-    console.log(`同步已禁用: ${configCheck.reason}`);
-    updateSyncStatus('done', configCheck.message);
-    return;
-  }
-
-  console.log("Starting ElectricSQL sync...");
-  updateSyncStatus("initial-sync", "Starting sync...");
-
-  try {
-    // 获取认证令牌
-    console.log("正在获取同步认证令牌...");
-    // 调用新的、健壮的令牌获取函数
-    await getAuthToken();
-    const token = getCachedAuthToken();
-
-    if (!token) {
-      throw new Error("认证失败：未能获取到有效的同步令牌。");
-    }
-    console.log("认证成功，令牌已缓存。");
-
-    // 初始化ElectricSQL系统表
-    console.log("Initializing ElectricSQL system tables...");
-    await initializeElectricSystemTables(pg);
-
-    // 检查本地是否首次同步（无数据时才清理订阅）
-    const listsCountRes = await pg.query("SELECT COUNT(*) as count FROM lists");
-    const todosCountRes = await pg.query("SELECT COUNT(*) as count FROM todos");
-    const listsCount = Number(
-      (listsCountRes.rows[0] as { count: string | number })?.count || 0
-    );
-    const todosCount = Number(
-      (todosCountRes.rows[0] as { count: string | number })?.count || 0
-    );
-    if (listsCount === 0 && todosCount === 0) {
-      // 仅首次同步时清理旧的同步订阅
-      console.log("首次同步，清理旧的同步订阅...");
-      await cleanupOldSubscriptions(pg);
-    } else {
-      console.log("本地已有数据，跳过订阅清理");
+  return measureAsync('startSync', async () => {
+    // 首先检查同步配置
+    const configCheck = await measureAsync('checkSyncConfig', () => checkSyncConfig());
+    
+    if (!configCheck.enabled) {
+      console.log(`同步已禁用: ${configCheck.reason}`);
+      updateSyncStatus('done', configCheck.message);
+      return;
     }
 
-    // 启动非破坏性的双向同步
-    console.log("Starting non-destructive bidirectional sync...");
-    await startBidirectionalSync(pg);
-  } catch (error) {
-    console.error("Sync failed:", error);
-    
-    // 使用专门的同步错误处理
-    const { handleSyncStartupError, getSyncStatusFromError } = await import('../lib/sync/syncErrorHandling');
-    const errorResult = handleSyncStartupError(error as Error);
-    
-    console.log(`同步错误类型: ${errorResult.type}, 消息: ${errorResult.message}`);
-    
-    // 根据错误类型进行特殊处理
-    if (errorResult.type === 'auth') {
-      // 认证失败时清除缓存的令牌
-      invalidateToken();
+    console.log("Starting ElectricSQL sync...");
+    updateSyncStatus("initial-sync", "Starting sync...");
+
+    try {
+      // 获取认证令牌
+      console.log("正在获取同步认证令牌...");
+      await measureAsync('getAuthToken', () => getAuthToken());
+      const token = getCachedAuthToken();
+
+      if (!token) {
+        throw new Error("认证失败：未能获取到有效的同步令牌。");
+      }
+      console.log("认证成功，令牌已缓存。");
+
+      // 初始化ElectricSQL系统表
+      console.log("Initializing ElectricSQL system tables...");
+      await measureAsync('initializeElectricSystemTables', () => initializeElectricSystemTables(pg));
+
+      // 检查本地是否首次同步（无数据时才清理订阅）
+      const [listsCountRes, todosCountRes] = await Promise.all([
+        pg.query("SELECT COUNT(*) as count FROM lists"),
+        pg.query("SELECT COUNT(*) as count FROM todos")
+      ]);
+      
+      const listsCount = Number(
+        (listsCountRes.rows[0] as { count: string | number })?.count || 0
+      );
+      const todosCount = Number(
+        (todosCountRes.rows[0] as { count: string | number })?.count || 0
+      );
+      
+      if (listsCount === 0 && todosCount === 0) {
+        // 仅首次同步时清理旧的同步订阅
+        console.log("首次同步，清理旧的同步订阅...");
+        await measureAsync('cleanupOldSubscriptions', () => cleanupOldSubscriptions(pg));
+      } else {
+        console.log("本地已有数据，跳过订阅清理");
+      }
+
+      // 启动非破坏性的双向同步
+      console.log("Starting non-destructive bidirectional sync...");
+      await measureAsync('startBidirectionalSync', () => startBidirectionalSync(pg));
+    } catch (error) {
+      console.error("Sync failed:", error);
+      
+      // 使用专门的同步错误处理
+      const { handleSyncStartupError, getSyncStatusFromError } = await import('../lib/sync/syncErrorHandling');
+      const errorResult = handleSyncStartupError(error as Error);
+      
+      console.log(`同步错误类型: ${errorResult.type}, 消息: ${errorResult.message}`);
+      
+      // 根据错误类型进行特殊处理
+      if (errorResult.type === 'auth') {
+        // 认证失败时清除缓存的令牌
+        invalidateToken();
+      }
+      
+      // 设置相应的同步状态
+      const syncStatus = getSyncStatusFromError(errorResult);
+      updateSyncStatus(syncStatus, errorResult.message);
+      
+      // 记录是否可以重试
+      if (errorResult.canRetry) {
+        console.log('此错误可以重试，同步将在条件改善后自动重试');
+      }
     }
-    
-    // 设置相应的同步状态
-    const syncStatus = getSyncStatusFromError(errorResult);
-    updateSyncStatus(syncStatus, errorResult.message);
-    
-    // 记录是否可以重试
-    if (errorResult.canRetry) {
-      console.log('此错误可以重试，同步将在条件改善后自动重试');
-    }
-  }
+  });
 }
 
 async function initializeElectricSystemTables(pg: PGliteWithExtensions) {
-  console.log("Waiting for ElectricSQL to initialize system tables...");
+  console.log("Initializing ElectricSQL system tables...");
 
-  // 等待一段时间让ElectricSQL初始化
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // 优化：减少等待时间，使用轮询检查
+  let retries = 0;
+  const maxRetries = 10;
+  const retryDelay = 200; // 200ms instead of 3000ms total
 
-  // 尝试创建一个简单的查询来触发ElectricSQL系统表初始化
-  try {
-    await pg.query("SELECT 1");
-    console.log("ElectricSQL system tables should be initialized");
-  } catch {
-    console.log("ElectricSQL still initializing, continuing...");
+  while (retries < maxRetries) {
+    try {
+      await pg.query("SELECT 1");
+      console.log("ElectricSQL system tables initialized");
+      return;
+    } catch (error) {
+      retries++;
+      if (retries === maxRetries) {
+        console.warn("ElectricSQL initialization timeout, continuing anyway");
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
   }
-
-  // 再等待一段时间确保系统表创建完成
-  await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
 async function cleanupOldSubscriptions(pg: PGliteWithExtensions) {
@@ -228,21 +240,39 @@ export async function getFullShapeRows({
 }
 
 /**
- * 计算数据集的简单哈希值（用于快速比较）
+ * 优化的数据集哈希值计算（用于快速比较）
  */
-function calculateDataHash(rows: unknown[]): string {
+async function calculateDataHash(rows: unknown[]): Promise<string> {
+  if (rows.length === 0) return '';
+
   // 对所有行的ID进行排序后计算哈希，这样可以快速检测数据差异
   const sortedIds = rows
     .map((row) => (row as { id: string }).id)
     .filter(Boolean)
     .sort();
 
-  // 简单的字符串哈希算法
-  let hash = 0;
+  if (sortedIds.length === 0) return '';
+
   const str = sortedIds.join("|");
+
+  // 优化：使用Web Crypto API进行哈希计算（如果可用）
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(str);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
+    } catch (error) {
+      console.warn('Web Crypto API不可用，使用备用哈希算法');
+    }
+  }
+
+  // 备用：简单的字符串哈希算法
+  let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
+    hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // 转换为32位整数
   }
   return hash.toString();
@@ -260,7 +290,7 @@ async function getLocalDataHash(
     const ids = result.rows
       .map((row) => (row as { id: string }).id)
       .filter(Boolean);
-    return calculateDataHash(ids.map((id) => ({ id })));
+    return await calculateDataHash(ids.map((id) => ({ id })));
   } catch (error) {
     console.warn(`获取本地${table}数据哈希失败:`, error);
     return "";
@@ -325,56 +355,17 @@ async function doFullTableSync({
       }
     }
 
-    // 3. Upsert all remote rows into the local database.
-    // This will update existing records and insert new ones.
-    if (rows.length > 0) {
-      for (const rowRaw of rows) {
-        const row = rowRaw as Record<string, unknown>;
-        if (table === "lists") {
-          await tx.query(
-            `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-            [
-              row.id ?? null,
-              row.name ?? null,
-              row.sort_order ?? 0,
-              row.is_hidden ?? false,
-              row.modified ?? null,
-            ]
-          );
-        } else if (table === "todos") {
-          await tx.query(
-            `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-                ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19`,
-            [
-              row.id ?? null,
-              row.title ?? null,
-              row.completed ?? false,
-              row.deleted ?? false,
-              row.sort_order ?? 0,
-              row.due_date ?? null,
-              row.content ?? null,
-              row.tags ?? null,
-              row.priority ?? 0,
-              row.created_time ?? null,
-              row.completed_time ?? null,
-              row.start_date ?? null,
-              row.list_id ?? null,
-              row.repeat ?? null,
-              row.reminder ?? null,
-              row.is_recurring ?? false,
-              row.recurring_parent_id ?? null,
-              row.instance_number ?? null,
-              row.next_due_date ?? null,
-            ]
-          );
-        }
-      }
-    }
   });
 
-  console.log(`- ✅ ${table} full reconciliation complete.`);
+  // 3. 优化：使用快速同步处理初始化数据
+  if (rows.length > 0) {
+    // 动态导入优化器以减少初始加载时间
+    const { optimizedTableSync } = await import('../lib/sync/syncOptimizer');
+    // 初始化阶段使用快速同步，无分批处理
+    await optimizedTableSync(pg, table, columns, rows, true);
+  }
+
+  console.log(`- ✅ ${table} optimized reconciliation complete.`);
 }
 
 /**
@@ -490,81 +481,91 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     throw new Error("Authentication token is not available for sync.");
   }
 
-  // 1. 先做初始同步
-  for (const shapeDef of shapes) {
+  // 1. 优化：并行检查和同步所有表
+  const initialSyncPromises = shapes.map(async (shapeDef) => {
     const { name: shapeName, columns } = shapeDef;
-    let shouldInitialUpsert = false;
+    
     try {
       const res = await pg.query(`SELECT 1 FROM ${shapeName} LIMIT 1`);
-      shouldInitialUpsert = res.rows.length === 0;
-    } catch (e) {
-      console.warn("本地表计数失败，默认进行初始upsert:", e);
-      shouldInitialUpsert = true;
-    }
+      const shouldInitialUpsert = res.rows.length === 0;
 
-    if (shouldInitialUpsert) {
+      if (shouldInitialUpsert) {
+        await doFullTableSync({
+          table: shapeName,
+          columns,
+          electricProxyUrl,
+          token: token!,
+          pg,
+          upsertSql: "",
+        });
+        console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+      } else {
+        console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
+      }
+    } catch (e) {
+      console.warn(`${shapeName} 表检查失败，进行初始同步:`, e);
       await doFullTableSync({
         table: shapeName,
         columns,
         electricProxyUrl,
         token: token!,
         pg,
-        upsertSql: "", // upsertSql 不再需要
+        upsertSql: "",
       });
-      console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
-    } else {
-      console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
+      console.log(`📥 ${shapeName} 初始同步完成（异常恢复）`);
     }
-  }
+  });
 
-  // 2. 只在初始同步完成后执行一次哈希校验（带补偿）
-  for (const shapeDef of shapes) {
+  // 等待所有初始同步完成
+  await Promise.all(initialSyncPromises);
+
+  // 2. 优化：并行执行哈希校验，减少串行等待时间
+  const hashValidationPromises = shapes.map(async (shapeDef) => {
     const { name: shapeName, columns } = shapeDef;
 
-    /* ---------- 远程数据哈希 ---------- */
-    const remoteRows = await getFullShapeRows({
-      table: shapeName,
-      columns,
-      electricProxyUrl,
-      token: token!,
-    });
-    const remoteHash = calculateDataHash(remoteRows);
+    try {
+      // 并行获取远程和本地数据哈希
+      const [remoteRows, localHash] = await Promise.all([
+        getFullShapeRows({
+          table: shapeName,
+          columns,
+          electricProxyUrl,
+          token: token!,
+        }),
+        getLocalDataHash(shapeName, pg)
+      ]);
 
-    /* ---------- 本地数据哈希 ---------- */
-    const localHash = await getLocalDataHash(shapeName, pg);
+      const remoteHash = await calculateDataHash(remoteRows);
+      console.log(`📊 ${shapeName} 哈希校验 -> 远程:${remoteHash} 本地:${localHash}`);
 
-    console.log(
-      `📊 ${shapeName} 哈希校验 -> 远程:${remoteHash} 本地:${localHash}`
-    );
+      // 哈希不一致时补偿
+      if (localHash !== remoteHash) {
+        console.warn(`⚠️ ${shapeName} 数据哈希不一致，准备强制全量同步...`);
+        
+        await doFullTableSync({
+          table: shapeName,
+          columns,
+          electricProxyUrl,
+          token,
+          pg,
+          upsertSql: "",
+        });
 
-    /* ---------- 哈希不一致时补偿 ---------- */
-    if (localHash !== remoteHash) {
-      console.warn(`⚠️ ${shapeName} 数据哈希不一致，准备强制全量同步...`);
-
-      await doFullTableSync({
-        table: shapeName,
-        columns,
-        electricProxyUrl,
-        token,
-        pg,
-        upsertSql: "", // upsertSql 不再需要
-      });
-
-      /* 再次校验并缓存哈希 */
-      try {
         const finalHash = await getLocalDataHash(shapeName, pg);
         console.log(`✅ ${shapeName} 补偿后哈希: ${finalHash}`);
-        // 缓存同步成功后的哈希值
         setLastSyncHash(shapeName, finalHash);
-      } catch (e) {
-        console.error(`❌ ${shapeName} 补偿后校验失败:`, e);
+      } else {
+        console.log(`✅ ${shapeName} 数据哈希一致，无需补偿`);
+        setLastSyncHash(shapeName, localHash);
       }
-    } else {
-      console.log(`✅ ${shapeName} 数据哈希一致，无需补偿`);
-      // 缓存当前哈希值
-      setLastSyncHash(shapeName, localHash);
+    } catch (error) {
+      console.error(`❌ ${shapeName} 哈希校验失败:`, error);
+      // 继续处理其他表
     }
-  }
+  });
+
+  // 等待所有哈希校验完成
+  await Promise.all(hashValidationPromises);
 
   // 3. 标记初始同步完成
   if (!initialSyncDone) {
