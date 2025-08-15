@@ -246,9 +246,74 @@ CREATE TRIGGER lists_handle_sync_insert_conflict_trigger
 
 export async function migrate(db: PGlite) {
   await db.exec(migration)
+  
+  // 创建同步队列表
+  console.log('Creating sync queue table...')
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        table_name TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        data JSONB NOT NULL,
+        timestamp TEXT NOT NULL,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        max_retries INTEGER NOT NULL DEFAULT 3,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `)
+    
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_timestamp ON sync_queue(timestamp);`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_table_record ON sync_queue(table_name, record_id);`)
+    
+    console.log('Sync queue table created successfully')
+  } catch (error) {
+    console.error('Failed to create sync queue table:', error)
+    throw error
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export async function postInitialSync(_db: PGlite) {
   console.log('Post-initial-sync migrations completed (no triggers to enable)')
+}
+
+/**
+ * 创建同步队列表
+ * @param db PGlite 数据库实例
+ */
+export async function createSyncQueueTable(db: PGlite) {
+  console.log('Creating sync queue table...')
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS sync_queue (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        table_name TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        data JSONB NOT NULL,
+        timestamp TEXT NOT NULL,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        max_retries INTEGER NOT NULL DEFAULT 3,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `)
+    
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_timestamp ON sync_queue(timestamp);`)
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sync_queue_table_record ON sync_queue(table_name, record_id);`)
+    
+    console.log('Sync queue table created successfully')
+  } catch (error) {
+    console.error('Failed to create sync queue table:', error)
+    throw error
+  }
 }
