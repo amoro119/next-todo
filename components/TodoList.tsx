@@ -176,10 +176,10 @@ const TodoItem = memo(
 
             <div className="todo-title">{todo.title}</div>
 
-            {/* 显示下次到期时间（仅原始重复任务） */}
-            {isRecurringTask && formattedNextDueDate && !todo.deleted && (
-              <span className="next-due-date" title="下次到期时间">
-                下次: {formattedNextDueDate}
+            {/* 显示重复规则（仅原始重复任务） */}
+            {isRecurringTask && recurringDescription && !todo.deleted && (
+              <span className="next-due-date" title="重复规则">
+                {recurringDescription}
               </span>
             )}
 

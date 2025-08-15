@@ -246,7 +246,7 @@ export default function TodoModal({
                   <input
                     type="text"
                     className="modal-title-wrapper"
-                    placeholder="任务标题"
+                    placeholder="请输入要做什么"
                     value={editableTodo.title}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
