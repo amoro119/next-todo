@@ -30,8 +30,9 @@ export interface List {
   sort_order: number;
   is_hidden: boolean;
   modified?: string; // Service-side field
-}//
- 重复任务相关类型定义
+}
+
+// 重复任务相关类型定义
 
 // RRULE解析结果接口
 export interface ParsedRRule {

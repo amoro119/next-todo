@@ -282,17 +282,23 @@ export class NetworkMonitorImpl implements NetworkMonitor {
       const timeDiff = now.getTime() - lastChecked.getTime();
       
       if (timeDiff > 5 * 60 * 1000) { // 5分钟
-        console.log('NetworkMonitor: Cached status is stale, will recheck server connection');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('NetworkMonitor: Cached status is stale, will recheck server connection');
+        }
         // 异步重新检查服务器状态
         setTimeout(() => this.testServerConnection(), 1000);
       } else {
         this.lastOnlineStatus = cached.isOnline && cached.serverReachable;
-        console.log(`NetworkMonitor: Loaded cached network status: ${this.lastOnlineStatus ? 'online' : 'offline'}`);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`NetworkMonitor: Loaded cached network status: ${this.lastOnlineStatus ? 'online' : 'offline'}`);
+        }
       }
       
       this.reconnectAttempts = cached.reconnectAttempts || 0;
     } else {
-      console.log('NetworkMonitor: No cached network status found, will test server connection');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('NetworkMonitor: No cached network status found, will test server connection');
+      }
       // 如果没有缓存状态，初始化时检查服务器连接
       setTimeout(() => this.testServerConnection(), 1000);
     }

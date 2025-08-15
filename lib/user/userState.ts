@@ -6,6 +6,11 @@ export interface UserState {
   offlineMode: boolean;
 }
 
+// 缓存用户状态以避免重复计算
+let cachedUserState: UserState | null = null;
+let lastCacheTime = 0;
+const CACHE_TTL = 5000; // 5秒缓存
+
 export const getUserState = (): UserState => {
   // 在服务器端渲染时返回默认状态
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -14,6 +19,12 @@ export const getUserState = (): UserState => {
       syncEnabled: true,
       offlineMode: false,
     };
+  }
+
+  // 检查缓存是否有效
+  const now = Date.now();
+  if (cachedUserState && (now - lastCacheTime) < CACHE_TTL) {
+    return cachedUserState;
   }
 
   // 获取分发配置的默认订阅状态
@@ -32,12 +43,18 @@ export const getUserState = (): UserState => {
   const lastSyncTime = localStorage.getItem('last_sync_time') || undefined;
   const offlineMode = !navigator.onLine;
   
-  return {
+  const userState = {
     subscription,
     syncEnabled: syncEnabled && subscription !== 'free',
     lastSyncTime,
     offlineMode,
   };
+
+  // 更新缓存
+  cachedUserState = userState;
+  lastCacheTime = now;
+  
+  return userState;
 };
 
 export const updateUserState = (updates: Partial<UserState>) => {
@@ -53,6 +70,10 @@ export const updateUserState = (updates: Partial<UserState>) => {
   if (newState.lastSyncTime) {
     localStorage.setItem('last_sync_time', newState.lastSyncTime);
   }
+
+  // 清除缓存，强制下次重新计算
+  cachedUserState = null;
+  lastCacheTime = 0;
 
   // 触发状态更新事件
   window.dispatchEvent(new CustomEvent('userStateChanged', { detail: newState }));
