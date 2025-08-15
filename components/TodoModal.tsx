@@ -1,35 +1,21 @@
-// components/TodoDetailsModal.tsx
+// components/TodoModal.tsx
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Todo, List } from '../lib/types';
-import { RRuleEngine } from '../lib/recurring/RRuleEngine';
-import { RecurringTaskGenerator } from '../lib/recurring/RecurringTaskGenerator';
 import RecurrenceSelector from './RecurrenceSelector';
+import { RRuleEngine } from '../lib/recurring/RRuleEngine';
 
-interface TodoDetailsModalProps {
-  todo: Todo;
+interface TodoModalProps {
+  mode: 'create' | 'edit';
+  initialData?: Partial<Todo>;
   lists: List[];
   onClose: () => void;
-  onSave: (updatedTodo: Todo) => void;
-  onDelete: (todoId: string) => void;
-  onUpdate: (todoId: string, updates: Partial<Todo>) => Promise<void>;
+  onSubmit: (todoData: Todo) => void;
+  onDelete?: (todoId: string) => void;
+  onUpdate?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onRestore?: (todoId: string) => void;
   onPermanentDelete?: (todoId: string) => void;
-}
-
-// 本地日期字符串转数据库 UTC 字符串（-1天，东八区零点对齐）
-function localDateToDbUTC(date: string | null | undefined): string | null {
-  if (!date) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const [year, month, day] = date.split('-').map(Number);
-    const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
-    d.setUTCDate(d.getUTCDate() - 1); // 恢复减一天
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 16:00:00+00`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(date)) return date; // ISO 8601 format
-  return null;
 }
 
 // 数据库 UTC 字符串转本地日期字符串
@@ -39,7 +25,7 @@ function dbUTCToLocalDate(date: string | null | undefined): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return date;
   }
-  // 如果是数据库格式 YYYY-MM-DD 16:00:0提取日期部分并加一天
+  // 如果是数据库格式 YYYY-MM-DD 16:00:00+00 提取日期部分并加一天
   const match = date.match(/^(\d{4}-\d{2}-\d{2})/);
   if (match) {
     const [year, month, day] = match[1].split('-').map(Number);
@@ -61,6 +47,20 @@ function dbUTCToLocalDate(date: string | null | undefined): string {
     console.error("Error parsing date:", date, e);
   }
   return '';
+}
+
+// 本地日期字符串转数据库 UTC 字符串（-1天，东八区零点对齐）
+function localDateToDbUTC(date: string | null | undefined): string | null {
+  if (!date) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [year, month, day] = date.split('-').map(Number);
+    const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
+    d.setUTCDate(d.getUTCDate() - 1); // 恢复减一天
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} 16:00:00+00`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(date)) return date; // ISO 8601 format
+  return null;
 }
 
 // 工具函数：清洗 Todo 对象中的日期字段，确保为数据库可接受的 UTC 字符串或 null
@@ -97,47 +97,74 @@ const cleanTodoDates = (todo: Todo): Todo => {
   };
 };
 
-export default function TodoDetailsModal({ 
-    todo, 
-    lists, 
-    onClose, 
-    onSave, 
-    onDelete, 
-    onUpdate,
-    onRestore,
-    onPermanentDelete
-}: TodoDetailsModalProps) {
-  const [editableTodo, setEditableTodo] = useState<Todo>(todo);
-  const isRecycled = !!todo.deleted;
+export default function TodoModal({ 
+  mode,
+  initialData,
+  lists, 
+  onClose, 
+  onSubmit, 
+  onDelete,
+  onUpdate,
+  onRestore,
+  onPermanentDelete
+}: TodoModalProps) {
+  // 初始化表单数据
+  const initialTodo: Todo = {
+    id: initialData?.id || '',
+    title: initialData?.title || '',
+    completed: initialData?.completed || false,
+    deleted: initialData?.deleted || false,
+    sort_order: initialData?.sort_order || 0,
+    due_date: initialData?.due_date || null,
+    content: initialData?.content || null,
+    tags: initialData?.tags || null,
+    priority: initialData?.priority || 0,
+    created_time: initialData?.created_time || new Date().toISOString(),
+    completed_time: initialData?.completed_time || null,
+    start_date: initialData?.start_date || null,
+    list_id: initialData?.list_id || null,
+    list_name: initialData?.list_name || null,
+    // 重复任务相关字段
+    repeat: initialData?.repeat || null,
+    reminder: initialData?.reminder || null,
+    is_recurring: initialData?.is_recurring || false,
+    recurring_parent_id: initialData?.recurring_parent_id || null,
+    instance_number: initialData?.instance_number || null,
+    next_due_date: initialData?.next_due_date || null,
+  };
+
+  const [editableTodo, setEditableTodo] = useState<Todo>(initialTodo);
+  const isRecycled = !!editableTodo.deleted;
   
-  // 添加详细的调试信息
-  // console.log('=== TodoDetailsModal 调试信息 ===');
-  // console.log('传入的 todo 对象:', todo);
-  // console.log('todo.start_date:', todo.start_date, '类型:', typeof todo.start_date);
-  // console.log('todo.due_date:', todo.due_date, '类型:', typeof todo.due_date);
-  // console.log('dbUTCToLocalDate(todo.start_date):', dbUTCToLocalDate(todo.start_date));
-  // console.log('dbUTCToLocalDate(todo.due_date):', dbUTCToLocalDate(todo.due_date));
-  // console.log('editableTodo.start_date:', editableTodo.start_date);
-  // console.log('editableTodo.due_date:', editableTodo.due_date);
-  // console.log('================================');
+  // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
+  useEffect(() => {
+    if (mode === 'edit' && initialData) {
+      setEditableTodo({
+        ...initialTodo,
+        ...initialData
+      });
+    }
+  }, [initialData, mode]);
 
   const handleSave = () => {
-    onSave(cleanTodoDates(editableTodo));
+    onSubmit(cleanTodoDates(editableTodo));
   };
 
   const handleDelete = () => {
-    onDelete(editableTodo.id);
+    if (onDelete && editableTodo.id) {
+      onDelete(editableTodo.id);
+    }
   };
 
   const handlePermanentDelete = () => {
-    if (onPermanentDelete) {
-        onPermanentDelete(editableTodo.id);
+    if (onPermanentDelete && editableTodo.id) {
+      onPermanentDelete(editableTodo.id);
     }
   };
 
   const handleRestore = () => {
-    if (onRestore) {
-        onRestore(editableTodo.id);
+    if (onRestore && editableTodo.id) {
+      onRestore(editableTodo.id);
     }
   };
 
@@ -162,8 +189,6 @@ export default function TodoDetailsModal({
     setEditableTodo(prev => ({ ...prev, [name]: finalValue }));
   };
 
-
-
   const handleToggleComplete = async () => {
     if (isRecycled) return;
     const isCompleted = !!editableTodo.completed;
@@ -172,35 +197,63 @@ export default function TodoDetailsModal({
       completed_time: isCompleted ? null : new Date().toISOString(),
     };
     setEditableTodo(prev => ({ ...prev, ...updates }));
-    await onUpdate(editableTodo.id, updates);
+    
+    // 如果是编辑模式且提供了 onUpdate 回调，则调用它
+    if (mode === 'edit' && onUpdate && editableTodo.id) {
+      await onUpdate(editableTodo.id, updates);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey && mode === 'create') {
+      e.preventDefault();
+      if (editableTodo.title.trim()) {
+        handleSave();
+      }
+    } else if (e.key === 'Escape') {
+      onClose();
+    }
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{isRecycled ? '回收站任务详情' : '任务详情'}</h2>
+          <h2>{isRecycled ? '回收站任务详情' : (mode === 'create' ? '创建任务' : '任务详情')}</h2>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
             <div className="form-group">
-                <div className="modal-title-wrapper">
-                    <input 
-                        type="checkbox"
-                        className="modal-todo-checkbox"
-                        checked={!!editableTodo.completed}
-                        onChange={handleToggleComplete}
-                        disabled={isRecycled}
-                    />
-                    <input
-                        type="text"
-                        name="title"
-                        className={`modal-todo-title ${editableTodo.completed ? 'completed' : ''}`}
-                        value={editableTodo.title}
-                        onChange={handleInputChange}
-                        readOnly={isRecycled}
-                    />
-                </div>
+                {mode === 'edit' ? (
+                  <div className="modal-title-wrapper">
+                      <input 
+                          type="checkbox"
+                          className="modal-todo-checkbox"
+                          checked={!!editableTodo.completed}
+                          onChange={handleToggleComplete}
+                          disabled={isRecycled}
+                      />
+                      <input
+                          type="text"
+                          name="title"
+                          className={`modal-todo-title ${editableTodo.completed ? 'completed' : ''}`}
+                          value={editableTodo.title}
+                          onChange={handleInputChange}
+                          readOnly={isRecycled}
+                      />
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    className="modal-title-wrapper"
+                    placeholder="任务标题"
+                    value={editableTodo.title}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    name="title"
+                    autoFocus
+                  />
+                )}
             </div>
             
             <div className="form-group">
@@ -255,7 +308,7 @@ export default function TodoDetailsModal({
                         type="date"
                         id="start_date"
                         name="start_date"
-                        value={dbUTCToLocalDate(editableTodo.start_date) || ''}
+                        value={mode === 'create' ? dbUTCToLocalDate(editableTodo.start_date) : dbUTCToLocalDate(editableTodo.start_date) || ''}
                         onChange={handleInputChange}
                         readOnly={isRecycled}
                     />
@@ -266,7 +319,7 @@ export default function TodoDetailsModal({
                         type="date"
                         id="due_date"
                         name="due_date"
-                        value={dbUTCToLocalDate(editableTodo.due_date)}
+                        value={mode === 'create' ? dbUTCToLocalDate(editableTodo.due_date) : dbUTCToLocalDate(editableTodo.due_date)}
                         onChange={handleInputChange}
                         readOnly={isRecycled}
                     />
@@ -330,24 +383,30 @@ export default function TodoDetailsModal({
                     />
                 </div>
             )}
-
-
         </div>
-        <div className="modal-footer">         {isRecycled ? (
-            <>
-              <button className="btn-small delete" onClick={handlePermanentDelete}>永久删除</button>
-              <button className="btn-small" onClick={onClose}>关闭</button>
-              <button className="btn-small confirm" onClick={handleRestore}>恢复</button>
-            </>
+        <div className="modal-footer">
+          {mode === 'edit' ? (
+            isRecycled ? (
+              <>
+                <button className="btn-small delete" onClick={handlePermanentDelete}>永久删除</button>
+                <button className="btn-small" onClick={onClose}>关闭</button>
+                <button className="btn-small confirm" onClick={handleRestore}>恢复</button>
+              </>
+            ) : (
+              <>
+                <button className="btn-small delete" onClick={handleDelete}>删除</button>
+                <button className="btn-small" onClick={onClose}>取消</button>
+                <button className="btn-small confirm" onClick={handleSave}>保存</button>
+              </>
+            )
           ) : (
             <>
-              <button className="btn-small delete" onClick={handleDelete}>删除</button>
               <button className="btn-small" onClick={onClose}>取消</button>
-              <button className="btn-small confirm" onClick={handleSave}>保存</button>
+              <button className="btn-small confirm" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</button>
             </>
           )}
         </div>
       </div>
     </div>
   );
-} 
+}

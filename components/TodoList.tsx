@@ -174,14 +174,7 @@ const TodoItem = memo(
               </span>
             )}
 
-            {/* 重复任务实例标识 */}
-            {isTaskInstance && (
-              <span className="recurring-instance-badge" title="重复任务实例">
-                📅
-              </span>
-            )}
-
-            {todo.title}
+            <div className="todo-title">{todo.title}</div>
 
             {/* 显示下次到期时间（仅原始重复任务） */}
             {isRecurringTask && formattedNextDueDate && !todo.deleted && (

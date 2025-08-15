@@ -26,6 +26,7 @@ interface CalendarViewProps {
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onOpenModal: (todo: Todo) => void;
   onAddTodo: (date: string) => void;
+  onOpenCreateModal?: (date: string) => void;
 }
 
 // 优化的高性能缓存系统
@@ -264,6 +265,7 @@ interface DayCellProps {
   onAddTodo: (date: string) => void;
   onOpenModal: (todo: Todo) => void;
   onDragStart: (e: React.DragEvent<HTMLLIElement>, todoId: string, sourceDate: string) => void;
+  onOpenCreateModal?: (date: string) => void;
 }
 
 const DayCell = memo<DayCellProps>(({ 
@@ -273,12 +275,13 @@ const DayCell = memo<DayCellProps>(({
   onDrop, 
   onAddTodo, 
   onOpenModal, 
-  onDragStart 
+  onDragStart,
+  onOpenCreateModal
 }) => {
   const handleAddTodo = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    onAddTodo(day.date);
-  }, [day.date, onAddTodo]);
+    onOpenCreateModal(day.date);
+  }, [day.date, onOpenCreateModal]);
 
   const handleCellClick = useCallback(() => {
     if (day.isCurrentMonth) {
@@ -366,6 +369,7 @@ export default function CalendarView({
   onUpdateTodo,
   onOpenModal,
   onAddTodo,
+  onOpenCreateModal,
 }: CalendarViewProps) {
   
   // 性能监控
@@ -374,6 +378,9 @@ export default function CalendarView({
   // INP优化
   const { handleDragStart, handleDrop, handleDragOver } = useOptimizedDrag();
   const { startInteraction, endInteraction } = useINPMonitoring('CalendarView');
+  
+  // 为 onOpenCreateModal 提供默认值
+  const handleOpenCreateModal = onOpenCreateModal || (() => {});
   
   // 优化的日历天数计算 - 使用缓存
   const { calendarDays, visibleInterval } = useMemo(() => {
@@ -592,6 +599,7 @@ export default function CalendarView({
             onAddTodo={onAddTodo}
             onOpenModal={onOpenModal}
             onDragStart={optimizedHandleDragStart}
+            onOpenCreateModal={handleOpenCreateModal}
           />
         ))}
       </div>

@@ -9,7 +9,7 @@ import { parseDidaCsv } from '../lib/csvParser'
 import { TodoList } from '../components/TodoList'
 import { ViewSwitcher } from '../components/ViewSwitcher'
 import QuickActions from '../components/QuickActions'
-import TodoDetailsModal from '../components/TodoDetailsModal'
+import TodoModal from '../components/TodoModal'
 import ManageListsModal from '../components/ManageListsModal'
 import TaskSearchModal from '../components/TaskSearchModal'
 import CalendarView from '../components/CalendarView'
@@ -275,6 +275,8 @@ export default function TodoListPage() {
   const [slogan, setSlogan] = useState('今日事今日毕，勿将今事待明日!.☕')
   const [currentDate, setCurrentDate] = useState(new Date());
   const [searchRefreshTrigger, setSearchRefreshTrigger] = useState(0);
+  const [isCalendarCreateModalOpen, setIsCalendarCreateModalOpen] = useState(false);
+  const [calendarSelectedDate, setCalendarSelectedDate] = useState<string>('');
   const addTodoInputRef = useRef<HTMLInputElement>(null)
 
   // --- START: BUG FIX ---
@@ -541,6 +543,22 @@ export default function TodoListPage() {
       setNewTodoDate(null);
     }
   }, [newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8, db]);
+
+  const handleCreateTodoFromCalendar = useCallback(async (title: string, listId: string | null, startDate: string | null, dueDate: string | null) => {
+    const newTodoData = {
+      id: uuid(),
+      title: title,
+      list_id: listId,
+      start_date: startDate,
+      due_date: dueDate,
+      created_time: new Date().toISOString(),
+      completed: false,
+      deleted: false,
+    };
+    
+    await db.insert('todos', newTodoData);
+    setIsCalendarCreateModalOpen(false);
+  }, [db]);
   
   const handleUpdateTodo = useCallback(async (todoId: string, updates: Partial<Omit<Todo, 'id' | 'list_name'>>) => {
       if (Object.keys(updates).length === 0) return;
@@ -657,6 +675,11 @@ export default function TodoListPage() {
 // ...
       setNewTodoDate(date);
       addTodoInputRef.current?.focus();
+  }, []);
+
+  const handleOpenCalendarCreateModal = useCallback((date: string) => {
+      setCalendarSelectedDate(date);
+      setIsCalendarCreateModalOpen(true);
   }, []);
 
   const handleUndo = useCallback(async () => {
@@ -964,6 +987,7 @@ export default function TodoListPage() {
                 onOpenModal={setSelectedTodo}
                 currentDate={currentDate}
                 onDateChange={setCurrentDate}
+                onOpenCreateModal={handleOpenCalendarCreateModal}
               />
             )}
 
@@ -983,11 +1007,12 @@ export default function TodoListPage() {
           </div>
 
           {selectedTodo && (
-            <TodoDetailsModal
-              todo={selectedTodo}
+            <TodoModal
+              mode="edit"
+              initialData={selectedTodo}
               lists={lists}
-              onSave={handleSaveTodoDetails}
               onClose={() => setSelectedTodo(null)}
+              onSubmit={handleSaveTodoDetails}
               onDelete={handleDeleteTodo}
               onUpdate={handleUpdateTodo}
               onRestore={handleRestoreTodo}
@@ -1015,6 +1040,19 @@ export default function TodoListPage() {
               onDelete={handleDeleteTodo}
               currentView={currentView}
               refreshTrigger={searchRefreshTrigger}
+            />
+          )}
+
+          {isCalendarCreateModalOpen && (
+            <TodoModal
+              mode="create"
+              initialData={{
+                start_date: localDateToEndOfDayUTC(calendarSelectedDate),
+                due_date: localDateToEndOfDayUTC(calendarSelectedDate)
+              }}
+              lists={lists}
+              onClose={() => setIsCalendarCreateModalOpen(false)}
+              onSubmit={(todoData) => handleCreateTodoFromCalendar(todoData.title, todoData.list_id, todoData.start_date, todoData.due_date)}
             />
           )}
 
