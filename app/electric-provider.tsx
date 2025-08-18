@@ -14,7 +14,6 @@ const isSyncConfigEqual = (a: SyncConfig, b: SyncConfig): boolean => {
   return a.enabled === b.enabled && a.reason === b.reason;
 };
 import { startupOptimizer, initializeStartupOptimization } from '../lib/performance/startupOptimizer'
-import { trackCall } from '../lib/debug/initializationTracker'
 
 // 全局标志防止重复初始化
 let isDbInitializationStarted = false;
@@ -102,7 +101,6 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
     let worker: Worker | undefined;
     
     const init = async () => {
-      trackCall('ElectricProvider.dbInit');
       
       if (isDbInitializationStarted) {
         console.log('🔄 数据库初始化已开始，跳过重复调用');
@@ -142,7 +140,6 @@ export function ElectricProvider({ children }: { children: React.ReactNode }) {
           // 始终初始化离线同步系统
           (async () => {
             console.log('Initializing offline sync system...')
-            trackCall('initOfflineSync');
             try {
               initOfflineSync(db as unknown)
               console.log('Offline sync system initialized successfully')

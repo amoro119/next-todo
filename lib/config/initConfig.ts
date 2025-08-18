@@ -2,7 +2,7 @@
 import { loadDistributionConfig, getDistributionConfig } from './distributionConfig';
 import { getUserState, updateUserState } from '../user/userState';
 import { logConfigurationStatus } from './configValidator';
-import { trackCall } from '../debug/initializationTracker';
+// import { trackCall } from '../debug/initializationTracker';
 
 let isInitialized = false;
 let initializationPromise: Promise<void> | null = null;
@@ -19,7 +19,6 @@ export const initializeAppConfig = async (): Promise<void> => {
   }
 
   console.log('🚀 初始化应用配置...');
-  trackCall('initializeAppConfig');
 
   initializationPromise = (async () => {
 
