@@ -1,5 +1,5 @@
 // lib/sync/BatchSyncProcessor.ts
-import { ChangeRecord, SyncResult, ChangeSet, ListChange, TodoChange, RetryConfig, DEFAULT_RETRY_CONFIG } from './types';
+import { ChangeRecord, SyncResult, ChangeSet, ListChange, TodoChange, GoalChange, RetryConfig, DEFAULT_RETRY_CONFIG } from './types';
 import { SyncQueueManager } from './SyncQueueManager';
 import { getAuthToken } from '../../lib/auth';
 import { RetryStrategy, ExponentialBackoffStrategy } from './RetryStrategy';
@@ -203,16 +203,19 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
   private convertToChangeSet(changes: ChangeRecord[]): ChangeSet {
     const lists: ListChange[] = [];
     const todos: TodoChange[] = [];
+    const goals: GoalChange[] = [];
 
     for (const change of changes) {
       if (change.table_name === 'lists') {
         lists.push(this.convertToListChange(change));
       } else if (change.table_name === 'todos') {
         todos.push(this.convertToTodoChange(change));
+      } else if (change.table_name === 'goals') {
+        goals.push(this.convertToGoalChange(change));
       }
     }
 
-    return { lists, todos };
+    return { lists, todos, goals };
   }
 
   private convertToListChange(change: ChangeRecord): ListChange {
@@ -276,6 +279,37 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
       recurring_parent_id: data.recurring_parent_id,
       instance_number: data.instance_number,
       next_due_date: data.next_due_date,
+      // 目标关联字段
+      goal_id: data.goal_id,
+      sort_order_in_goal: data.sort_order_in_goal,
+      modified_columns: modifiedColumns,
+      new: isNew
+    };
+  }
+
+  private convertToGoalChange(change: ChangeRecord): GoalChange {
+    const data = change.data;
+    const isNew = change.operation === 'insert';
+    
+    let modifiedColumns: string[] = [];
+    if (change.operation === 'insert') {
+      modifiedColumns = Object.keys(data).filter(key => key !== 'id');
+    } else if (change.operation === 'update') {
+      modifiedColumns = Object.keys(data).filter(key => key !== 'id' && data[key] !== undefined);
+    } else if (change.operation === 'delete') {
+      modifiedColumns = ['is_archived']; // 存档操作
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      description: data.description,
+      list_id: data.list_id,
+      start_date: data.start_date,
+      due_date: data.due_date,
+      priority: data.priority,
+      created_time: data.created_time,
+      is_archived: data.is_archived,
       modified_columns: modifiedColumns,
       new: isNew
     };

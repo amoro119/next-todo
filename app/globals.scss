@@ -4,27 +4,29 @@
 // SCSS Variables
 $body-bg: #e8f6ff;
 $border-radius: 12px;
-$border: 2px solid #33322E;
-$box-shadow: 4px 4px 0px #33322E;
-$box-shadow-reverse: -4px 4px 0px #33322E;
+$border: 2px solid #33322e;
+$box-shadow: 4px 4px 0px #33322e;
+$box-shadow-reverse: -4px 4px 0px #33322e;
 $padding: 20px 24px;
 $btn-padding: 12px 24px;
 $btn-small-padding: 10px 20px;
-$font: "DM Sans", "PingFang SC", "Lantinghei SC", "Microsoft YaHei", "HanHei SC", "Helvetica Neue", "Open Sans", Arial, "Hiragino Sans GB", STHeiti, "WenQuanYi Micro Hei", SimSun, sans-serif, HYWenHei-GEW !important;
-$font-color: #33322E;
+$font: "DM Sans", "PingFang SC", "Lantinghei SC", "Microsoft YaHei", "HanHei SC",
+  "Helvetica Neue", "Open Sans", Arial, "Hiragino Sans GB", STHeiti,
+  "WenQuanYi Micro Hei", SimSun, sans-serif, HYWenHei-GEW !important;
+$font-color: #33322e;
 $font-size-base: 16px;
 $placeholder: rgba(51, 50, 46, 0.535);
 $font-color-complete: rgba(51, 50, 46, 0.535);
 $bg-normal: #fffbe7;
 $bg-submit: #ffd6e9;
-$bg-completed: #D0F4F0;
-$bg-discard: #FFF0EE;
+$bg-completed: #d0f4f0;
+$bg-discard: #fff0ee;
 $bg-deleted: #ddd;
 $bg-edit: #fbeef3;
 $normal: #f5d99e;
-$completed: #8CD4CB;
-$deleted: #F6A89E;
-$black: #33322E;
+$completed: #8cd4cb;
+$deleted: #f6a89e;
+$black: #33322e;
 
 :root {
   --body-bg: #{$body-bg};
@@ -57,7 +59,7 @@ $black: #33322E;
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  transition: all .35s;
+  transition: all 0.35s;
 }
 
 html {
@@ -106,7 +108,8 @@ input {
   }
 }
 
-select, textarea {
+select,
+textarea {
   &:focus {
     outline: 0;
   }
@@ -116,7 +119,8 @@ a {
   color: $font-color;
 }
 
-ul, li {
+ul,
+li {
   list-style-type: none;
   margin: 0;
   padding: 0;
@@ -146,7 +150,7 @@ h1 {
   &:disabled {
     background-color: #ddd;
     cursor: not-allowed;
-    opacity: .6;
+    opacity: 0.6;
   }
 }
 
@@ -187,12 +191,12 @@ h1 {
   z-index: -1;
   width: 100%;
   height: 100vh;
-  background-color: #FFF7DC;
+  background-color: #fff7dc;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='p' width='100' height='100' patternUnits='userSpaceOnUse' patternTransform='scale(0.25)'%3E%3Ccircle data-color='outline' fill='none' stroke='%23828D99' stroke-width='25' cx='50' cy='50' r='.5'%3E%3C/circle%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23p)' width='100%25' height='100%25'%3E%3C/rect%3E%3C/svg%3E");
   background-size: cover;
   background-position: center center;
   background-repeat: repeat;
-  opacity: .08;
+  opacity: 0.08;
 }
 
 // Todo wrapper and list
@@ -209,7 +213,7 @@ h1 {
   border-radius: $border-radius;
   margin: 0;
   padding-top: 0;
-  transition: all .5s ease;
+  transition: all 0.5s ease;
   max-width: 100%;
   width: 100%;
   overflow: hidden;
@@ -218,7 +222,7 @@ h1 {
 .todo-list {
   padding: 32px 36px 36px;
   min-height: 381px;
-  transition: all .5s ease;
+  transition: all 0.5s ease;
 
   li {
     position: relative;
@@ -226,7 +230,7 @@ h1 {
     border-radius: $border-radius;
     box-shadow: $box-shadow;
     width: 100%;
-    transition: all .5s ease;
+    transition: all 0.5s ease;
     display: block;
     margin-bottom: 16px;
 
@@ -312,13 +316,13 @@ h1 {
 // Drag and drop animations
 .drag-enter-active {
   opacity: 0;
-  transition: all .5s ease;
+  transition: all 0.5s ease;
 }
 
 .drag-enter-to {
   opacity: 1;
   transform: translateY(0);
-  transition: all .5s;
+  transition: all 0.5s;
 }
 
 .drag-leave {
@@ -328,11 +332,11 @@ h1 {
 
 .drag-leave-active {
   position: absolute;
-  transition: all .35s ease;
+  transition: all 0.35s ease;
 }
 
 .drag-move {
-  transition: all .65s ease;
+  transition: all 0.65s ease;
 }
 
 // Bar message
@@ -376,7 +380,7 @@ h1 {
 .tips {
   margin-top: 8px;
   padding-left: 12px;
-  transition: all .2s;
+  transition: all 0.2s;
 }
 
 .empty-tips {
@@ -390,7 +394,7 @@ h1 {
   font-size: 16px;
   color: #606060;
   line-height: 1.6;
-  letter-spacing: .24px;
+  letter-spacing: 0.24px;
 
   li {
     margin: 2px 0 8px;
@@ -413,7 +417,7 @@ h1 {
   overflow-wrap: break-word;
   padding-left: 56px;
   padding-right: 56px;
-  transition: all .25s;
+  transition: all 0.25s;
   border: 0;
 }
 
@@ -434,7 +438,7 @@ h1 {
   border-bottom-left-radius: 0;
   cursor: pointer;
   background: $bg-submit;
-  transition: all .25s;
+  transition: all 0.25s;
   font-size: 18px;
 
   &:hover {
@@ -455,7 +459,8 @@ h1 {
   padding-right: 118px;
   box-shadow: $box-shadow;
 
-  &:focus, &:hover {
+  &:focus,
+  &:hover {
     box-shadow: none;
   }
 }
@@ -483,7 +488,7 @@ h1 {
   display: block;
   cursor: pointer;
   border: $border;
-  transition: all .2s;
+  transition: all 0.2s;
 
   &:hover {
     box-shadow: $box-shadow;
@@ -655,7 +660,7 @@ h1 {
     align-items: center;
     justify-items: flex-start;
     cursor: pointer;
-    transition: all .3s;
+    transition: all 0.3s;
 
     &:hover {
       font-weight: 700 !important;
@@ -683,7 +688,7 @@ h1 {
   top: 36px;
   right: 24px;
   z-index: 999;
-  transition: .25s;
+  transition: 0.25s;
   border-radius: 8px;
   box-shadow: $box-shadow;
   border: 2px solid $black;
@@ -726,7 +731,7 @@ h1 {
     margin: -8px auto 8px;
 
     span {
-      opacity: .75;
+      opacity: 0.75;
     }
   }
 
@@ -799,7 +804,7 @@ img.zanshan-qr {
 }
 
 .social-link {
-  opacity: .65;
+  opacity: 0.65;
   outline: 0;
 
   &:hover {
@@ -828,7 +833,7 @@ img.zanshan-qr {
   margin: 6px auto 0;
   width: 100%;
   font-size: 14px;
-  letter-spacing: .36px;
+  letter-spacing: 0.36px;
   color: #606060;
 
   &:focus {
@@ -858,7 +863,7 @@ img.zanshan-qr {
   border-radius: $border-radius;
   box-shadow: $box-shadow;
   text-align: center;
-  transition: all .3s;
+  transition: all 0.3s;
   overflow: hidden;
   z-index: 999;
   user-select: none;
@@ -930,7 +935,7 @@ span.shortcut-name {
   li {
     cursor: pointer;
     margin: 0 auto;
-    transition: all .25s;
+    transition: all 0.25s;
     width: 100%;
 
     &:first-child {
@@ -945,7 +950,7 @@ span.shortcut-name {
     }
 
     input {
-      transition: all .25s;
+      transition: all 0.25s;
       width: 100%;
       border-radius: 0;
       border: 0;
@@ -966,13 +971,13 @@ span.shortcut-name {
 
 // State classes
 .completed {
-  background: $bg-completed!important;
+  background: $bg-completed !important;
   color: $font-color-complete;
   text-decoration: line-through;
 }
 
 .deleted {
-  background: $bg-deleted!important;
+  background: $bg-deleted !important;
 }
 
 .empty {
@@ -989,19 +994,22 @@ span.shortcut-name {
 
 // Action states
 .action-showAll {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: $bg-submit;
   }
 }
 
 .action-progress {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: $normal;
   }
 }
 
 .action-completed {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: $completed;
   }
 }
@@ -1011,7 +1019,8 @@ span.shortcut-name {
 }
 
 .action-deleted {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: $deleted;
   }
 }
@@ -1022,13 +1031,15 @@ span.shortcut-name {
 }
 
 .action-download {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: #f8d966;
   }
 }
 
 .action-import {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: #f8d966;
   }
 }
@@ -1084,9 +1095,12 @@ span.shortcut-name {
     left: -65%;
     bottom: 0;
     transform-origin: 50% 0;
-    transform: translateX(-50%) scaleY(-1) scaleZ(2) rotateY(-30deg) rotateX(-75deg) translateZ(300px);
+    transform: translateX(-50%) scaleY(-1) scaleZ(2) rotateY(-30deg)
+      rotateX(-75deg) translateZ(300px);
 
-    .bar, .string, .weight {
+    .bar,
+    .string,
+    .weight {
       background: #3d3a34;
     }
   }
@@ -1100,7 +1114,7 @@ span.shortcut-name {
     width: 26px;
     height: 30px;
     background: #d0f4f0;
-    border: 3px solid #33322E;
+    border: 3px solid #33322e;
     border-radius: 15px;
     border-top-left-radius: 2px;
     border-top-right-radius: 2px;
@@ -1124,7 +1138,7 @@ span.shortcut-name {
     height: 26px;
     border-radius: 50%;
     background: #f8d966;
-    border: 3px solid #33322E;
+    border: 3px solid #33322e;
   }
 
   .motion {
@@ -1138,23 +1152,29 @@ span.shortcut-name {
 
 // Keyframe animations
 @keyframes swing {
-  0% { transform: rotate(-45deg); }
-  50% { transform: rotate(45deg); }
-  100% { transform: rotate(-45deg); }
+  0% {
+    transform: rotate(-45deg);
+  }
+  50% {
+    transform: rotate(45deg);
+  }
+  100% {
+    transform: rotate(-45deg);
+  }
 }
 
 .animated {
-  animation-duration: .5s;
+  animation-duration: 0.5s;
   animation-fill-mode: both;
   animation-timing-function: ease-in-out;
 }
 
 .tips-enter-active {
-  transition: all .75s ease;
+  transition: all 0.75s ease;
 }
 
 .tips-leave-active {
-  transition: all .35s cubic-bezier(1.0, 0.5, 0.8, 1.0);
+  transition: all 0.35s cubic-bezier(1, 0.5, 0.8, 1);
 }
 
 .tips-enter,
@@ -1189,10 +1209,14 @@ span.shortcut-name {
 }
 
 @keyframes zooming {
-  0%, 20%, 80%, 100% {
+  0%,
+  20%,
+  80%,
+  100% {
     transform: scale(1) rotateZ(45deg);
   }
-  30%, 70% {
+  30%,
+  70% {
     transform: scale(1) rotateZ(135deg);
   }
 }
@@ -1210,45 +1234,45 @@ span.shortcut-name {
     opacity: 1;
   }
   40% {
-    animation-timing-function: cubic-bezier(.47, 0, .745, .715);
+    animation-timing-function: cubic-bezier(0.47, 0, 0.745, 0.715);
     transform: scale3d(1.08, 1.08, 1.08);
   }
   60% {
-    animation-timing-function: cubic-bezier(.42, 0, .58, 1);
+    animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1);
     transform: scale3d(1, 1, 1);
   }
   80% {
-    animation-timing-function: cubic-bezier(.42, 0, .58, 1);
+    animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1);
     transform: scale3d(1.03, 1.03, 1.03);
   }
   100% {
-    animation-timing-function: cubic-bezier(.25, .46, .45, .94);
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     transform: scale3d(1, 1, 1);
   }
 }
 
 .popOut {
   animation-name: popOut;
-  animation-duration: .5s;
+  animation-duration: 0.5s;
 }
 
 @keyframes popOut {
   0% {
-    animation-timing-function: cubic-bezier(.25, .46, .45, .94);
+    animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     transform: scale3d(1, 1, 1);
   }
   60% {
-    animation-timing-function: cubic-bezier(.42, 0, .58, 1);
+    animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1);
     transform: scale3d(1.08, 1.08, 1.08);
   }
   80% {
     opacity: 1;
-    animation-timing-function: cubic-bezier(.42, 0, .58, 1);
+    animation-timing-function: cubic-bezier(0.42, 0, 0.58, 1);
   }
   100% {
     opacity: 0;
-    animation-timing-function: cubic-bezier(.47, 0, .745, .715);
-    transform: scale3d(.3, .3, .3);
+    animation-timing-function: cubic-bezier(0.47, 0, 0.745, 0.715);
+    transform: scale3d(0.3, 0.3, 0.3);
   }
 }
 
@@ -1259,7 +1283,7 @@ span.shortcut-name {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(51, 50, 46, .5);
+  background: rgba(51, 50, 46, 0.5);
   z-index: 9999;
   display: flex;
   justify-content: center;
@@ -1276,7 +1300,7 @@ span.shortcut-name {
   padding: 24px;
   position: relative;
   font-family: $font;
-  animation: popIn .4s cubic-bezier(.25, .46, .45, .94) both;
+  animation: popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 
 .custom-alert-title {
@@ -1305,7 +1329,7 @@ span.shortcut-name {
   background: $bg-submit;
   cursor: pointer;
   font-weight: 600;
-  transition: all .35s;
+  transition: all 0.35s;
 
   &:hover {
     box-shadow: $box-shadow;
@@ -1412,7 +1436,7 @@ span.shortcut-name {
     // 减少重绘
     will-change: background-color;
     transition: background-color 0.2s ease;
-    
+
     &:hover {
       background-color: color.scale($bg-submit, $lightness: -5%);
     }
@@ -1499,7 +1523,7 @@ span.shortcut-name {
   // 优化按钮交互
   will-change: transform;
   transition: transform 0.1s ease;
-  
+
   &:hover {
     transform: scale(1.1);
   }
@@ -1513,16 +1537,16 @@ span.shortcut-name {
   font-size: 12px;
   // 优化滚动性能
   contain: layout style;
-  
+
   // 当待办事项过多时显示滚动
   &.has-many-todos {
     overflow-y: auto;
     scrollbar-width: thin;
-    
+
     &::-webkit-scrollbar {
       width: 4px;
     }
-    
+
     &::-webkit-scrollbar-thumb {
       background: $completed;
       border-radius: 2px;
@@ -1613,12 +1637,12 @@ span.shortcut-name {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(51, 50, 46, .5);
+  background: rgba(51, 50, 46, 0.5);
   z-index: 9999;
   display: flex;
   justify-content: center;
   align-items: center;
-  transition: opacity .3s ease;
+  transition: opacity 0.3s ease;
 }
 
 .modal-content {
@@ -1630,7 +1654,7 @@ span.shortcut-name {
   max-width: 500px;
   position: relative;
   font-family: $font;
-  animation: popIn .4s cubic-bezier(.25, .46, .45, .94) both;
+  animation: popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
   display: flex;
   flex-direction: column;
   max-height: 90vh;
@@ -1674,8 +1698,8 @@ span.shortcut-name {
     font-size: 14px;
   }
 
-  input[type=text],
-  input[type=date],
+  input[type="text"],
+  input[type="date"],
   textarea,
   select {
     width: 100%;
@@ -1736,7 +1760,7 @@ span.shortcut-name {
     border-radius: $border-radius;
     cursor: pointer;
     font-weight: 600;
-    transition: all .35s;
+    transition: all 0.35s;
 
     &:hover {
       box-shadow: $box-shadow;
@@ -1762,9 +1786,14 @@ span.shortcut-name {
   cursor: text;
   line-height: 1.6;
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     margin-top: 1.2em;
-    margin-bottom: .8em;
+    margin-bottom: 0.8em;
     font-weight: 600;
   }
 
@@ -1772,13 +1801,14 @@ span.shortcut-name {
     margin-bottom: 1em;
   }
 
-  ul, ol {
+  ul,
+  ol {
     padding-left: 2em;
     margin-bottom: 1em;
   }
 
   li {
-    margin-bottom: .4em;
+    margin-bottom: 0.4em;
   }
 
   blockquote {
@@ -1815,7 +1845,7 @@ span.shortcut-name {
   font-weight: 700;
   margin-right: 6px;
 }
-.todo-title{
+.todo-title {
   display: inline-block;
 }
 
@@ -1903,7 +1933,7 @@ span.shortcut-name {
     }
 
     &.list-hidden {
-      opacity: .6;
+      opacity: 0.6;
 
       span {
         color: #666;
@@ -1916,7 +1946,7 @@ span.shortcut-name {
       background: $bg-completed;
     }
 
-    input[type=text] {
+    input[type="text"] {
       flex-grow: 1;
       margin-right: 10px;
     }
@@ -1941,8 +1971,7 @@ span.shortcut-name {
 .todo-item {
   opacity: 0;
   transform: translateY(20px);
-  transition:
-    opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 
   &.fade-in {
@@ -1973,8 +2002,7 @@ span.shortcut-name {
 .todo-fade-enter-active {
   opacity: 1;
   transform: translateY(0);
-  transition:
-    opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1986,8 +2014,7 @@ span.shortcut-name {
 .todo-fade-exit-active {
   opacity: 0;
   transform: translateY(20px);
-  transition:
-    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -2035,16 +2062,12 @@ span.shortcut-name {
   font-weight: 500;
 }
 
-
-
 .recurring-badge {
   display: inline-block;
   margin-right: 0.25rem;
   font-size: 0.875rem;
   cursor: help;
 }
-
-
 
 .next-due-date {
   font-size: 0.75rem;
@@ -2159,7 +2182,7 @@ span.shortcut-name {
     background: $completed;
     color: $font-color;
     box-shadow: none;
-    transform:none;
+    transform: none;
   }
 }
 
@@ -2257,7 +2280,7 @@ span.shortcut-name {
 // Custom recurrence modal styles - optimized version
 .custom-recurrence-modal {
   max-width: 500px;
-  
+
   .modal-body {
     padding: 24px;
     display: flex;
@@ -2271,7 +2294,7 @@ span.shortcut-name {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  
+
   .basic-row {
     .base-type-select {
       width: 100%;
@@ -2284,18 +2307,18 @@ span.shortcut-name {
       color: var(--placeholder);
     }
   }
-  
+
   .frequency-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    
+
     .frequency-prefix {
       font-size: 16px;
       color: var(--font-color);
       font-weight: 500;
     }
-    
+
     .interval-input {
       width: 80px;
       padding: 12px;
@@ -2306,10 +2329,10 @@ span.shortcut-name {
       background-color: #fff;
       font-weight: 600;
     }
-    .error{
-      border-color:#ff4d4f;
+    .error {
+      border-color: #ff4d4f;
     }
-    
+
     .frequency-select {
       flex: 1;
       padding: 12px;
@@ -2330,13 +2353,13 @@ span.shortcut-name {
     margin-bottom: 12px;
     font-weight: 600;
   }
-  
+
   // 周选择
   .weekdays-grid {
     display: flex;
     gap: 8px;
     justify-content: space-between;
-    
+
     .weekday-btn {
       width: 44px;
       height: 44px;
@@ -2365,15 +2388,15 @@ span.shortcut-name {
       }
     }
   }
-  
+
   // 月选择标签
   .monthly-tabs {
     display: flex;
     border-radius: var(--border-radius);
     padding: 4px;
     margin-bottom: 20px;
-    border:var(--border);
-    
+    border: var(--border);
+
     .tab-btn {
       flex: 1;
       padding: 10px 16px;
@@ -2392,7 +2415,7 @@ span.shortcut-name {
       }
     }
   }
-  
+
   .monthly-content {
     min-height: 200px;
   }
@@ -2414,16 +2437,16 @@ span.shortcut-name {
         border-radius: var(--border-radius);
         background: #fff;
         cursor: pointer;
-        justify-self:center;
+        justify-self: center;
         font-size: 12px;
         transition: all 0.2s;
-        font-weight:600;
-      
+        font-weight: 600;
+
         &:hover {
           box-shadow: var(--box-shadow);
           transform: translate(-2px, -2px);
         }
-      
+
         &.selected {
           background: $completed;
           color: $font-color;
@@ -2431,7 +2454,7 @@ span.shortcut-name {
           transform: none;
           box-shadow: none;
         }
-      
+
         &.special {
           grid-column: span 2;
           font-size: 12px;
@@ -2449,7 +2472,7 @@ span.shortcut-name {
     display: flex;
     gap: 12px;
     align-items: center;
-    
+
     select {
       flex: 1;
       padding: 12px;
@@ -2459,7 +2482,7 @@ span.shortcut-name {
       font-family: var(--font);
       font-size: 16px;
     }
-    
+
     .date-input {
       width: 80px;
       padding: 12px;
@@ -2469,7 +2492,7 @@ span.shortcut-name {
       font-size: 16px;
       background-color: #fff;
     }
-    
+
     span {
       font-size: 16px;
       color: var(--font-color);
@@ -2484,7 +2507,7 @@ span.shortcut-name {
   gap: 12px;
   padding-top: 16px;
   border-top: 1px solid #e1e5e9;
-  
+
   .skip-option {
     display: flex;
     align-items: center;
@@ -2492,14 +2515,14 @@ span.shortcut-name {
     cursor: pointer;
     font-size: 16px;
     color: var(--font-color);
-    
+
     input[type="checkbox"] {
       width: 18px;
       height: 18px;
       accent-color: $completed;
       cursor: pointer;
     }
-    
+
     span {
       user-select: none;
     }
@@ -2610,7 +2633,7 @@ span.shortcut-name {
     background: white;
     border-color: #a28352;
     outline: 0;
-    
+
     &::placeholder {
       color: rgba(51, 50, 46, 0.3);
     }
@@ -2623,7 +2646,7 @@ span.shortcut-name {
   min-height: 200px;
   max-height: 400px;
   transition: all 0.3s ease;
-  
+
   &::-webkit-scrollbar {
     width: 6px;
   }
@@ -2668,7 +2691,8 @@ span.shortcut-name {
 }
 
 @keyframes loadingPulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -2686,8 +2710,12 @@ span.shortcut-name {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .search-no-results {
@@ -2782,7 +2810,7 @@ span.shortcut-name {
   .search-modal-content {
     max-width: 700px;
   }
-  
+
   .search-results-container {
     max-height: 500px;
   }
@@ -2857,7 +2885,7 @@ span.shortcut-name {
 .search-todo-list {
   padding: 20px 36px 36px;
   min-height: 200px;
-  transition: all .5s ease;
+  transition: all 0.5s ease;
 }
 
 // Placeholder styles for search results (will be replaced in task 5)
@@ -2904,8 +2932,12 @@ span.shortcut-name {
 
 // Improved loading spinner animation
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-spinner {
@@ -2962,7 +2994,7 @@ span.shortcut-name {
   border-radius: $border-radius;
   box-shadow: $box-shadow;
   width: 100%;
-  transition: all .5s ease;
+  transition: all 0.5s ease;
   display: block;
   margin-bottom: 16px;
   animation: searchItemFadeIn 0.3s ease-out forwards;
@@ -3016,7 +3048,7 @@ span.shortcut-name {
   display: block;
   cursor: pointer;
   border: $border;
-  transition: all .2s;
+  transition: all 0.2s;
 
   &:hover {
     box-shadow: $box-shadow;
@@ -3092,7 +3124,7 @@ span.shortcut-name {
 
 .search-todo-title {
   color: $font-color;
-  
+
   &.completed {
     text-decoration: line-through;
     color: $font-color-complete;
@@ -3226,7 +3258,8 @@ span.shortcut-name {
 }
 // Search button styling for QuickActions
 .action-search {
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: #e0f2fe;
   }
 }
@@ -3234,8 +3267,378 @@ span.shortcut-name {
 // 升级按钮样式
 .action-upgrade {
   display: none;
-  &:hover, &.selected {
+  &:hover,
+  &.selected {
     background: #ffd6e9;
     color: #d63384;
   }
+}
+//
+Goals Mode Styles .goals-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--bg-normal);
+  border-radius: var(--border-radius);
+  border: var(--border);
+  box-shadow: var(--box-shadow);
+}
+
+.goals-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.placeholder-content {
+  text-align: center;
+  padding: 3rem;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: var(--border-radius);
+  border: var(--border);
+  box-shadow: var(--box-shadow);
+}
+
+.placeholder-content h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--font-color);
+}
+
+.placeholder-content p {
+  color: var(--placeholder);
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+// Mode Switcher Animation
+@keyframes modeTransition {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.mode-transition {
+  animation: modeTransition 0.3s ease-in-out;
+}
+
+// Goals Action Buttons Enhancement
+.goals-action-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.goals-action-btn::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.3s, height 0.3s;
+}
+
+.goals-action-btn:active::after {
+  width: 300px;
+  height: 300px;
+}
+
+// Responsive Design for Goals Mode
+@media (max-width: 768px) {
+  .goals-container {
+    padding: 1rem;
+  }
+
+  .placeholder-content {
+    padding: 2rem 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .goals-container {
+    padding: 0.5rem;
+  }
+
+  .placeholder-content {
+    padding: 1.5rem 0.75rem;
+  }
+
+  .placeholder-content h3 {
+    font-size: 1.25rem;
+  }
+}
+
+// Unified Search Modal Styles
+.search-type-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 0;
+}
+
+.search-type-tab {
+  flex: 1;
+  padding: 12px 16px;
+  background: transparent;
+  border: none;
+  color: $placeholder;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 2px solid transparent;
+
+  &:hover {
+    color: $font-color;
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  &.active {
+    color: $font-color;
+    border-bottom-color: $completed;
+    background: rgba(140, 212, 203, 0.1);
+  }
+}
+
+.search-section {
+  margin-bottom: 24px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.search-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: $font-color;
+  margin-bottom: 12px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  &::before {
+    content: "";
+    width: 3px;
+    height: 16px;
+    background: $completed;
+    border-radius: 2px;
+  }
+}
+
+// Goal Search Item Styles
+.search-goal-list {
+  padding: 0 20px;
+}
+
+.search-goal-item {
+  position: relative;
+  border: $border;
+  border-radius: $border-radius;
+  box-shadow: $box-shadow;
+  width: 100%;
+  transition: all 0.3s ease;
+  display: block;
+  margin-bottom: 12px;
+  animation: searchItemFadeIn 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(10px);
+  cursor: pointer;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &:hover {
+    box-shadow: none;
+    transform: translateY(-1px);
+  }
+
+  &.archived {
+    opacity: 0.6;
+    background-color: #f3f4f6;
+  }
+}
+
+.search-goal-content {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-radius: $border-radius;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  min-height: 60px;
+}
+
+.search-goal-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.search-goal-list-name {
+  color: #92400e;
+  font-weight: 700;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.search-goal-title {
+  color: $font-color;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+}
+
+.search-goal-priority {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.search-goal-due-date {
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.search-goal-archived {
+  color: #6b7280;
+  font-size: 11px;
+  background: rgba(107, 114, 128, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.search-goal-description {
+  padding: 0 20px 16px;
+  color: $placeholder;
+  font-size: 13px;
+  line-height: 1.4;
+  max-height: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  background: rgba(255, 255, 255, 0.5);
+  margin: -8px 2px 2px;
+  border-radius: 0 0 $border-radius $border-radius;
+}
+
+// Enhanced search results header for unified search
+.search-results-count {
+  font-weight: 600;
+  color: $font-color;
+  font-size: 14px;
+}
+
+// Responsive design for unified search
+@media (max-width: 768px) {
+  .search-type-tabs {
+    margin-bottom: 0;
+  }
+
+  .search-type-tab {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .search-section-title {
+    font-size: 13px;
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+
+  .search-goal-list {
+    padding: 0 16px;
+  }
+
+  .search-goal-content {
+    padding: 12px 16px;
+    gap: 8px;
+    min-height: 50px;
+  }
+
+  .search-goal-icon {
+    font-size: 18px;
+  }
+
+  .search-goal-title {
+    font-size: 14px;
+  }
+
+  .search-goal-description {
+    padding: 0 16px 12px;
+    font-size: 12px;
+  }
+
+  .search-goal-list-name,
+  .search-goal-due-date,
+  .search-goal-archived {
+    font-size: 11px;
+    padding: 1px 4px;
+  }
+
+  .search-goal-priority {
+    font-size: 10px;
+  }
+}
+
+// Animation improvements for unified search
+@keyframes goalItemFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(15px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.search-goal-item {
+  animation: goalItemFadeIn 0.4s ease-out forwards;
+}
+
+// Enhanced highlight styles for goals
+.search-goal-title .search-highlight,
+.search-goal-description .search-highlight {
+  background-color: rgba(251, 191, 36, 0.3);
+  color: #92400e;
+  font-weight: 700;
+  padding: 1px 3px;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(251, 191, 36, 0.2);
 }

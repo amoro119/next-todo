@@ -8,7 +8,8 @@ import debounce from 'lodash.debounce'
 import { parseDidaCsv } from '../lib/csvParser'
 import { TodoList } from '../components/TodoList'
 import { ViewSwitcher } from '../components/ViewSwitcher'
-import QuickActions from '../components/QuickActions'
+import ModeSwitcher from '../components/ModeSwitcher'
+import GoalsMainInterface from '../components/goals/GoalsMainInterface'
 import TodoModal from '../components/TodoModal'
 import ManageListsModal from '../components/ManageListsModal'
 import TaskSearchModal from '../components/TaskSearchModal'
@@ -36,7 +37,7 @@ interface DatabaseAPI {
   query: <T = any>(sql: string, params?: any[]) => Promise<{ rows: T[] }>
   insert: (table: 'todos' | 'lists', data: Record<string, any>) => Promise<any>
   update: (table: 'todos' | 'lists', id: string, data: Record<string, any>) => Promise<any>
-  delete: (table: 'todos' | 'lists', id: string) => Promise<any>
+  delete: (table: 'todos' | 'lists', id: string) => Promise<unknown>
   transaction: (queries: { sql: string; params?: unknown[] }[]) => Promise<void>
   rawWrite: (sql: string, params?: unknown[]) => Promise<unknown>
 }
@@ -237,6 +238,9 @@ const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
   recurring_parent_id: raw.recurring_parent_id ? String(raw.recurring_parent_id) : null,
   instance_number: raw.instance_number ? Number(raw.instance_number) : null,
   next_due_date: formatDbDate(raw.next_due_date),
+  // 目标关联字段
+  goal_id: raw.goal_id ? String(raw.goal_id) : null,
+  sort_order_in_goal: raw.sort_order_in_goal ? Number(raw.sort_order_in_goal) : null,
 });
 
 const normalizeList = (raw: Record<string, unknown>): List => ({
@@ -263,7 +267,22 @@ export default function TodoListPage() {
     RecurringTaskIntegration.initialize(db);
   }, [db]);
   
-  const [currentView, setCurrentView] = useState<string>('today')
+  // 模式状态管理
+  const [currentMode, setCurrentMode] = useState<'todo' | 'goals'>(() => {
+    if (typeof window !== 'undefined') {
+      const savedMode = localStorage.getItem('app_mode') as 'todo' | 'goals';
+      return savedMode || 'todo';
+    }
+    return 'todo';
+  });
+  
+  const [currentView, setCurrentView] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const savedMode = localStorage.getItem('app_mode') as 'todo' | 'goals';
+      return savedMode === 'goals' ? 'goals-main' : 'today';
+    }
+    return 'today';
+  })
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
   const [isManageListsOpen, setIsManageListsOpen] = useState(false)
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false)
@@ -349,6 +368,17 @@ export default function TodoListPage() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // 模式切换事件监听器
+  useEffect(() => {
+    const handleModeChange = (event: CustomEvent) => {
+      const { mode } = event.detail;
+      setCurrentMode(mode);
+    };
+
+    window.addEventListener('modeChanged', handleModeChange as EventListener);
+    return () => window.removeEventListener('modeChanged', handleModeChange as EventListener);
   }, []);
   // --- FIX: Use todosWithListNames for all subsequent calculations ---
   const uncompletedTodos = useMemo(() => 
@@ -682,6 +712,17 @@ export default function TodoListPage() {
       setIsCalendarCreateModalOpen(true);
   }, []);
 
+  // 目标相关处理函数
+  const handleCreateGoal = useCallback(() => {
+    // TODO: 实现目标创建模态框
+    console.log('创建目标');
+    alert('目标创建功能将在后续任务中实现');
+  }, []);
+
+  const handleViewGoalsList = useCallback(() => {
+    setCurrentView('goals-list');
+  }, []);
+
   const handleUndo = useCallback(async () => {
     if (!lastAction) { alert("没有可撤销的操作"); return; }
     try {
@@ -944,54 +985,85 @@ export default function TodoListPage() {
               todosByList={todosByList}
             />
 
-            {currentView !== 'calendar' ? (
-              <div className="todo-list-box">
-                <div className="bar-message">
-                  {currentView !== 'recycle' && displayTodos.some((t: Todo) => !t.completed_time) && (
-                    <button className="btn-small completed-all btn-allFinish" onClick={handleMarkAllCompleted}>全部标为完成</button>
-                  )}
-                  {isEditingSlogan ? (
-                    <input 
-                      type="text"
-                      className="slogan-input"
-                      value={slogan}
-                      onChange={(e) => setSlogan(e.target.value)}
-                      onKeyDown={handleSloganKeyDown}
-                      onBlur={handleUpdateSlogan}
-                    />
-                  ) : (
-                    <div className="bar-message-text" onDoubleClick={handleEditSlogan}>{slogan}</div>
-                  )}
-                </div>
-
-                <TodoList
-                  todos={displayTodos}
-                  currentView={currentView}
-                  onToggleComplete={handleToggleComplete}
-                  onDelete={handleDeleteTodo}
-                  onRestore={handleRestoreTodo}
-                  onSelectTodo={setSelectedTodo}
-                />
-
-                <div className="bar-message bar-bottom">
-                  <div className="bar-message-text">
-                    {currentView !== 'recycle' ? <span>{displayTodos.filter((t: Todo) => !t.completed_time).length} 项未完成</span> : <span>共 {recycledTodos.length} 项</span>}
+            {currentMode === 'goals' ? (
+              // 目标模式界面
+              <div className="goals-container">
+                {currentView === 'goals-main' ? (
+                  <GoalsMainInterface
+                    onCreateGoal={handleCreateGoal}
+                    onViewGoalsList={handleViewGoalsList}
+                  />
+                ) : currentView === 'goals-list' ? (
+                  <div className="goals-placeholder">
+                    <div className="placeholder-content">
+                      <h3>目标列表</h3>
+                      <p>目标列表功能将在后续任务中实现</p>
+                      <button 
+                        className="btn-small"
+                        onClick={() => setCurrentView('goals-main')}
+                      >
+                        返回主界面
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <GoalsMainInterface
+                    onCreateGoal={handleCreateGoal}
+                    onViewGoalsList={handleViewGoalsList}
+                  />
+                )}
               </div>
             ) : (
-              <CalendarView
-                todos={todosWithListNames}
-                onAddTodo={handleAddTodoFromCalendar}
-                onUpdateTodo={handleUpdateTodo}
-                onOpenModal={setSelectedTodo}
-                currentDate={currentDate}
-                onDateChange={setCurrentDate}
-                onOpenCreateModal={handleOpenCalendarCreateModal}
-              />
+              // 待办模式界面
+              currentView !== 'calendar' ? (
+                <div className="todo-list-box">
+                  <div className="bar-message">
+                    {currentView !== 'recycle' && displayTodos.some((t: Todo) => !t.completed_time) && (
+                      <button className="btn-small completed-all btn-allFinish" onClick={handleMarkAllCompleted}>全部标为完成</button>
+                    )}
+                    {isEditingSlogan ? (
+                      <input 
+                        type="text"
+                        className="slogan-input"
+                        value={slogan}
+                        onChange={(e) => setSlogan(e.target.value)}
+                        onKeyDown={handleSloganKeyDown}
+                        onBlur={handleUpdateSlogan}
+                      />
+                    ) : (
+                      <div className="bar-message-text" onDoubleClick={handleEditSlogan}>{slogan}</div>
+                    )}
+                  </div>
+
+                  <TodoList
+                    todos={displayTodos}
+                    currentView={currentView}
+                    onToggleComplete={handleToggleComplete}
+                    onDelete={handleDeleteTodo}
+                    onRestore={handleRestoreTodo}
+                    onSelectTodo={setSelectedTodo}
+                  />
+
+                  <div className="bar-message bar-bottom">
+                    <div className="bar-message-text">
+                      {currentView !== 'recycle' ? <span>{displayTodos.filter((t: Todo) => !t.completed_time).length} 项未完成</span> : <span>共 {recycledTodos.length} 项</span>}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <CalendarView
+                  todos={todosWithListNames}
+                  onAddTodo={handleAddTodoFromCalendar}
+                  onUpdateTodo={handleUpdateTodo}
+                  onOpenModal={setSelectedTodo}
+                  currentDate={currentDate}
+                  onDateChange={setCurrentDate}
+                  onOpenCreateModal={handleOpenCalendarCreateModal}
+                />
+              )
             )}
 
-            <QuickActions
+            <ModeSwitcher
               currentView={currentView}
               setCurrentView={setCurrentView}
               onUndo={handleUndo}

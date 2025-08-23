@@ -97,6 +97,8 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
       return this.sanitizeTodoData(data, op)
     } else if (table === 'lists') {
       return this.sanitizeListData(data, op)
+    } else if (table === 'goals') {
+      return this.sanitizeGoalData(data, op)
     }
     
     return data
@@ -127,20 +129,25 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
       sanitized.recurring_parent_id = data.recurring_parent_id || null
       sanitized.instance_number = data.instance_number !== undefined ? Number(data.instance_number) : null
       sanitized.next_due_date = data.next_due_date || null
+      // 目标关联字段
+      sanitized.goal_id = data.goal_id || null
+      sanitized.sort_order_in_goal = data.sort_order_in_goal !== undefined ? Number(data.sort_order_in_goal) : null
     } else if (operation === 'update') {
       // 更新操作只包含变更的字段
       const updatableFields = [
         'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 
         'tags', 'priority', 'completed_time', 'start_date', 'list_id',
         // 重复任务相关字段
-        'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date'
+        'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date',
+        // 目标关联字段
+        'goal_id', 'sort_order_in_goal'
       ]
       
       for (const field of updatableFields) {
         if (field in data && data[field] !== undefined) {
           if (field === 'completed' || field === 'deleted' || field === 'is_recurring') {
             sanitized[field] = Boolean(data[field])
-          } else if (field === 'sort_order' || field === 'priority' || field === 'instance_number') {
+          } else if (field === 'sort_order' || field === 'priority' || field === 'instance_number' || field === 'sort_order_in_goal') {
             sanitized[field] = Number(data[field]) || 0
           } else {
             sanitized[field] = data[field]
@@ -190,6 +197,45 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
     return sanitized
   }
 
+  private sanitizeGoalData(data: Record<string, unknown>, operation: string): Record<string, unknown> {
+    const sanitized: Record<string, unknown> = { id: data.id }
+    
+    if (operation === 'insert') {
+      // 插入操作需要所有必要字段
+      sanitized.name = data.name || ''
+      sanitized.description = data.description || null
+      sanitized.list_id = data.list_id || null
+      sanitized.start_date = data.start_date || null
+      sanitized.due_date = data.due_date || null
+      sanitized.priority = Number(data.priority) || 0
+      sanitized.created_time = data.created_time || new Date().toISOString()
+      sanitized.is_archived = Boolean(data.is_archived)
+    } else if (operation === 'update') {
+      // 更新操作只包含变更的字段
+      const updatableFields = [
+        'name', 'description', 'list_id', 'start_date', 'due_date', 
+        'priority', 'is_archived'
+      ]
+      
+      for (const field of updatableFields) {
+        if (field in data && data[field] !== undefined) {
+          if (field === 'is_archived') {
+            sanitized[field] = Boolean(data[field])
+          } else if (field === 'priority') {
+            sanitized[field] = Number(data[field]) || 0
+          } else {
+            sanitized[field] = data[field]
+          }
+        }
+      }
+    } else if (operation === 'delete') {
+      // 目标删除实际上是存档操作
+      sanitized.is_archived = true
+    }
+    
+    return sanitized
+  }
+
   setEnabled(enabled: boolean): void {
     this.enabled = enabled
     console.log(`ChangeInterceptor ${enabled ? 'enabled' : 'disabled'}`)
@@ -217,7 +263,7 @@ export class DatabaseWrapper {
   /**
    * 包装的插入操作（先本地写入，后拦截）
    */
-  async insert(table: 'todos' | 'lists', data: Record<string, unknown>): Promise<unknown> {
+  async insert(table: 'todos' | 'lists' | 'goals', data: Record<string, unknown>): Promise<unknown> {
     const id = String(data.id)
 
     // ✅ 1. 先执行本地数据库操作
@@ -245,7 +291,7 @@ export class DatabaseWrapper {
   /**
    * 包装的更新操作（先本地写入，后拦截）
    */
-  async update(table: 'todos' | 'lists', id: string, data: Record<string, unknown>): Promise<unknown> {
+  async update(table: 'todos' | 'lists' | 'goals', id: string, data: Record<string, unknown>): Promise<unknown> {
     const realId = String(id)
     const dataWithId = { ...data, id: realId }
 
@@ -274,7 +320,7 @@ export class DatabaseWrapper {
   /**
    * 包装的删除操作（先本地写入，后拦截）
    */
-  async delete(table: 'todos' | 'lists', id: string): Promise<unknown> {
+  async delete(table: 'todos' | 'lists' | 'goals', id: string): Promise<unknown> {
     const realId = String(id)
 
     // ✅ 1. 先执行本地数据库操作
@@ -316,7 +362,9 @@ export class DatabaseWrapper {
         'id', 'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content', 
         'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id',
         // 重复任务相关字段
-        'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date'
+        'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date',
+        // 目标关联字段
+        'goal_id', 'sort_order_in_goal'
       ]
       const values = columns.map(col => data[col] ?? null)
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
@@ -330,6 +378,17 @@ export class DatabaseWrapper {
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
       return this.db.query(
         `INSERT INTO lists (${columns.join(', ')}) VALUES (${placeholders})`,
+        values
+      )
+    } else if (table === 'goals') {
+      const columns = [
+        'id', 'name', 'description', 'list_id', 'start_date', 'due_date', 
+        'priority', 'created_time', 'is_archived'
+      ]
+      const values = columns.map(col => data[col] ?? null)
+      const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
+      return this.db.query(
+        `INSERT INTO goals (${columns.join(', ')}) VALUES (${placeholders})`,
         values
       )
     }
@@ -353,6 +412,11 @@ export class DatabaseWrapper {
   }
 
   private async executeDelete(table: string, id: string): Promise<unknown> {
-    return this.db.query(`DELETE FROM ${table} WHERE id = $1`, [id])
+    if (table === 'goals') {
+      // 目标删除实际上是存档操作
+      return this.db.query(`UPDATE goals SET is_archived = true WHERE id = $1`, [id])
+    } else {
+      return this.db.query(`DELETE FROM ${table} WHERE id = $1`, [id])
+    }
   }
 }

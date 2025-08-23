@@ -4,7 +4,7 @@
  */
 
 export interface DatabaseOperation {
-  table: 'todos' | 'lists'
+  table: 'todos' | 'lists' | 'goals'
   operation: 'insert' | 'update' | 'delete'
   data: Record<string, any>
   id: string
@@ -13,7 +13,7 @@ export interface DatabaseOperation {
 
 export interface ChangeRecord {
   id: string
-  table_name: 'todos' | 'lists'
+  table_name: 'todos' | 'lists' | 'goals'
   operation: 'insert' | 'update' | 'delete'
   record_id: string
   data: Record<string, any>
@@ -104,6 +104,9 @@ export interface TodoChange {
   recurring_parent_id?: string | null
   instance_number?: number | null
   next_due_date?: string | null
+  // 目标关联字段
+  goal_id?: string | null
+  sort_order_in_goal?: number | null
   modified_columns?: string[] | null
   new?: boolean | null
 }
@@ -116,7 +119,22 @@ export interface SyncHistoryEntry {
   error?: string
 }
 
+export interface GoalChange {
+  id: string
+  name?: string | null
+  description?: string | null
+  list_id?: string | null
+  start_date?: string | null
+  due_date?: string | null
+  priority?: number | null
+  created_time?: string | null
+  is_archived?: boolean | null
+  modified_columns?: string[] | null
+  new?: boolean | null
+}
+
 export interface ChangeSet {
   lists: ListChange[]
   todos: TodoChange[]
+  goals: GoalChange[]
 }

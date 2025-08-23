@@ -467,6 +467,23 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         "recurring_parent_id",
         "instance_number",
         "next_due_date",
+        // 目标关联字段
+        "goal_id",
+        "sort_order_in_goal",
+      ],
+    },
+    {
+      name: "goals",
+      columns: [
+        "id",
+        "name",
+        "description",
+        "list_id",
+        "start_date",
+        "due_date",
+        "priority",
+        "created_time",
+        "is_archived",
       ],
     },
   ];
@@ -756,6 +773,45 @@ async function processShapeChange(
 
       case "delete":
         await pg.query(`DELETE FROM todos WHERE id = $1`, [row.id ?? null]);
+        break;
+    }
+  } else if (shapeName === "goals") {
+    switch (operation) {
+      case "insert":
+        await pg.query(
+          `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT(id) DO UPDATE SET 
+           name = $2, description = $3, list_id = $4, start_date = $5, 
+           due_date = $6, priority = $7, created_time = $8, is_archived = $9`,
+          [
+            row.id ?? null,
+            row.name ?? null,
+            row.description ?? null,
+            row.list_id ?? null,
+            row.start_date ?? null,
+            row.due_date ?? null,
+            row.priority ?? 0,
+            row.created_time ?? null,
+            row.is_archived ?? false,
+          ]
+        );
+        break;
+
+      case "update":
+        const updateFields = Object.keys(row).filter((key) => key !== "id");
+        if (updateFields.length > 0) {
+          const setClause = updateFields
+            .map((key, idx) => `${key} = ${idx + 2}`)
+            .join(", ");
+          const values = [row.id, ...updateFields.map((key) => row[key])];
+          await pg.query(`UPDATE goals SET ${setClause} WHERE id = $1`, values);
+        }
+        break;
+
+      case "delete":
+        // 目标删除实际上是存档操作
+        await pg.query(`UPDATE goals SET is_archived = true WHERE id = $1`, [row.id ?? null]);
         break;
     }
   }
