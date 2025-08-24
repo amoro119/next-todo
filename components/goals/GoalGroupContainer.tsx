@@ -138,7 +138,7 @@ const GoalGroupContainer: React.FC<GoalGroupContainerProps> = ({
                   <div className="w-16 bg-gray-200 rounded-full h-2">
                     <div
                       className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(progress)}`}
-                      style={{ width: `${progress}%` }}
+                      style={{ ['--progress']: `${progress}%` } as unknown as React.CSSProperties}
                     />
                   </div>
                 </div>
@@ -261,9 +261,9 @@ const TodoItem: React.FC<TodoItemProps> = React.memo(({
         <div className={`font-medium ${todo.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
           {todo.title}
         </div>
-        {todo.notes && (
+        {todo.content && (
           <div className={`text-sm mt-1 ${todo.completed ? 'text-gray-400' : 'text-gray-600'}`}>
-            {todo.notes}
+            {todo.content}
           </div>
         )}
         <div className="flex items-center gap-2 mt-1">

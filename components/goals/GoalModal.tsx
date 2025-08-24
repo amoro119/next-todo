@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Goal, List, Todo } from '@/lib/types';
 
 interface GoalModalProps {
@@ -67,10 +67,18 @@ const GoalModal: React.FC<GoalModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [selectedExistingTodos, setSelectedExistingTodos] = useState<Set<string>>(new Set());
 
-  // 重置表单数据
+  // 重置表单数据（只在模态打开时初始化一次，防止依赖引用变化导致循环）
+  const openedRef = useRef(false);
   useEffect(() => {
-    if (isOpen) {
-      if (goal) {
+    if (!isOpen) {
+      openedRef.current = false;
+      return;
+    }
+
+    if (openedRef.current) return;
+    openedRef.current = true;
+
+    if (goal) {
         // 编辑模式：预填充数据
         const existingTodoIds = goalTodos ? goalTodos.map(todo => todo.id) : [];
         setFormData({
@@ -110,8 +118,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
       setNewTaskTitle('');
       setSearchQuery('');
       setSearchResults([]);
-    }
-  }, [isOpen, goal, goalTodos?.length]);
+  }, [isOpen, goal, goalTodos]);
 
   // 表单验证
   const validateStep1 = (): boolean => {
@@ -150,14 +157,6 @@ const GoalModal: React.FC<GoalModalProps> = ({
       }));
     }
   };
-
-  // 处理下一步
-  const handleNextStep = () => {
-    if (validateStep1()) {
-      setCurrentStep(2);
-    }
-  };
-
   // 处理上一步
   const handlePrevStep = () => {
     setCurrentStep(1);
@@ -265,20 +264,6 @@ const GoalModal: React.FC<GoalModalProps> = ({
   };
 
   // 验证第二步
-  const validateStep2 = (): boolean => {
-    const newErrors: FormErrors = {};
-    
-    // 检查是否至少有一个任务
-    const hasNewTasks = formData.associatedTodos.new.length > 0;
-    const hasExistingTasks = selectedExistingTodos.size > 0;
-    
-    if (!hasNewTasks && !hasExistingTasks) {
-      newErrors.general = '请至少添加一个任务';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
 
   // 处理完成创建/更新
   const handleComplete = () => {
@@ -293,11 +278,11 @@ const GoalModal: React.FC<GoalModalProps> = ({
   };
 
   // 处理关闭
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (!isSubmitting) {
       onClose();
     }
-  };
+  }, [isSubmitting, onClose]);
 
   // 处理键盘事件
   useEffect(() => {
@@ -311,81 +296,37 @@ const GoalModal: React.FC<GoalModalProps> = ({
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, isSubmitting]);
+  }, [isOpen, isSubmitting, handleClose]);
 
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    <div
+      className="modal-overlay"
       onClick={(e) => e.target === e.currentTarget && handleClose()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="goal-modal-title"
     >
-      <div 
-        className="w-full max-w-md mx-4 max-h-[90vh] overflow-hidden modal-content"
-        style={{
-          background: 'var(--bg-normal)',
-          borderRadius: 'var(--border-radius)',
-          boxShadow: 'var(--box-shadow)',
-          border: 'var(--border)',
-          transition: 'all 0.35s ease',
-          animation: 'popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both'
-        }}
-      >
+  <div className="w-full max-w-md mx-4 max-h-[90vh] overflow-hidden modal-content">
         {/* 头部 */}
-        <div 
-          className="flex items-center justify-between p-6"
-          style={{
-            borderBottom: 'var(--border)',
-            background: 'var(--bg-normal)'
-          }}
-        >
+  <div className="modal-header">
           <div>
             <h2 
               id="goal-modal-title" 
-              className="text-xl font-semibold"
-              style={{ color: 'var(--font-color)' }}
+              className="text-xl font-semibold modal-title"
             >
               {goal ? '编辑目标' : '创建新目标'}
             </h2>
-            <p 
-              className="text-sm mt-1"
-              style={{ color: 'var(--placeholder)' }}
-            >
+            <p className="text-sm mt-1 modal-subtitle">
               第 {currentStep} 步，共 2 步
             </p>
           </div>
           <button
             onClick={handleClose}
             disabled={isSubmitting}
-            className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
-            style={{
-              border: 'var(--border)',
-              background: 'var(--bg-normal)',
-              cursor: 'pointer',
-              color: 'var(--placeholder)',
-              padding: '0.25rem',
-              transition: 'all 0.35s ease',
-              borderRadius: 'var(--border-radius)',
-              boxShadow: 'var(--box-shadow)'
-            }}
+            className="text-gray-400 hover:text-gray-600 disabled:opacity-50 modal-btn ghost interactive-hover"
             aria-label="关闭"
-            onMouseOver={(e) => {
-              if (!isSubmitting) {
-                e.currentTarget.style.color = 'var(--font-color)';
-                e.currentTarget.style.background = 'var(--bg-edit)';
-                e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-                e.currentTarget.style.transform = 'translate(-2px, -2px)';
-              }
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.color = 'var(--placeholder)';
-              e.currentTarget.style.background = 'var(--bg-normal)';
-              e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-              e.currentTarget.style.transform = 'none';
-            }}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -394,36 +335,13 @@ const GoalModal: React.FC<GoalModalProps> = ({
         </div>
 
         {/* 进度指示器 */}
-        <div className="px-6 py-4" style={{ background: 'var(--bg-normal)' }}>
-          <div className="flex items-center">
-            <div 
-              className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                currentStep >= 1 ? 'text-white' : 'text-gray-600'
-              }`}
-              style={{
-                background: currentStep >= 1 ? 'var(--completed)' : 'var(--bg-deleted)',
-                border: 'var(--border)',
-                borderRadius: 'var(--border-radius)',
-                boxShadow: 'var(--box-shadow)'
-              }}
-            >
+        <div className="modal-step-indicator">
+            <div className="flex items-center">
+            <div className={`step-circle ${currentStep >=1 ? 'step-completed text-white' : 'step-pending text-gray-600'}`}>
               1
             </div>
-            <div 
-              className={`flex-1 h-1 mx-2`}
-              style={{ background: currentStep >= 2 ? 'var(--completed)' : 'var(--bg-deleted)' }}
-            />
-            <div 
-              className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                currentStep >= 2 ? 'text-white' : 'text-gray-600'
-              }`}
-              style={{
-                background: currentStep >= 2 ? 'var(--completed)' : 'var(--bg-deleted)',
-                border: 'var(--border)',
-                borderRadius: 'var(--border-radius)',
-                boxShadow: 'var(--box-shadow)'
-              }}
-            >
+            <div className={`flex-1 mx-2 step-line ${currentStep >= 2 ? 'step-completed' : 'step-pending'}`} />
+            <div className={`step-circle ${currentStep >=2 ? 'step-completed text-white' : 'step-pending text-gray-600'}`}>
               2
             </div>
           </div>
@@ -434,11 +352,11 @@ const GoalModal: React.FC<GoalModalProps> = ({
         </div>
 
         {/* 表单内容 */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="modal-body">
           {currentStep === 1 && (
             <div className="space-y-4">
               {/* 目标名称 */}
-              <div>
+              <div className="form-group">
                 <label htmlFor="goal-name" className="block text-sm font-medium text-gray-700 mb-1">
                   目标名称 <span className="text-red-500">*</span>
                 </label>
@@ -448,27 +366,17 @@ const GoalModal: React.FC<GoalModalProps> = ({
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   placeholder="输入目标名称"
-                  className="w-full px-3 py-2 rounded-md focus:outline-none"
-                  style={{
-                    border: errors.name ? '2px solid var(--deleted)' : 'var(--border)',
-                    borderRadius: 'var(--border-radius)',
-                    background: 'white',
-                    color: 'var(--font-color)',
-                    fontFamily: 'var(--font)',
-                    fontSize: '16px',
-                    boxShadow: 'var(--box-shadow)',
-                    transition: 'all 0.35s ease'
-                  }}
+                  className="modal-input"
                   maxLength={100}
                   autoFocus={currentStep === 1}
                 />
                 {errors.name && (
-                  <p className="text-red-500 text-sm mt-1">{errors.name}</p>
+                  <p className="text-red-500 text-sm mt-1 modal-error">{errors.name}</p>
                 )}
               </div>
 
               {/* 描述 */}
-              <div>
+              <div className="form-group">
                 <label htmlFor="goal-description" className="block text-sm font-medium text-gray-700 mb-1">
                   描述
                 </label>
@@ -478,23 +386,13 @@ const GoalModal: React.FC<GoalModalProps> = ({
                   onChange={(e) => handleInputChange('description', e.target.value)}
                   placeholder="输入目标描述（可选）"
                   rows={3}
-                  className="w-full px-3 py-2 rounded-md focus:outline-none"
-                  style={{
-                    border: 'var(--border)',
-                    borderRadius: 'var(--border-radius)',
-                    background: 'white',
-                    color: 'var(--font-color)',
-                    fontFamily: 'var(--font)',
-                    fontSize: '16px',
-                    boxShadow: 'var(--box-shadow)',
-                    transition: 'all 0.35s ease'
-                  }}
+                  className="modal-input"
                   maxLength={500}
                 />
               </div>
 
               {/* 关联列表 */}
-              <div>
+              <div className="form-group">
                 <label htmlFor="goal-list" className="block text-sm font-medium text-gray-700 mb-1">
                   关联列表
                 </label>
@@ -502,17 +400,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
                   id="goal-list"
                   value={formData.listId}
                   onChange={(e) => handleInputChange('listId', e.target.value)}
-                  className="w-full px-3 py-2 rounded-md focus:outline-none"
-                  style={{
-                    border: 'var(--border)',
-                    borderRadius: 'var(--border-radius)',
-                    background: 'white',
-                    color: 'var(--font-color)',
-                    fontFamily: 'var(--font)',
-                    fontSize: '16px',
-                    boxShadow: 'var(--box-shadow)',
-                    transition: 'all 0.35s ease'
-                  }}
+                  className="modal-input"
                 >
                   <option value="">选择列表（可选）</option>
                   {lists.map((list) => (
@@ -524,8 +412,8 @@ const GoalModal: React.FC<GoalModalProps> = ({
               </div>
 
               {/* 日期范围 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
+              <div className="form-group-row grid grid-cols-2 gap-4">
+                <div className="form-group">
                   <label htmlFor="goal-start-date" className="block text-sm font-medium text-gray-700 mb-1">
                     开始日期
                   </label>
@@ -534,20 +422,10 @@ const GoalModal: React.FC<GoalModalProps> = ({
                     type="date"
                     value={formData.startDate}
                     onChange={(e) => handleInputChange('startDate', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md focus:outline-none"
-                    style={{
-                      border: 'var(--border)',
-                      borderRadius: 'var(--border-radius)',
-                      background: 'white',
-                      color: 'var(--font-color)',
-                      fontFamily: 'var(--font)',
-                      fontSize: '16px',
-                      boxShadow: 'var(--box-shadow)',
-                      transition: 'all 0.35s ease'
-                    }}
+                    className="modal-input"
                   />
                 </div>
-                <div>
+                <div className="form-group">
                   <label htmlFor="goal-due-date" className="block text-sm font-medium text-gray-700 mb-1">
                     截止日期
                   </label>
@@ -556,26 +434,16 @@ const GoalModal: React.FC<GoalModalProps> = ({
                     type="date"
                     value={formData.dueDate}
                     onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md focus:outline-none"
-                    style={{
-                      border: errors.dueDate ? '2px solid var(--deleted)' : 'var(--border)',
-                      borderRadius: 'var(--border-radius)',
-                      background: 'white',
-                      color: 'var(--font-color)',
-                      fontFamily: 'var(--font)',
-                      fontSize: '16px',
-                      boxShadow: 'var(--box-shadow)',
-                      transition: 'all 0.35s ease'
-                    }}
+                    className={`modal-input ${errors.dueDate ? 'error' : ''}`}
                   />
                   {errors.dueDate && (
-                    <p className="text-sm mt-1" style={{ color: 'var(--deleted)' }}>{errors.dueDate}</p>
+                    <p className="text-sm mt-1 modal-error">{errors.dueDate}</p>
                   )}
                 </div>
               </div>
 
               {/* 优先级 */}
-              <div>
+              <div className="form-group">
                 <label htmlFor="goal-priority" className="block text-sm font-medium text-gray-700 mb-1">
                   优先级
                 </label>
@@ -583,17 +451,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
                   id="goal-priority"
                   value={formData.priority}
                   onChange={(e) => handleInputChange('priority', parseInt(e.target.value))}
-                  className="w-full px-3 py-2 rounded-md focus:outline-none"
-                  style={{
-                    border: 'var(--border)',
-                    borderRadius: 'var(--border-radius)',
-                    background: 'white',
-                    color: 'var(--font-color)',
-                    fontFamily: 'var(--font)',
-                    fontSize: '16px',
-                    boxShadow: 'var(--box-shadow)',
-                    transition: 'all 0.35s ease'
-                  }}
+                  className="modal-input"
                 >
                   <option value={0}>无</option>
                   <option value={1}>低</option>
@@ -614,7 +472,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
           {currentStep === 2 && (
             <div className="space-y-6">
               {/* 添加新任务 */}
-              <div>
+              <div className="form-group">
                 <h3 className="text-lg font-medium text-gray-900 mb-3">添加新任务</h3>
                 <div className="flex space-x-2">
                   <input
@@ -623,45 +481,12 @@ const GoalModal: React.FC<GoalModalProps> = ({
                     onChange={(e) => setNewTaskTitle(e.target.value)}
                     onKeyDown={handleNewTaskKeyDown}
                     placeholder="输入新任务标题"
-                    className="flex-1 px-3 py-2 rounded-md focus:outline-none"
-                    style={{
-                      border: 'var(--border)',
-                      borderRadius: 'var(--border-radius)',
-                      background: 'white',
-                      color: 'var(--font-color)',
-                      fontFamily: 'var(--font)',
-                      fontSize: '16px',
-                      boxShadow: 'var(--box-shadow)',
-                      transition: 'all 0.35s ease'
-                    }}
+                    className="modal-input"
                   />
                   <button
                     onClick={handleAddNewTask}
                     disabled={!newTaskTitle.trim()}
-                    className="px-4 py-2 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      background: 'var(--bg-submit)',
-                      color: 'var(--font-color)',
-                      border: 'var(--border)',
-                      borderRadius: 'var(--border-radius)',
-                      cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
-                      transition: 'all 0.35s ease',
-                      boxShadow: 'var(--box-shadow)'
-                    }}
-                    onMouseOver={(e) => {
-                      if (newTaskTitle.trim()) {
-                        e.currentTarget.style.background = 'var(--bg-edit)';
-                        e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-                        e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                      }
-                    }}
-                    onMouseOut={(e) => {
-                      if (newTaskTitle.trim()) {
-                        e.currentTarget.style.background = 'var(--bg-submit)';
-                        e.currentTarget.style.boxShadow = 'none';
-                        e.currentTarget.style.transform = 'none';
-                      }
-                    }}
+                    className="btn-small"
                   >
                     添加
                   </button>
@@ -692,23 +517,15 @@ const GoalModal: React.FC<GoalModalProps> = ({
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-3">关联现有任务</h3>
                 <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    placeholder="搜索现有任务..."
-                    className="w-full px-3 py-2 rounded-md focus:outline-none"
-                    style={{
-                      border: 'var(--border)',
-                      borderRadius: 'var(--border-radius)',
-                      background: 'white',
-                      color: 'var(--font-color)',
-                      fontFamily: 'var(--font)',
-                      fontSize: '16px',
-                      boxShadow: 'var(--box-shadow)',
-                      transition: 'all 0.35s ease'
-                    }}
-                  />
+                  <div className="form-group">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                      placeholder="搜索现有任务..."
+                      className="modal-input"
+                    />
+                  </div>
                   
                   {/* 搜索状态 */}
                   {isSearching && (
@@ -810,105 +627,31 @@ const GoalModal: React.FC<GoalModalProps> = ({
         </div>
 
         {/* 底部按钮 */}
-        <div 
-          className="flex justify-between items-center p-6"
-          style={{
-            borderTop: 'var(--border)',
-            background: 'var(--bg-normal)'
-          }}
-        >
-          <button
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="px-4 py-2 rounded-md disabled:opacity-50"
-            style={{
-              background: 'var(--bg-normal)',
-              color: 'var(--font-color)',
-              border: 'var(--border)',
-              borderRadius: 'var(--border-radius)',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-            onMouseOver={(e) => {
-              if (!isSubmitting) {
-                e.currentTarget.style.background = 'var(--bg-edit)';
-                e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-                e.currentTarget.style.transform = 'translate(-2px, -2px)';
-              }
-            }}
-            onMouseOut={(e) => {
-              if (!isSubmitting) {
-                e.currentTarget.style.background = 'var(--bg-normal)';
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.transform = 'none';
-              }
-            }}
-          >
+  <div className="modal-footer">
+            <button
+              onClick={handleClose}
+              disabled={isSubmitting}
+              className="modal-btn ghost interactive-hover"
+            >
             取消
           </button>
           
           <div className="flex space-x-3">
             {currentStep === 2 && (
-              <button
+                <button
                 onClick={handlePrevStep}
                 disabled={isSubmitting}
-                className="px-4 py-2 rounded-md disabled:opacity-50"
-                style={{
-                  background: 'var(--bg-normal)',
-                  color: 'var(--font-color)',
-                  border: 'var(--border)',
-                  borderRadius: 'var(--border-radius)',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.35s ease',
-                  boxShadow: 'var(--box-shadow)'
-                }}
-                onMouseOver={(e) => {
-                  if (!isSubmitting) {
-                    e.currentTarget.style.background = 'var(--bg-edit)';
-                    e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-                    e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!isSubmitting) {
-                    e.currentTarget.style.background = 'var(--bg-normal)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.transform = 'none';
-                  }
-                }}
+                className="modal-btn ghost interactive-hover"
               >
                 上一步
               </button>
             )}
             
             {currentStep === 1 ? (
-              <button
+                <button
                 onClick={handleComplete}
                 disabled={isSubmitting}
-                className="px-6 py-2 rounded-md disabled:opacity-50"
-                style={{
-                  background: 'var(--bg-submit)',
-                  color: 'var(--font-color)',
-                  border: 'var(--border)',
-                  borderRadius: 'var(--border-radius)',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.35s ease',
-                  boxShadow: 'var(--box-shadow)'
-                }}
-                onMouseOver={(e) => {
-                  if (!isSubmitting) {
-                    e.currentTarget.style.background = 'var(--bg-edit)';
-                    e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-                    e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!isSubmitting) {
-                    e.currentTarget.style.background = 'var(--bg-submit)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.transform = 'none';
-                  }
-                }}
+                className="modal-btn primary interactive-hover"
               >
                 下一步
               </button>
@@ -916,30 +659,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
               <button
                 onClick={handleComplete}
                 disabled={isSubmitting}
-                className="px-6 py-2 rounded-md disabled:opacity-50"
-                style={{
-                  background: 'var(--completed)',
-                  color: 'var(--font-color)',
-                  border: 'var(--border)',
-                  borderRadius: 'var(--border-radius)',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.35s ease',
-                  boxShadow: 'var(--box-shadow)'
-                }}
-                onMouseOver={(e) => {
-                  if (!isSubmitting) {
-                    e.currentTarget.style.background = '#7bc4bb';
-                    e.currentTarget.style.boxShadow = 'var(--box-shadow)';
-                    e.currentTarget.style.transform = 'translate(-2px, -2px)';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (!isSubmitting) {
-                    e.currentTarget.style.background = 'var(--completed)';
-                    e.currentTarget.style.boxShadow = 'none';
-                    e.currentTarget.style.transform = 'none';
-                  }
-                }}
+                className="modal-btn interactive-hover"
               >
                 {isSubmitting ? '保存中...' : goal ? '更新目标' : '创建目标'}
               </button>
