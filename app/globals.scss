@@ -526,12 +526,6 @@ h1 {
 }
 
 .goal-item {
-  border: var(--border);
-  border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow);
-  transition: all 0.35s ease;
-  background: var(--bg-normal);
-  position: relative;
   animation: goalItemFadeIn 0.4s ease-out forwards;
 }
 
@@ -689,7 +683,7 @@ h1 {
   }
 }
 
-.todo-content {
+.todo-conten{
   padding: $padding;
   background: $bg-normal;
   border-radius: $border-radius;
@@ -701,6 +695,20 @@ h1 {
   overflow-wrap: break-word;
   padding-left: 56px;
   padding-right: 56px;
+  cursor: pointer;
+  min-height: 60px;
+}
+
+.goal-content{
+  padding: $padding;
+  background: $bg-normal;
+  border-radius: $border-radius;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: break-word;
   cursor: pointer;
   min-height: 60px;
 }
