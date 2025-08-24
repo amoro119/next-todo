@@ -10,6 +10,7 @@ import { TodoList } from '../components/TodoList'
 import { ViewSwitcher } from '../components/ViewSwitcher'
 import ShortcutSwitch from '../components/ModeSwitcher'
 import GoalsMainInterface from '../components/goals/GoalsMainInterface'
+import GoalsList from '../components/goals/GoalsList'
 import GoalModal from '../components/goals/GoalModal'
 import TodoModal from '../components/TodoModal'
 import ManageListsModal from '../components/ManageListsModal'
@@ -315,6 +316,7 @@ export default function TodoListPage() {
   const todosResult = useLiveQuery('SELECT * FROM todos ORDER BY sort_order, created_time DESC')
   const listsResult = useLiveQuery('SELECT * FROM lists ORDER BY sort_order')
   const sloganResult = useLiveQuery('SELECT value FROM meta WHERE key = \'slogan\'')
+  const goalsResult = useLiveQuery('SELECT g.*, l.name as list_name, COUNT(t.id) as total_tasks, COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks FROM goals g LEFT JOIN lists l ON g.list_id = l.id LEFT JOIN todos t ON t.goal_id = g.id AND t.deleted = false WHERE g.is_archived = false GROUP BY g.id, l.name ORDER BY g.created_time DESC')
 
   const todos = useMemo(() => {
     if (!todosResult?.rows) return []
@@ -325,6 +327,14 @@ export default function TodoListPage() {
     if (!listsResult?.rows) return []
     return listsResult.rows.map(normalizeList)
   }, [listsResult?.rows])
+
+  const goals = useMemo(() => {
+    if (!goalsResult?.rows) return []
+    return goalsResult.rows.map((goal: any) => ({
+      ...goal,
+      progress: goal.total_tasks > 0 ? Math.round((goal.completed_tasks / goal.total_tasks) * 100) : 0
+    }))
+  }, [goalsResult?.rows])
 
   useEffect(() => {
     if (sloganResult?.rows?.[0]?.value) {
@@ -729,9 +739,7 @@ export default function TodoListPage() {
     setIsGoalModalOpen(false);
   }, []);
 
-  const handleViewGoalsList = useCallback(() => {
-    setCurrentView('goals-list');
-  }, []);
+  // 移除 handleViewGoalsList 函数，因为不再需要通过按钮进入目标列表
 
   const handleSaveGoal = useCallback(async (goalData: GoalFormData) => {
     try {
@@ -1018,31 +1026,14 @@ export default function TodoListPage() {
 
             {currentMode === 'goals' ? (
               // 目标模式界面
-              <div className="goals-container">
-                {currentView === 'goals-main' ? (
-                  <GoalsMainInterface
-                    onCreateGoal={handleCreateGoal}
-                    onViewGoalsList={handleViewGoalsList}
-                  />
-                ) : currentView === 'goals-list' ? (
-                  <div className="goals-placeholder">
-                    <div className="placeholder-content">
-                      <h3>目标列表</h3>
-                      <p>目标列表功能将在后续任务中实现</p>
-                      <button 
-                        className="btn-small"
-                        onClick={() => setCurrentView('goals-main')}
-                      >
-                        返回主界面
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <GoalsMainInterface
-                    onCreateGoal={handleCreateGoal}
-                    onViewGoalsList={handleViewGoalsList}
-                  />
-                )}
+              <div className="todo-list-box">
+                <GoalsMainInterface 
+                  onCreateGoal={handleCreateGoal}
+                  goals={goals}
+                  onGoalClick={(goal) => console.log('Goal clicked:', goal)}
+                  onEditGoal={(goal) => console.log('Edit goal:', goal)}
+                  onArchiveGoal={(goalId) => console.log('Archive goal:', goalId)}
+                />
               </div>
             ) : (
               // 待办模式界面

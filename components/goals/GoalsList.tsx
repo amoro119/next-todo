@@ -78,31 +78,38 @@ const GoalsList: React.FC<GoalsListProps> = ({
   };
 
   const getProgressColor = (progress: number) => {
-    if (progress === 100) return 'bg-green-500';
-    if (progress >= 75) return 'bg-blue-500';
-    if (progress >= 50) return 'bg-yellow-500';
-    if (progress >= 25) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (progress === 100) return 'var(--completed)';
+    if (progress >= 75) return 'var(--normal)';
+    if (progress >= 50) return '#f5d99e';
+    if (progress >= 25) return '#f8d966';
+    return 'var(--deleted)';
   };
 
   const getDueDateColor = (dueDate?: string, progress?: number) => {
-    if (!dueDate || progress === 100) return 'text-gray-500';
+    if (!dueDate || progress === 100) return 'var(--placeholder)';
     
     const date = new Date(dueDate);
     const now = new Date();
     const diffTime = date.getTime() - now.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays < 0) return 'text-red-600'; // 逾期
-    if (diffDays <= 3) return 'text-orange-600'; // 即将到期
-    return 'text-gray-600';
+    if (diffDays < 0) return 'var(--deleted)'; // 逾期
+    if (diffDays <= 3) return '#f59e0b'; // 即将到期
+    return 'var(--font-color)';
   };
 
   if (loading) {
     return (
       <div className="space-y-4">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-white rounded-lg shadow-sm border p-6 animate-pulse">
+          <div key={i} className="bg-white rounded-lg shadow-sm border p-6 animate-pulse" 
+               style={{
+                 border: 'var(--border)',
+                 borderRadius: 'var(--border-radius)',
+                 boxShadow: 'var(--box-shadow)',
+                 background: 'var(--bg-normal)',
+                 animation: 'popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both'
+               }}>
             <div className="h-6 bg-gray-200 rounded mb-3"></div>
             <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
             <div className="h-2 bg-gray-200 rounded mb-2"></div>
@@ -121,7 +128,17 @@ const GoalsList: React.FC<GoalsListProps> = ({
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 rounded-md text-sm focus:outline-none"
+            style={{
+              border: 'var(--border)',
+              borderRadius: 'var(--border-radius)',
+              background: 'white',
+              color: 'var(--font-color)',
+              fontFamily: 'var(--font)',
+              fontSize: '14px',
+              boxShadow: 'var(--box-shadow)',
+              transition: 'all 0.35s ease'
+            }}
           >
             <option value="priority">按优先级排序</option>
             <option value="progress">按进度排序</option>
@@ -132,7 +149,17 @@ const GoalsList: React.FC<GoalsListProps> = ({
           <select
             value={filterBy}
             onChange={(e) => setFilterBy(e.target.value as FilterOption)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 rounded-md text-sm focus:outline-none"
+            style={{
+              border: 'var(--border)',
+              borderRadius: 'var(--border-radius)',
+              background: 'white',
+              color: 'var(--font-color)',
+              fontFamily: 'var(--font)',
+              fontSize: '14px',
+              boxShadow: 'var(--box-shadow)',
+              transition: 'all 0.35s ease'
+            }}
           >
             <option value="all">全部目标</option>
             <option value="active">进行中</option>
@@ -219,7 +246,16 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
 
   return (
     <div
-      className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow cursor-pointer p-6"
+      className="bg-white rounded-lg border hover:shadow-md transition-shadow cursor-pointer p-6 goal-card"
+      style={{
+        border: 'var(--border)',
+        borderRadius: 'var(--border-radius)',
+        boxShadow: 'var(--box-shadow)',
+        transition: 'all 0.35s ease',
+        background: 'var(--bg-normal)',
+        position: 'relative',
+        animation: 'goalItemFadeIn 0.4s ease-out forwards'
+      }}
       onClick={handleCardClick}
     >
       {/* 头部 */}
@@ -231,7 +267,27 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
           <button
             onClick={handleEditClick}
             className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            style={{
+              border: 'var(--border)',
+              background: 'var(--bg-normal)',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              color: 'var(--placeholder)',
+              transition: 'all 0.35s ease',
+              borderRadius: 'var(--border-radius)',
+              boxShadow: 'var(--box-shadow)'
+            }}
             title="编辑目标"
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'var(--bg-edit)';
+              e.currentTarget.style.boxShadow = 'var(--box-shadow)';
+              e.currentTarget.style.transform = 'translate(-2px, -2px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'var(--bg-normal)';
+              e.currentTarget.style.boxShadow = 'var(--box-shadow)';
+              e.currentTarget.style.transform = 'none';
+            }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -240,7 +296,27 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
           <button
             onClick={handleArchiveClick}
             className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            style={{
+              border: 'var(--border)',
+              background: 'var(--bg-normal)',
+              cursor: 'pointer',
+              padding: '0.25rem',
+              color: 'var(--placeholder)',
+              transition: 'all 0.35s ease',
+              borderRadius: 'var(--border-radius)',
+              boxShadow: 'var(--box-shadow)'
+            }}
             title="存档目标"
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'var(--bg-discard)';
+              e.currentTarget.style.boxShadow = 'var(--box-shadow)';
+              e.currentTarget.style.transform = 'translate(-2px, -2px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = 'var(--bg-normal)';
+              e.currentTarget.style.boxShadow = 'var(--box-shadow)';
+              e.currentTarget.style.transform = 'none';
+            }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8l4 4 4-4m6 5l-3 3-3-3" />
@@ -266,10 +342,25 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
             {progress}%
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div 
+          className="w-full rounded-full h-2"
+          style={{
+            background: 'var(--bg-normal)',
+            borderRadius: 'var(--border-radius)',
+            border: 'var(--border)'
+          }}
+        >
           <div
-            className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(progress)}`}
-            style={{ width: `${progress}%` }}
+            className="h-2 rounded-full transition-all duration-300"
+            style={{ 
+              width: `${progress}%`,
+              borderRadius: 'var(--border-radius)',
+              background: progress === 100 ? 'var(--completed)' : 
+                         progress >= 75 ? 'var(--normal)' : 
+                         progress >= 50 ? '#f5d99e' : 
+                         progress >= 25 ? '#f8d966' : 'var(--deleted)',
+              border: 'var(--border)'
+            }}
           />
         </div>
         <div className="flex justify-between items-center mt-1">
@@ -288,19 +379,44 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-2">
           {goal.priority > 0 && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+            <span 
+              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+              style={{
+                background: 'var(--bg-submit)',
+                color: 'var(--font-color)',
+                borderRadius: 'var(--border-radius)',
+                fontSize: '12px',
+                fontWeight: '600',
+                border: 'var(--border)',
+                boxShadow: 'var(--box-shadow)'
+              }}
+            >
               优先级 {goal.priority}
             </span>
           )}
           {goal.list_name && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+            <span 
+              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+              style={{
+                background: 'var(--bg-normal)',
+                color: 'var(--font-color)',
+                borderRadius: 'var(--border-radius)',
+                fontSize: '12px',
+                fontWeight: '600',
+                border: 'var(--border)',
+                boxShadow: 'var(--box-shadow)'
+              }}
+            >
               {goal.list_name}
             </span>
           )}
         </div>
         
         {goal.due_date && (
-          <span className={`text-xs font-medium ${getDueDateColor(goal.due_date, progress)}`}>
+          <span 
+            className="text-xs font-medium"
+            style={{ color: getDueDateColor(goal.due_date, progress) }}
+          >
             {formatDate(goal.due_date)}
           </span>
         )}

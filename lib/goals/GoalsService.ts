@@ -497,20 +497,22 @@ export class GoalsService {
         priority: formData.priority
       });
 
+      // 关联现有任务和创建新任务时要防御性编程：associated_todos 可能为 undefined
+      const associated = formData.associated_todos ?? { existing: [], new: [] };
+      const existingTodos = Array.isArray(associated.existing) ? associated.existing : [];
+      const newTodos = Array.isArray(associated.new) ? associated.new : [];
+
       // 关联现有任务
-      if (formData.associated_todos.existing.length > 0) {
-        await this.batchAssociateTodosWithGoal(
-          formData.associated_todos.existing, 
-          goal.id
-        );
+      if (existingTodos.length > 0) {
+        await this.batchAssociateTodosWithGoal(existingTodos, goal.id);
       }
 
       // 创建新任务
-      if (formData.associated_todos.new.length > 0) {
-        const newTodoPromises = formData.associated_todos.new.map(async (title, index) => {
+      if (newTodos.length > 0) {
+        const newTodoPromises = newTodos.map(async (title, index) => {
           const todoId = uuidv4();
-          const sortOrder = formData.associated_todos.existing.length + index + 1;
-          
+          const sortOrder = existingTodos.length + index + 1;
+
           await this.db.query(`
             INSERT INTO todos (
               id, title, completed, deleted, sort_order, 
