@@ -30,7 +30,6 @@ import { getDbWrapper } from '../lib/sync/initOfflineSync'
 import { RecurringTaskIntegration } from '../lib/recurring/RecurringTaskIntegration'
 import { UpgradePrompt } from '../components/UpgradePrompt'
 import { ModeIndicator } from '../components/ModeIndicator'
-import { GoalsService } from '../lib/goals/GoalsService'
 import { GoalFormData } from '../lib/types'
 
 // 动态导入调试组件，避免服务端渲染问题
@@ -39,9 +38,9 @@ const OfflineSyncDebugger = dynamic(() => import('../components/OfflineSyncDebug
 // --- 统一的数据库API层 ---
 interface DatabaseAPI {
   query: <T = any>(sql: string, params?: any[]) => Promise<{ rows: T[] }>
-  insert: (table: 'todos' | 'lists', data: Record<string, any>) => Promise<any>
-  update: (table: 'todos' | 'lists', id: string, data: Record<string, any>) => Promise<any>
-  delete: (table: 'todos' | 'lists', id: string) => Promise<unknown>
+  insert: (table: 'todos' | 'lists' | 'goals', data: Record<string, any>) => Promise<any>
+  update: (table: 'todos' | 'lists' | 'goals', id: string, data: Record<string, any>) => Promise<any>
+  delete: (table: 'todos' | 'lists' | 'goals', id: string) => Promise<unknown>
   transaction: (queries: { sql: string; params?: unknown[] }[]) => Promise<void>
   rawWrite: (sql: string, params?: unknown[]) => Promise<unknown>
 }
@@ -330,7 +329,7 @@ export default function TodoListPage() {
 
   const goals = useMemo(() => {
     if (!goalsResult?.rows) return []
-    return goalsResult.rows.map((goal: any) => ({
+    return goalsResult.rows.map((goal: unknown) => ({
       ...goal,
       progress: goal.total_tasks > 0 ? Math.round((goal.completed_tasks / goal.total_tasks) * 100) : 0
     }))
@@ -743,24 +742,77 @@ export default function TodoListPage() {
 
   const handleSaveGoal = useCallback(async (goalData: GoalFormData) => {
     try {
-      // 创建目标服务实例
-      const goalsService = new GoalsService((window as any).pg);
+      console.log('开始保存目标:', goalData);
       
-      // 保存目标
-      await goalsService.createGoalFromFormData(goalData);
+      // 创建目标数据
+      const goalId = uuid();
+      const goal = {
+        id: goalId,
+        name: goalData.name,
+        description: goalData.description || null,
+        list_id: goalData.list_id || null,
+        start_date: goalData.start_date || null,
+        due_date: goalData.due_date || null,
+        priority: goalData.priority || 0,
+        created_time: new Date().toISOString(),
+        is_archived: false
+      };
+      
+      console.log('准备插入目标数据:', goal);
+      
+      // 插入目标到数据库
+      await db.insert('goals', goal);
+      
+      console.log('目标插入成功，ID:', goalId);
+      
+      // 处理关联的待办事项
+      const associatedTodos = goalData.associated_todos || { existing: [], new: [] };
+      
+      // 关联现有待办事项
+      if (associatedTodos.existing && associatedTodos.existing.length > 0) {
+        console.log('关联现有待办事项:', associatedTodos.existing);
+        for (let i = 0; i < associatedTodos.existing.length; i++) {
+          const todoId = associatedTodos.existing[i];
+          await db.update('todos', todoId, {
+            goal_id: goalId,
+            sort_order_in_goal: i + 1
+          });
+        }
+      }
+      
+      // 创建新的待办事项
+      if (associatedTodos.new && associatedTodos.new.length > 0) {
+        console.log('创建新待办事项:', associatedTodos.new);
+        const existingCount = associatedTodos.existing?.length || 0;
+        for (let i = 0; i < associatedTodos.new.length; i++) {
+          const todoTitle = associatedTodos.new[i];
+          if (todoTitle.trim()) {
+            const todoId = uuid();
+            const newTodo = {
+              id: todoId,
+              title: todoTitle.trim(),
+              completed: false,
+              deleted: false,
+              sort_order: 0,
+              list_id: goal.list_id,
+              goal_id: goalId,
+              sort_order_in_goal: existingCount + i + 1,
+              created_time: new Date().toISOString()
+            };
+            await db.insert('todos', newTodo);
+          }
+        }
+      }
       
       // 关闭模态框
       setIsGoalModalOpen(false);
       
-      // 如果当前在目标列表视图，可能需要刷新数据
-      if (currentView === 'goals-list') {
-        // 这里可以添加刷新逻辑，如果需要的话
-      }
+      console.log('目标创建完成！');
     } catch (error) {
       console.error('保存目标失败:', error);
       alert(`保存目标失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
-  }, [currentView]);
+  }, [db]);
 
   const handleUndo = useCallback(async () => {
     if (!lastAction) { alert("没有可撤销的操作"); return; }

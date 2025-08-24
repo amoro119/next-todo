@@ -344,13 +344,21 @@ async function doFullTableSync({
         );
       }
     } else {
-      // If the remote table is empty, clear the entire local table.
-      const { rows: deletedRows } = await tx.query(
-        `DELETE FROM "${table}" RETURNING id`
-      );
-      if (deletedRows.length > 0) {
+      // 对于goals表，不要在远程为空时清除本地数据
+      // 因为goals可能是本地创建的，还没有同步到远程
+      if (table !== 'goals') {
+        // If the remote table is empty, clear the entire local table.
+        const { rows: deletedRows } = await tx.query(
+          `DELETE FROM "${table}" RETURNING id`
+        );
+        if (deletedRows.length > 0) {
+          console.log(
+            `- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`
+          );
+        }
+      } else {
         console.log(
-          `- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`
+          `- Remote goals table is empty, but preserving local goals data.`
         );
       }
     }
