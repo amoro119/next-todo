@@ -335,7 +335,7 @@ export default function ShortcutSwitch({
 
             {/* 目标模式下的简化功能 */}
             {currentMode === 'goals' && (
-              <ul className="todo-func-list goals-actions">
+              <ul className="todo-func-list filter">
                 <li>
                   <input
                     className="btn-small action-search"
@@ -356,61 +356,6 @@ export default function ShortcutSwitch({
             )}
           </div>
       </div>
-
-      <style jsx>{`
-        .mode-switcher {
-          background: var(--bg-submit) !important;
-          font-weight: 600;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .mode-switcher:hover {
-          background: var(--bg-edit) !important;
-          transform: translateY(-2px);
-          box-shadow: var(--box-shadow);
-        }
-
-        .mode-switcher.transitioning {
-          opacity: 0.7;
-          pointer-events: none;
-        }
-
-        .mode-switcher::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: -100%;
-          width: 100%;
-          height: 100%;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
-          transition: left 0.5s;
-        }
-
-        .mode-switcher:hover::before {
-          left: 100%;
-        }
-
-        .todo-func-list.mode-switch {
-          border-bottom: var(--border);
-          padding-bottom: 12px;
-          margin-bottom: 12px;
-        }
-
-        .todo-func-list.goals-actions li {
-          margin-bottom: 8px;
-        }
-
-        @keyframes modeSwitch {
-          0% { transform: scale(1); }
-          50% { transform: scale(0.95); }
-          100% { transform: scale(1); }
-        }
-
-        .mode-switcher:active {
-          animation: modeSwitch 0.15s ease-in-out;
-        }
-      `}</style>
     </>
   );
 }

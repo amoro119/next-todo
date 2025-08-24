@@ -219,7 +219,6 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
           <div className="animate-pulse">
             <div className="h-16 bg-gray-200 border-b"></div>
@@ -235,14 +234,13 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
             </div>
           </div>
         </div>
-      </div>
     );
   }
 
   const dueDateStatus = getDueDateStatus(goal.due_date);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div>
       <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
         {/* 头部 */}
         <div className="flex justify-between items-center p-6 border-b">

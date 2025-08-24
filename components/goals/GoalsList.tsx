@@ -85,8 +85,8 @@ const GoalsList: React.FC<GoalsListProps> = ({
           <p className="text-gray-500">暂无目标</p>
         </div>
       ) : (
-        <div className="todo-list-container">
-          <ul className="todo-list">
+        <div className="goal-list-container">
+          <ul className="goal-list">
             {filteredAndSortedGoals.map((goal) => (
               <GoalCard
                 key={goal.id}
@@ -133,10 +133,9 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
   return (
     <li
       className={`todo-item goal-item`}
-      onClick={handleCardClick}
     >
       {/* 头部 */}
-      <div className={`goal-content ${progress === 100 ? 'completed' : ''}`}>
+      <div className={`goal-content ${progress === 100 ? 'completed' : ''}`} onClick={handleCardClick}>
         <div className="flex justify-between items-start mb-3">
         <h3 className="font-semibold text-lg text-gray-900 line-clamp-2 flex-1">
           {goal.name}

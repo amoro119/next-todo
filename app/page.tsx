@@ -12,6 +12,7 @@ import ShortcutSwitch from '../components/ModeSwitcher'
 import GoalsMainInterface from '../components/goals/GoalsMainInterface'
 import GoalsList from '../components/goals/GoalsList'
 import GoalModal from '../components/goals/GoalModal'
+import GoalDetails from '../components/goals/GoalDetails'
 import TodoModal from '../components/TodoModal'
 import ManageListsModal from '../components/ManageListsModal'
 import TaskSearchModal from '../components/TaskSearchModal'
@@ -278,6 +279,8 @@ export default function TodoListPage() {
     }
     return 'todo';
   });
+  
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   
   const [currentView, setCurrentView] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -814,6 +817,31 @@ export default function TodoListPage() {
     }
   }, [db]);
 
+  const handleUpdateGoal = useCallback(async (updatedGoal: Goal) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { list_name: _, ...updateData } = updatedGoal;
+      await db.update('goals', updatedGoal.id, updateData);
+    } catch (error) {
+      console.error('更新目标失败:', error);
+      alert(`更新目标失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }, [db]);
+
+  const handleCreateTodoForGoal = useCallback(async (todoData: Omit<Todo, 'id' | 'created_time'>) => {
+    try {
+      const newTodo = {
+        ...todoData,
+        id: uuid(),
+        created_time: new Date().toISOString()
+      };
+      await db.insert('todos', newTodo);
+    } catch (error) {
+      console.error('创建待办事项失败:', error);
+      alert(`创建待办事项失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }, [db]);
+
   const handleUndo = useCallback(async () => {
     if (!lastAction) { alert("没有可撤销的操作"); return; }
     try {
@@ -1045,7 +1073,7 @@ export default function TodoListPage() {
       {/* 开发模式下显示模式指示器 */}
       {process.env.NODE_ENV === "development" && <ModeIndicator />}
       <div className="todo-wrapper">
-        <div id="todo-app" className="todo-app">
+        <div id="todo-app" className={`todo-app ${currentMode}`}>
           <div className="container header">
             <div className="todo-input">
               <h1 className="title">
@@ -1078,15 +1106,31 @@ export default function TodoListPage() {
 
             {currentMode === 'goals' ? (
               // 目标模式界面
-              <div className="todo-list-box">
-                <GoalsMainInterface 
-                  onCreateGoal={handleCreateGoal}
-                  goals={goals}
-                  onGoalClick={(goal) => console.log('Goal clicked:', goal)}
-                  onEditGoal={(goal) => console.log('Edit goal:', goal)}
-                  onArchiveGoal={(goalId) => console.log('Archive goal:', goalId)}
+              selectedGoal ? (
+                <GoalDetails
+                  goal={selectedGoal}
+                  todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+                  onUpdateGoal={handleUpdateGoal}
+                  onUpdateTodo={handleUpdateTodo}
+                  onDeleteTodo={handleDeleteTodo}
+                  onCreateTodo={handleCreateTodoForGoal}
+                  onClose={() => setSelectedGoal(null)}
                 />
-              </div>
+              ) : (
+                <div className="todo-list-box">
+                  <GoalsMainInterface 
+                    onCreateGoal={handleCreateGoal}
+                    goals={goals}
+                    todos={todos}
+                    onUpdateGoal={handleUpdateGoal}
+                    onUpdateTodo={handleUpdateTodo}
+                    onDeleteTodo={handleDeleteTodo}
+                    onCreateTodo={handleCreateTodoForGoal}
+                    onEditGoal={(goal) => console.log('Edit goal:', goal)}
+                    onArchiveGoal={(goalId) => console.log('Archive goal:', goalId)}
+                  />
+                </div>
+              )
             ) : (
               // 待办模式界面
               currentView !== 'calendar' ? (

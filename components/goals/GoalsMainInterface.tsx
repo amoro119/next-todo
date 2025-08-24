@@ -1,12 +1,17 @@
 // components/goals/GoalsMainInterface.tsx
-import { useCallback } from 'react';
-import { Goal } from '@/lib/types';
+import { useState, useCallback } from 'react';
+import { Goal, Todo } from '@/lib/types';
 import GoalsList from './GoalsList';
+import GoalDetails from './GoalDetails';
 
 interface GoalsMainInterfaceProps {
   onCreateGoal: () => void;
-  goals: Goal[]; // 添加 goals 属性
-  onGoalClick: (goal: Goal) => void;
+  goals: Goal[];
+  todos: Todo[];
+  onUpdateGoal: (goal: Goal) => void;
+  onUpdateTodo: (todo: Todo) => void;
+  onDeleteTodo: (todoId: string) => void;
+  onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
   onEditGoal: (goal: Goal) => void;
   onArchiveGoal: (goalId: string) => void;
 }
@@ -14,14 +19,27 @@ interface GoalsMainInterfaceProps {
 export default function GoalsMainInterface({
   onCreateGoal,
   goals,
-  onGoalClick,
+  todos,
+  onUpdateGoal,
+  onUpdateTodo,
+  onDeleteTodo,
+  onCreateTodo,
   onEditGoal,
   onArchiveGoal
 }: GoalsMainInterfaceProps) {
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   
   const handleCreateGoal = useCallback(() => {
     onCreateGoal();
   }, [onCreateGoal]);
+
+  const handleGoalClick = useCallback((goal: Goal) => {
+    setSelectedGoal(goal);
+  }, []);
+
+  const handleBackToList = useCallback(() => {
+    setSelectedGoal(null);
+  }, []);
 
   return (
     <div className="goals-main-interface goals-container mode-transition">
@@ -36,14 +54,30 @@ export default function GoalsMainInterface({
         </button>
       </div>
 
-      {/* 直接展示 GoalsList */}
-  <div className="goals-list-container todo-list-container">
-        <GoalsList 
-          goals={goals}
-          onGoalClick={onGoalClick}
-          onEditGoal={onEditGoal}
-          onArchiveGoal={onArchiveGoal}
-        />
+      {/* 在此区域内切换 GoalsList 和 GoalDetails */}
+      <div className="goals-list-container todo-list-container">
+        {selectedGoal ? (
+          <div className="view-transition">
+            <GoalDetails
+              goal={selectedGoal}
+              todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+              onUpdateGoal={onUpdateGoal}
+              onUpdateTodo={onUpdateTodo}
+              onDeleteTodo={onDeleteTodo}
+              onCreateTodo={onCreateTodo}
+              onClose={handleBackToList}
+            />
+          </div>
+        ) : (
+          <div className="view-transition">
+            <GoalsList 
+              goals={goals}
+              onGoalClick={handleGoalClick}
+              onEditGoal={onEditGoal}
+              onArchiveGoal={onArchiveGoal}
+            />
+          </div>
+        )}
       </div>
 
       <style jsx>{`
@@ -59,8 +93,6 @@ export default function GoalsMainInterface({
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 0.5rem;
-          padding: 2rem 1.5rem;
           border: var(--border);
           border-radius: var(--border-radius);
           background: var(--bg-normal);
@@ -136,6 +168,22 @@ export default function GoalsMainInterface({
         .goals-list-container {
           width: 100%;
           margin-top: 1rem;
+        }
+
+        /* 添加过渡动画样式 */
+        .view-transition {
+          animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         @media (max-width: 768px) {
