@@ -1,12 +1,13 @@
 // components/goals/GoalsMainInterface.tsx
 import { useCallback } from 'react';
+import { Goal } from '@/lib/types';
 import GoalsList from './GoalsList';
 
 interface GoalsMainInterfaceProps {
   onCreateGoal: () => void;
-  goals: any[]; // 添加 goals 属性
-  onGoalClick: (goal: any) => void;
-  onEditGoal: (goal: any) => void;
+  goals: Goal[]; // 添加 goals 属性
+  onGoalClick: (goal: Goal) => void;
+  onEditGoal: (goal: Goal) => void;
   onArchiveGoal: (goalId: string) => void;
 }
 
@@ -36,7 +37,7 @@ export default function GoalsMainInterface({
       </div>
 
       {/* 直接展示 GoalsList */}
-      <div className="goals-list-container">
+  <div className="goals-list-container todo-list-container">
         <GoalsList 
           goals={goals}
           onGoalClick={onGoalClick}

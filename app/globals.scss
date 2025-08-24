@@ -401,6 +401,230 @@ h1 {
   }
 }
 
+/* Modal styles used by GoalModal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
+  z-index: 60;
+  padding: 1rem;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 28rem; /* ~448px */
+  max-height: 90vh;
+  overflow: hidden;
+  background: var(--bg-normal);
+  border: var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  gap: 1rem;
+}
+
+.modal-step-indicator {
+  padding: 1rem 1.5rem;
+  background: var(--bg-normal);
+}
+
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  max-height: calc(90vh - 200px);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-top: var(--border);
+  background: var(--bg-normal);
+}
+
+.modal-btn {
+  border: var(--border);
+  border-radius: var(--border-radius);
+  padding: 0.5rem 1rem;
+  transition: all 0.35s ease;
+  cursor: pointer;
+  background: var(--bg-normal);
+  color: var(--font-color);
+}
+
+.modal-btn.primary {
+  background: var(--bg-submit);
+}
+
+.modal-btn.ghost {
+  background: var(--bg-normal);
+}
+
+/* Unified hover state for interactive buttons previously using inline handlers */
+.interactive-hover {
+  transition: all 0.35s ease;
+}
+
+/* Modal button hover variants */
+.modal-btn.interactive-hover:hover {
+  background: var(--bg-edit);
+  box-shadow: var(--box-shadow);
+  transform: translate(-2px, -2px);
+}
+
+.modal-btn.primary.interactive-hover:hover {
+  background: var(--bg-edit);
+}
+
+.modal-btn.primary.interactive-hover:active,
+.modal-btn.interactive-hover:active {
+  transform: none;
+}
+
+/* Small buttons inside modal footer */
+.modal-footer .btn-small.interactive-hover:hover {
+  box-shadow: var(--box-shadow);
+  transform: translate(-2px, -2px);
+}
+
+/* Generic icon-button hover used in Goal cards */
+.icon-btn {
+  border: var(--border);
+  background: var(--bg-normal);
+  padding: 0.25rem;
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  cursor: pointer;
+  transition: all 0.35s ease;
+  color: var(--placeholder);
+}
+
+.icon-btn.interactive-hover:hover {
+  background: var(--bg-edit);
+  box-shadow: var(--box-shadow);
+  transform: translate(-2px, -2px);
+  color: var(--font-color);
+}
+
+/* Goal specific UI helpers */
+.goal-skeleton {
+  border: var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  background: var(--bg-normal);
+  animation: popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.goal-item {
+  border: var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow);
+  transition: all 0.35s ease;
+  background: var(--bg-normal);
+  position: relative;
+  animation: goalItemFadeIn 0.4s ease-out forwards;
+}
+
+.progress-track {
+  background: var(--bg-normal);
+  border-radius: var(--border-radius);
+  border: var(--border);
+  overflow: hidden;
+  height: 0.5rem; /* align with .h-2 in markup */
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: var(--border-radius);
+  transition: width 0.3s ease;
+  border: var(--border);
+}
+
+/* Use CSS variable --progress to control fill width */
+.progress-fill {
+  width: var(--progress, 0%);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--border-radius);
+  font-size: 12px;
+  font-weight: 600;
+  border: var(--border);
+  box-shadow: var(--box-shadow);
+}
+
+.pill-priority {
+  background: var(--bg-submit);
+  color: var(--font-color);
+}
+
+.pill-list {
+  background: var(--bg-normal);
+  color: var(--font-color);
+}
+
+.modal-title {
+  color: var(--font-color);
+}
+
+.modal-subtitle {
+  color: var(--placeholder);
+}
+
+.modal-input {
+  border: var(--border);
+  border-radius: var(--border-radius);
+  background: white;
+  color: var(--font-color);
+  font-family: var(--font);
+  font-size: 16px;
+  padding: 0.5rem 0.75rem;
+  transition: all 0.35s ease;
+}
+
+.modal-error {
+  color: var(--deleted);
+}
+
+.modal-input.error {
+  border: 2px solid var(--deleted);
+}
+
+.step-circle {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.step-line {
+  height: 0.25rem;
+}
+
+.step-completed {
+  background: var(--completed) !important;
+  border: var(--border);
+}
+
+.step-pending {
+  background: var(--bg-deleted) !important;
+}
+
 .edit-todo-wrapper {
   position: relative;
   box-sizing: border-box;
@@ -2920,6 +3144,7 @@ span.shortcut-name {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
@@ -3161,6 +3386,7 @@ span.shortcut-name {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
@@ -3550,6 +3776,7 @@ Goals Mode Styles .goals-container {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   background: rgba(255, 255, 255, 0.5);
