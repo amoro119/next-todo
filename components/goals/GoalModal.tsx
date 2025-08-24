@@ -72,7 +72,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
     if (isOpen) {
       if (goal) {
         // 编辑模式：预填充数据
-        const existingTodoIds = goalTodos.map(todo => todo.id);
+        const existingTodoIds = goalTodos ? goalTodos.map(todo => todo.id) : [];
         setFormData({
           name: goal.name,
           description: goal.description || '',
@@ -111,7 +111,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
       setSearchQuery('');
       setSearchResults([]);
     }
-  }, [isOpen, goal, goalTodos]);
+  }, [isOpen, goal, goalTodos?.length]);
 
   // 表单验证
   const validateStep1 = (): boolean => {

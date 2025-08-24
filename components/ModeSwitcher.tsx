@@ -8,7 +8,7 @@ import { updateUserState } from "../lib/user/userState";
 
 type AppMode = 'todo' | 'goals';
 
-interface ModeSwitcherProps {
+interface ShortcutSwitchProps {
   currentView: string;
   setCurrentView: (view: string) => void;
   onUndo: () => void;
@@ -22,7 +22,7 @@ interface ModeSwitcherProps {
   onExport: () => void;
 }
 
-export default function ModeSwitcher({
+export default function ShortcutSwitch({
   currentView,
   setCurrentView,
   onUndo,
@@ -34,7 +34,7 @@ export default function ModeSwitcher({
   onImport,
   onOpenSearch,
   onExport,
-}: ModeSwitcherProps) {
+}: ShortcutSwitchProps) {
   // 模式状态管理和持久化
   const [currentMode, setCurrentMode] = useState<AppMode>(() => {
     if (typeof window !== 'undefined') {
@@ -44,7 +44,6 @@ export default function ModeSwitcher({
     return 'todo';
   });
 
-  const [isFolded, setIsFolded] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const sqlInputRef = useRef<HTMLInputElement>(null);
@@ -101,8 +100,6 @@ export default function ModeSwitcher({
     window.dispatchEvent(new CustomEvent('showUpgradeDialog'));
   };
 
-
-
   // 获取模式图标
   const getModeIcon = () => {
     if (currentMode === 'todo') {
@@ -138,28 +135,14 @@ export default function ModeSwitcher({
         onChange={handleFileChange}
       />
 
-      <div className={`footer side-bar ${isFolded ? "fold" : ""}`}>
-        <div className="side-shortcut" onClick={() => setIsFolded(!isFolded)}>
+      <div className={`footer side-bar`}>
+        <div className="side-shortcut" onClick={handleModeSwitch}>
           <div className="shortcut-switch">
-            <span className="shortcut-title">{isFolded ? "开" : "关"}</span>
-            <span className="shortcut-name">快捷操作</span>
+            <span className="shortcut-title">{getModeIcon()}{getModeTitle()}</span>
           </div>
         </div>
 
-        {!isFolded && (
-          <div className="todo-footer-box">
-            {/* 模式切换按钮 */}
-            <ul className="todo-func-list mode-switch">
-              <li>
-                <input
-                  className={`btn-small mode-switcher ${isTransitioning ? 'transitioning' : ''}`}
-                  type="button"
-                  value={`${getModeIcon()} ${getModeTitle()}`}
-                  onClick={handleModeSwitch}
-                  disabled={isTransitioning}
-                />
-              </li>
-            </ul>
+        <div className="todo-footer-box">
 
             {/* 只在待办模式下显示原有功能 */}
             {currentMode === 'todo' && (
@@ -372,7 +355,6 @@ export default function ModeSwitcher({
               </ul>
             )}
           </div>
-        )}
       </div>
 
       <style jsx>{`

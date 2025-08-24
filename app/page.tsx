@@ -8,8 +8,9 @@ import debounce from 'lodash.debounce'
 import { parseDidaCsv } from '../lib/csvParser'
 import { TodoList } from '../components/TodoList'
 import { ViewSwitcher } from '../components/ViewSwitcher'
-import ModeSwitcher from '../components/ModeSwitcher'
+import ShortcutSwitch from '../components/ModeSwitcher'
 import GoalsMainInterface from '../components/goals/GoalsMainInterface'
+import GoalModal from '../components/goals/GoalModal'
 import TodoModal from '../components/TodoModal'
 import ManageListsModal from '../components/ManageListsModal'
 import TaskSearchModal from '../components/TaskSearchModal'
@@ -28,6 +29,8 @@ import { getDbWrapper } from '../lib/sync/initOfflineSync'
 import { RecurringTaskIntegration } from '../lib/recurring/RecurringTaskIntegration'
 import { UpgradePrompt } from '../components/UpgradePrompt'
 import { ModeIndicator } from '../components/ModeIndicator'
+import { GoalsService } from '../lib/goals/GoalsService'
+import { GoalFormData } from '../lib/types'
 
 // 动态导入调试组件，避免服务端渲染问题
 const OfflineSyncDebugger = dynamic(() => import('../components/OfflineSyncDebugger'), { ssr: false })
@@ -296,6 +299,7 @@ export default function TodoListPage() {
   const [searchRefreshTrigger, setSearchRefreshTrigger] = useState(0);
   const [isCalendarCreateModalOpen, setIsCalendarCreateModalOpen] = useState(false);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string>('');
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const addTodoInputRef = useRef<HTMLInputElement>(null)
 
   // --- START: BUG FIX ---
@@ -385,6 +389,10 @@ export default function TodoListPage() {
 // ... (no changes in this block)
 // ...
     todosWithListNames.filter((t: Todo) => !t.completed && !t.deleted), [todosWithListNames])
+  
+  // Memoized values for GoalModal to prevent unnecessary re-renders
+  const memoizedLists = useMemo(() => lists, [lists]);
+  const memoizedUncompletedTodos = useMemo(() => uncompletedTodos, [uncompletedTodos]);
   
   const completedTodos = useMemo(() => 
 // ... (no changes in this block)
@@ -714,14 +722,37 @@ export default function TodoListPage() {
 
   // 目标相关处理函数
   const handleCreateGoal = useCallback(() => {
-    // TODO: 实现目标创建模态框
-    console.log('创建目标');
-    alert('目标创建功能将在后续任务中实现');
+    setIsGoalModalOpen(true);
+  }, []);
+
+  const handleCloseGoalModal = useCallback(() => {
+    setIsGoalModalOpen(false);
   }, []);
 
   const handleViewGoalsList = useCallback(() => {
     setCurrentView('goals-list');
   }, []);
+
+  const handleSaveGoal = useCallback(async (goalData: GoalFormData) => {
+    try {
+      // 创建目标服务实例
+      const goalsService = new GoalsService((window as any).pg);
+      
+      // 保存目标
+      await goalsService.createGoalFromFormData(goalData);
+      
+      // 关闭模态框
+      setIsGoalModalOpen(false);
+      
+      // 如果当前在目标列表视图，可能需要刷新数据
+      if (currentView === 'goals-list') {
+        // 这里可以添加刷新逻辑，如果需要的话
+      }
+    } catch (error) {
+      console.error('保存目标失败:', error);
+      alert(`保存目标失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }, [currentView]);
 
   const handleUndo = useCallback(async () => {
     if (!lastAction) { alert("没有可撤销的操作"); return; }
@@ -1063,7 +1094,7 @@ export default function TodoListPage() {
               )
             )}
 
-            <ModeSwitcher
+            <ShortcutSwitch
               currentView={currentView}
               setCurrentView={setCurrentView}
               onUndo={handleUndo}
@@ -1125,6 +1156,16 @@ export default function TodoListPage() {
               lists={lists}
               onClose={() => setIsCalendarCreateModalOpen(false)}
               onSubmit={(todoData) => handleCreateTodoFromCalendar(todoData.title, todoData.list_id, todoData.start_date, todoData.due_date)}
+            />
+          )}
+
+          {isGoalModalOpen && (
+            <GoalModal
+              isOpen={isGoalModalOpen}
+              lists={memoizedLists}
+              availableTodos={memoizedUncompletedTodos}
+              onSave={handleSaveGoal}
+              onClose={handleCloseGoalModal}
             />
           )}
 
