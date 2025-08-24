@@ -136,7 +136,7 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
       onClick={handleCardClick}
     >
       {/* 头部 */}
-      <div className={`todo-content ${progress === 100 ? 'completed' : ''}`}>
+      <div className={`goal-content ${progress === 100 ? 'completed' : ''}`}>
         <div className="flex justify-between items-start mb-3">
         <h3 className="font-semibold text-lg text-gray-900 line-clamp-2 flex-1">
           {goal.name}
