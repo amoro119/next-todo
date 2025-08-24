@@ -106,7 +106,7 @@ export interface GoalFormData {
   start_date?: string;
   due_date?: string;
   priority: number;
-  associated_todos: {
+  associated_todos?: {
     existing: string[]; // 现有待办事项ID
     new: string[]; // 新创建的待办事项标题
   };
