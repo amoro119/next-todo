@@ -61,6 +61,15 @@ export default function GoalsMainInterface({
               onEditGoal={onEditGoal}
               onArchiveGoal={onArchiveGoal}
             />
+            <div className="bar-message bar-bottom">
+              <div className="bar-message-text">
+                {goals.length > 0 ? (
+                  <span>{goals.length} 项目标</span>
+                ) : (
+                  <span>暂无目标</span>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
