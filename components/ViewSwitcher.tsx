@@ -10,6 +10,8 @@ interface ViewSwitcherProps {
   inboxCount: number;
   todosByList: Record<string, number>;
   todayCount?: number;
+  mode?: 'todo' | 'goals'; // 添加模式属性
+  goalsByList?: Record<string, number>; // 目标模式下各清单的目标数量
 }
 
 const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
@@ -19,6 +21,8 @@ const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
   inboxCount,
   todosByList,
   todayCount,
+  mode = 'todo', // 默认为待办模式
+  goalsByList = {}, // 目标模式下各清单的目标数量
 }) => {
   const viewSwitcherRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -79,39 +83,67 @@ const ViewSwitcherComponent: React.FC<ViewSwitcherProps> = ({
       onMouseUp={handleMouseLeaveOrUp}
       onMouseMove={handleMouseMove}
     >
-      <button
-        className={currentView === 'today' ? 'active' : ''}
-        onClick={createButtonHandler('today')}
-        data-view="today"
-      >
-        今日待办
-      </button>
-      <button 
-        className={currentView === 'calendar' ? 'active' : ''}
-        onClick={createButtonHandler('calendar')}
-        data-view="calendar"
-      >
-        日历视图
-      </button>
-      <button 
-        className={currentView === 'inbox' ? 'active' : ''}
-        onClick={createButtonHandler('inbox')}
-        data-view="inbox"
-      >
-        收件箱 {inboxCount > 0 && <span className="badge">{inboxCount}</span>}
-      </button>
-      {lists
-        .filter((l: List) => !l.is_hidden)
-        .map((list: List) => (
+      {mode === 'todo' ? (
+        // 待办模式：显示所有选项
+        <>
           <button
-            key={list.id}
-            className={currentView === list.name ? 'active' : ''}
-            onClick={createButtonHandler(list.name)}
-            data-view={list.name}
+            className={currentView === 'today' ? 'active' : ''}
+            onClick={createButtonHandler('today')}
+            data-view="today"
           >
-            {list.name} {(todosByList[list.name] || 0) > 0 && <span className="badge">{todosByList[list.name]}</span>}
+            今日待办
           </button>
-        ))}
+          <button 
+            className={currentView === 'calendar' ? 'active' : ''}
+            onClick={createButtonHandler('calendar')}
+            data-view="calendar"
+          >
+            日历视图
+          </button>
+          <button 
+            className={currentView === 'inbox' ? 'active' : ''}
+            onClick={createButtonHandler('inbox')}
+            data-view="inbox"
+          >
+            收件箱 {inboxCount > 0 && <span className="badge">{inboxCount}</span>}
+          </button>
+          {lists
+            .filter((l: List) => !l.is_hidden)
+            .map((list: List) => (
+              <button
+                key={list.id}
+                className={currentView === list.name ? 'active' : ''}
+                onClick={createButtonHandler(list.name)}
+                data-view={list.name}
+              >
+                {list.name} {(todosByList[list.name] || 0) > 0 && <span className="badge">{todosByList[list.name]}</span>}
+              </button>
+            ))}
+        </>
+      ) : (
+        // 目标模式：只显示“全部”和动态清单分类
+        <>
+          <button
+            className={currentView === 'goals-main' ? 'active' : ''}
+            onClick={createButtonHandler('goals-main')}
+            data-view="goals-main"
+          >
+            全部
+          </button>
+          {lists
+            .filter((l: List) => !l.is_hidden)
+            .map((list: List) => (
+              <button
+                key={list.id}
+                className={currentView === list.name ? 'active' : ''}
+                onClick={createButtonHandler(list.name)}
+                data-view={list.name}
+              >
+                {list.name} {(goalsByList[list.name] || 0) > 0 && <span className="badge">{goalsByList[list.name]}</span>}
+              </button>
+            ))}
+        </>
+      )}
     </div>
   );
 };

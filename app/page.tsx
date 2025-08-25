@@ -518,6 +518,20 @@ export default function TodoListPage() {
     return nameCounts;
   }, [lists, uncompletedTodos]);
   
+  // 计算各清单下的目标数量
+  const goalsByList = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const goal of goals) {
+      if (goal.list_id) {
+        const list = lists.find((l: List) => l.id === goal.list_id);
+        if (list) {
+          counts[list.name] = (counts[list.name] || 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }, [goals, lists]);
+  
   const recycleBinCount = useMemo(() => recycledTodos.length, [recycledTodos]);
 
   useEffect(() => {
@@ -1120,6 +1134,8 @@ export default function TodoListPage() {
               inboxCount={filterInboxTodos(uncompletedTodos).length}
               todayCount={todosWithListNames.filter((t: Todo) => !t.deleted && t.due_date && utcToLocalDateString(t.due_date) === todayStrInUTC8).length}
               todosByList={todosByList}
+              goalsByList={goalsByList}
+              mode={currentMode}
             />
 
             {currentMode === 'goals' ? (
@@ -1137,7 +1153,7 @@ export default function TodoListPage() {
               ) : (
                 <div className="todo-list-box">
                   <GoalsMainInterface 
-                    goals={goals}
+                    goals={currentView === 'goals-main' ? goals : goals.filter(goal => goal.list_name === currentView)}
                     todos={todos}
                     onUpdateGoal={handleUpdateGoal}
                     onUpdateTodo={handleUpdateTodo}
