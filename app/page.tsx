@@ -1144,6 +1144,8 @@ export default function TodoListPage() {
                 <GoalDetails
                   goal={selectedGoal}
                   todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+                  goals={goals}
+                  lists={lists}
                   onUpdateGoal={handleUpdateGoal}
                   onUpdateTodo={handleUpdateTodo}
                   onDeleteTodo={handleDeleteTodo}
@@ -1155,6 +1157,7 @@ export default function TodoListPage() {
                   <GoalsMainInterface 
                     goals={currentView === 'goals-main' ? goals : goals.filter(goal => goal.list_name === currentView)}
                     todos={todos}
+                    lists={lists}
                     onUpdateGoal={handleUpdateGoal}
                     onUpdateTodo={handleUpdateTodo}
                     onDeleteTodo={handleDeleteTodo}
@@ -1234,6 +1237,7 @@ export default function TodoListPage() {
               mode="edit"
               initialData={selectedTodo}
               lists={lists}
+              goals={goals}
               onClose={() => setSelectedTodo(null)}
               onSubmit={handleSaveTodoDetails}
               onDelete={handleDeleteTodo}
@@ -1274,6 +1278,7 @@ export default function TodoListPage() {
                 due_date: localDateToEndOfDayUTC(calendarSelectedDate)
               }}
               lists={lists}
+              goals={goals}
               onClose={() => setIsCalendarCreateModalOpen(false)}
               onSubmit={(todoData) => handleCreateTodoFromCalendar(todoData.title, todoData.list_id, todoData.start_date, todoData.due_date)}
             />

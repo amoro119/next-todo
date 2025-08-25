@@ -7,6 +7,7 @@ import GoalDetails from './GoalDetails';
 interface GoalsMainInterfaceProps {
   goals: Goal[];
   todos: Todo[];
+  lists: List[];
   onUpdateGoal: (goal: Goal) => void;
   onUpdateTodo: (todo: Todo) => void;
   onDeleteTodo: (todoId: string) => void;
@@ -18,6 +19,7 @@ interface GoalsMainInterfaceProps {
 export default function GoalsMainInterface({
   goals,
   todos,
+  lists,
   onUpdateGoal,
   onUpdateTodo,
   onDeleteTodo,
@@ -49,6 +51,8 @@ export default function GoalsMainInterface({
             <GoalDetails
               goal={selectedGoal}
               todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+              goals={goals}
+              lists={lists}
               onUpdateGoal={onUpdateGoal}
               onUpdateTodo={onUpdateTodo}
               onDeleteTodo={onDeleteTodo}
