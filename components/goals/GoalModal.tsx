@@ -6,6 +6,8 @@ import { Goal, List, Todo } from '@/lib/types';
 interface GoalModalProps {
   isOpen: boolean;
   goal?: Goal; // 编辑时传入
+  goalId?: string; // 新创建的目标ID
+  initialName?: string; // 初始名称（用于新创建的目标）
   lists: List[];
   availableTodos: Todo[]; // 未分配目标的待办事项
   goalTodos?: Todo[]; // 编辑时：目标关联的任务
@@ -21,6 +23,7 @@ export interface GoalFormData {
   startDate?: string;
   dueDate?: string;
   priority: number;
+  goalId?: string; // 目标ID（用于更新现有目标）
   associatedTodos: {
     existing: string[]; // 现有待办事项ID
     new: string[]; // 新创建的待办事项标题
@@ -37,6 +40,8 @@ interface FormErrors {
 const GoalModal: React.FC<GoalModalProps> = ({
   isOpen,
   goal,
+  goalId,
+  initialName,
   lists,
   availableTodos,
   goalTodos = [],
@@ -94,6 +99,37 @@ const GoalModal: React.FC<GoalModalProps> = ({
           }
         });
         setSelectedExistingTodos(new Set(existingTodoIds));
+      } else if (goalId === 'new') {
+        // 从头部创建的新目标：预填充初始名称
+        setFormData({
+          name: initialName || '',
+          description: '',
+          listId: '',
+          startDate: '',
+          dueDate: '',
+          priority: 0,
+          associatedTodos: {
+            existing: [],
+            new: []
+          }
+        });
+        setSelectedExistingTodos(new Set());
+      } else if (goalId) {
+        // 编辑已存在的目标
+        setFormData({
+          name: '',
+          description: '',
+          listId: '',
+          startDate: '',
+          dueDate: '',
+          priority: 0,
+          goalId: goalId,
+          associatedTodos: {
+            existing: [],
+            new: []
+          }
+        });
+        setSelectedExistingTodos(new Set());
       } else {
         // 创建模式：重置为默认值
         setFormData({
@@ -118,7 +154,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
       setNewTaskTitle('');
       setSearchQuery('');
       setSearchResults([]);
-  }, [isOpen, goal, goalTodos]);
+  }, [isOpen, goal, goalTodos, goalId, initialName]);
 
   // 表单验证
   const validateStep1 = (): boolean => {
@@ -250,7 +286,12 @@ const GoalModal: React.FC<GoalModalProps> = ({
     setErrors({});
 
     try {
-      await onSave(formData);
+      // 如果goalId为'new'，说明是创建新目标，不传递goalId
+      const saveData = {
+        ...formData,
+        ...(goalId && goalId !== 'new' ? { goalId } : {})
+      };
+      await onSave(saveData);
       // 保存成功后关闭模态框
       onClose();
     } catch (error) {

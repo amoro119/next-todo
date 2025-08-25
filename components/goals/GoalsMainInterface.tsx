@@ -5,7 +5,6 @@ import GoalsList from './GoalsList';
 import GoalDetails from './GoalDetails';
 
 interface GoalsMainInterfaceProps {
-  onCreateGoal: () => void;
   goals: Goal[];
   todos: Todo[];
   onUpdateGoal: (goal: Goal) => void;
@@ -17,7 +16,6 @@ interface GoalsMainInterfaceProps {
 }
 
 export default function GoalsMainInterface({
-  onCreateGoal,
   goals,
   todos,
   onUpdateGoal,
@@ -28,10 +26,6 @@ export default function GoalsMainInterface({
   onArchiveGoal
 }: GoalsMainInterfaceProps) {
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
-  
-  const handleCreateGoal = useCallback(() => {
-    onCreateGoal();
-  }, [onCreateGoal]);
 
   const handleGoalClick = useCallback((goal: Goal) => {
     setSelectedGoal(goal);
@@ -43,16 +37,7 @@ export default function GoalsMainInterface({
 
   return (
     <div className="goals-main-interface goals-container mode-transition">
-      <div className="goals-actions">
-        <button 
-          className="goals-action-btn primary btn"
-          onClick={handleCreateGoal}
-          data-testid="create-goal-button"
-        >
-          <span className="btn-icon">➕</span>
-          <span className="btn-text">新建目标</span>
-        </button>
-      </div>
+      {/* 移除了创建目标按钮，现在通过头部输入框创建目标 */}
 
       {/* 在此区域内切换 GoalsList 和 GoalDetails */}
       <div className="goals-list-container todo-list-container">
