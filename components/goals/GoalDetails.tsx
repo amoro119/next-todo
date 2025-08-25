@@ -450,7 +450,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
         <TodoModal
           mode="create"
           lists={lists}
-          goals={goals.filter((g: Goal) => g.id !== goal.id)} // 传入其他目标，排除当前目标
+          goals={goals} // 传入所有目标
           goalId={goal.id}
           onClose={() => setShowAddTask(false)}
           onSubmit={(todoData) => {
