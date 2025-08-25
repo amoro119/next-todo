@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Goal, Todo } from '@/lib/types';
+import TodoModal from '@/components/TodoModal';
 
 interface GoalDetailsProps {
   goal: Goal;
   todos: Todo[];
+  goals: Goal[];
+  lists: List[];
   onUpdateGoal: (goal: Goal) => void;
   onUpdateTodo: (todo: Todo) => void;
   onDeleteTodo: (todoId: string) => void;
@@ -22,6 +25,8 @@ interface DragState {
 const GoalDetails: React.FC<GoalDetailsProps> = ({
   goal,
   todos,
+  goals,
+  lists,
   onUpdateGoal,
   onUpdateTodo,
   onDeleteTodo,
@@ -441,102 +446,56 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       </div>
 
       {/* 任务表单模态框 */}
-      {(showAddTask || editingTask) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {editingTask ? '编辑任务' : '添加新任务'}
-              </h3>
-              <button
-                onClick={handleCancelEdit}
-                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              {/* 任务标题 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  任务标题 *
-                </label>
-                <input
-                  type="text"
-                  value={newTaskForm.title}
-                  onChange={(e) => setNewTaskForm(prev => ({ ...prev, title: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="输入任务标题"
-                  autoFocus
-                />
-              </div>
-
-              {/* 任务备注 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  任务备注
-                </label>
-                <textarea
-                  value={newTaskForm.notes}
-                  onChange={(e) => setNewTaskForm(prev => ({ ...prev, notes: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="输入任务备注（可选）"
-                  rows={3}
-                />
-              </div>
-
-              {/* 优先级和截止日期 */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    优先级
-                  </label>
-                  <select
-                    value={newTaskForm.priority}
-                    onChange={(e) => setNewTaskForm(prev => ({ ...prev, priority: parseInt(e.target.value) }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value={0}>无</option>
-                    <option value={1}>低</option>
-                    <option value={2}>中</option>
-                    <option value={3}>高</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    截止日期
-                  </label>
-                  <input
-                    type="date"
-                    value={newTaskForm.due_date}
-                    onChange={(e) => setNewTaskForm(prev => ({ ...prev, due_date: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 p-4 border-t">
-              <button
-                onClick={handleCancelEdit}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={editingTask ? handleUpdateTask : handleCreateTask}
-                disabled={!newTaskForm.title.trim()}
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-              >
-                {editingTask ? '更新' : '创建'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {showAddTask && (
+        <TodoModal
+          mode="create"
+          lists={lists}
+          goals={goals.filter((g: Goal) => g.id !== goal.id)} // 传入其他目标，排除当前目标
+          goalId={goal.id}
+          onClose={() => setShowAddTask(false)}
+          onSubmit={(todoData) => {
+            // 处理任务创建逻辑
+            const newTodo: Omit<Todo, 'id' | 'created_time' | 'completed_time'> = {
+              title: todoData.title,
+              completed: false,
+              deleted: false,
+              sort_order: todos.length,
+              due_date: todoData.due_date,
+              content: todoData.content,
+              tags: todoData.tags,
+              priority: todoData.priority,
+              start_date: todoData.start_date,
+              list_id: todoData.list_id,
+              goal_id: goal.id,
+              // 重复任务相关字段
+              repeat: todoData.repeat,
+              reminder: todoData.reminder,
+              is_recurring: todoData.is_recurring,
+              recurring_parent_id: todoData.recurring_parent_id,
+              instance_number: todoData.instance_number,
+              next_due_date: todoData.next_due_date,
+            };
+            onCreateTodo(newTodo);
+            setShowAddTask(false);
+          }}
+        />
+      )}
+      
+      {editingTask && (
+        <TodoModal
+          mode="edit"
+          lists={lists}
+          initialData={editingTask}
+          onClose={() => setEditingTask(null)}
+          onSubmit={(updatedTodo) => {
+            onUpdateTodo(updatedTodo);
+            setEditingTask(null);
+          }}
+          onDelete={(todoId) => {
+            onDeleteTodo(todoId);
+            setEditingTask(null);
+          }}
+        />
       )}
     </div>
   );

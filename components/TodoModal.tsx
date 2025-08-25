@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import type { Todo, List } from '../lib/types';
+import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
 
@@ -10,6 +10,8 @@ interface TodoModalProps {
   mode: 'create' | 'edit';
   initialData?: Partial<Todo>;
   lists: List[];
+  goals?: Goal[]; // 可选的 goals 列表
+  goalId?: string; // 可选的 goalId 参数
   onClose: () => void;
   onSubmit: (todoData: Todo) => void;
   onDelete?: (todoId: string) => void;
@@ -101,6 +103,8 @@ export default function TodoModal({
   mode,
   initialData,
   lists, 
+  goals = [], // 接收 goals 列表
+  goalId, // 接收 goalId 参数
   onClose, 
   onSubmit, 
   onDelete,
@@ -124,6 +128,7 @@ export default function TodoModal({
     start_date: initialData?.start_date || null,
     list_id: initialData?.list_id || null,
     list_name: initialData?.list_name || null,
+    goal_id: goalId ?? initialData?.goal_id ?? null, // 添加 goal_id 字段
     // 重复任务相关字段
     repeat: initialData?.repeat || null,
     reminder: initialData?.reminder || null,
@@ -178,7 +183,7 @@ export default function TodoModal({
       finalValue = localDateToDbUTC(value);
     } else if (name === 'priority') {
       finalValue = value ? Number(value) : 0;
-    } else if (name === 'list_id') {
+    } else if (name === 'list_id' || name === 'goal_id') {
       finalValue = value === '' ? null : value;
     } else if (type === 'checkbox') {
       finalValue = checked;
@@ -324,6 +329,23 @@ export default function TodoModal({
                         readOnly={isRecycled}
                     />
                 </div>
+            </div>
+
+            <div className="form-group">
+                <label htmlFor="goal_id">所属目标</label>
+                <select
+                    id="goal_id"
+                    name="goal_id"
+                    value={editableTodo.goal_id ?? goalId ?? ''}
+                    onChange={handleInputChange}
+                    disabled={!!goalId || isRecycled}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                    <option value="">无目标</option>
+                    {goals.map(goal => (
+                        <option key={goal.id} value={goal.id}>{goal.name}</option>
+                    ))}
+                </select>
             </div>
 
             <div className="form-group">
