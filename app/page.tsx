@@ -9,6 +9,7 @@ import { parseDidaCsv } from '../lib/csvParser'
 import { TodoList } from '../components/TodoList'
 import { ViewSwitcher } from '../components/ViewSwitcher'
 import ShortcutSwitch from '../components/ModeSwitcher'
+import ContainerHeader from '../components/ContainerHeader'
 import GoalsMainInterface from '../components/goals/GoalsMainInterface'
 import GoalsList from '../components/goals/GoalsList'
 import GoalModal from '../components/goals/GoalModal'
@@ -281,6 +282,7 @@ export default function TodoListPage() {
   });
   
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   
   const [currentView, setCurrentView] = useState<string>(() => {
     if (typeof window !== 'undefined') {
@@ -293,6 +295,7 @@ export default function TodoListPage() {
   const [isManageListsOpen, setIsManageListsOpen] = useState(false)
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false)
   const [newTodoTitle, setNewTodoTitle] = useState('')
+  const [newGoalTitle, setNewGoalTitle] = useState('')
   const [newTodoDate, setNewTodoDate] = useState<string | null>(null)
   const [lastAction, setLastAction] = useState<LastAction | null>(null)
   const [isEditingSlogan, setIsEditingSlogan] = useState(false)
@@ -737,8 +740,17 @@ export default function TodoListPage() {
     setIsGoalModalOpen(true);
   }, []);
 
+  const handleSubmitGoal = useCallback(async () => {
+    if (!newGoalTitle.trim()) return;
+    
+    // 设置临时状态并打开模态框，让GoalModal处理创建逻辑
+    setEditingGoalId('new');
+    setIsGoalModalOpen(true);
+  }, [newGoalTitle]);
+
   const handleCloseGoalModal = useCallback(() => {
     setIsGoalModalOpen(false);
+    setEditingGoalId(null);
   }, []);
 
   // 移除 handleViewGoalsList 函数，因为不再需要通过按钮进入目标列表
@@ -747,29 +759,45 @@ export default function TodoListPage() {
     try {
       console.log('开始保存目标:', goalData);
       
-      // 创建目标数据
-      const goalId = uuid();
-      const goal = {
-        id: goalId,
-        name: goalData.name,
-        description: goalData.description || null,
-        list_id: goalData.list_id || null,
-        start_date: goalData.start_date || null,
-        due_date: goalData.due_date || null,
-        priority: goalData.priority || 0,
-        created_time: new Date().toISOString(),
-        is_archived: false
-      };
+      // 检查是创建还是更新
+      const isUpdate = !!(goalData.goalId && goalData.goalId !== 'new');
+      const goalId = isUpdate ? goalData.goalId : uuid();
       
-      console.log('准备插入目标数据:', goal);
-      
-      // 插入目标到数据库
-      await db.insert('goals', goal);
-      
-      console.log('目标插入成功，ID:', goalId);
+      if (isUpdate) {
+        // 更新模式
+        const updateData = {
+          name: goalData.name,
+          description: goalData.description || null,
+          list_id: goalData.list_id || null,
+          start_date: goalData.start_date || null,
+          due_date: goalData.due_date || null,
+          priority: goalData.priority || 0
+        };
+        
+        console.log('更新目标数据:', updateData);
+        await db.update('goals', goalId, updateData);
+        console.log('目标更新成功，ID:', goalId);
+      } else {
+        // 创建模式
+        const goal = {
+          id: goalId,
+          name: goalData.name,
+          description: goalData.description || null,
+          list_id: goalData.list_id || null,
+          start_date: goalData.start_date || null,
+          due_date: goalData.due_date || null,
+          priority: goalData.priority || 0,
+          created_time: new Date().toISOString(),
+          is_archived: false
+        };
+        
+        console.log('准备插入目标数据:', goal);
+        await db.insert('goals', goal);
+        console.log('目标插入成功，ID:', goalId);
+      }
       
       // 处理关联的待办事项
-      const associatedTodos = goalData.associated_todos || { existing: [], new: [] };
+      const associatedTodos = goalData.associatedTodos || { existing: [], new: [] };
       
       // 关联现有待办事项
       if (associatedTodos.existing && associatedTodos.existing.length > 0) {
@@ -797,7 +825,7 @@ export default function TodoListPage() {
               completed: false,
               deleted: false,
               sort_order: 0,
-              list_id: goal.list_id,
+              list_id: goalData.list_id || null,
               goal_id: goalId,
               sort_order_in_goal: existingCount + i + 1,
               created_time: new Date().toISOString()
@@ -810,7 +838,7 @@ export default function TodoListPage() {
       // 关闭模态框
       setIsGoalModalOpen(false);
       
-      console.log('目标创建完成！');
+      console.log('目标保存完成！');
     } catch (error) {
       console.error('保存目标失败:', error);
       alert(`保存目标失败: ${error instanceof Error ? error.message : '未知错误'}`);
@@ -1074,25 +1102,15 @@ export default function TodoListPage() {
       {process.env.NODE_ENV === "development" && <ModeIndicator />}
       <div className="todo-wrapper">
         <div id="todo-app" className={`todo-app ${currentMode}`}>
-          <div className="container header">
-            <div className="todo-input">
-              <h1 className="title">
-                <img src="/img/todo.svg" alt="Todo" width={180} height={52} draggable={false} />
-              </h1>
-              <div className="add-content-wrapper">
-                <input
-                  ref={addTodoInputRef}
-                  type="text"
-                  className="add-content"
-                  placeholder={newTodoDate ? `为 ${newTodoDate} 添加新事项...` : (currentView !== 'today' && currentView !== 'inbox' && currentView !== 'calendar' && currentView !== 'recycle') ? `在"${currentView}"中新增待办...` : '新增待办事项...'}
-                  value={newTodoTitle}
-                  onChange={(e) => setNewTodoTitle(e.target.value)}
-                  onKeyUp={(e) => e.key === 'Enter' && handleAddTodo()}
+          <ContainerHeader
+                  mode={currentMode}
+                  currentView={currentView}
+                  newTodoTitle={currentMode === 'goals' ? newGoalTitle : newTodoTitle}
+                  newTodoDate={newTodoDate}
+                  onTitleChange={currentMode === 'goals' ? setNewGoalTitle : setNewTodoTitle}
+                  onAddTodo={handleAddTodo}
+                  onSubmitGoal={handleSubmitGoal}
                 />
-                <button className="btn submit-btn" type="button" onClick={handleAddTodo}>提交</button>
-              </div>
-            </div>
-          </div>
 
           <div className={`container main ${currentView === 'calendar' ? 'main-full-width' : ''}`}> 
             <ViewSwitcher
@@ -1119,7 +1137,6 @@ export default function TodoListPage() {
               ) : (
                 <div className="todo-list-box">
                   <GoalsMainInterface 
-                    onCreateGoal={handleCreateGoal}
                     goals={goals}
                     todos={todos}
                     onUpdateGoal={handleUpdateGoal}
@@ -1249,6 +1266,8 @@ export default function TodoListPage() {
           {isGoalModalOpen && (
             <GoalModal
               isOpen={isGoalModalOpen}
+              goalId={editingGoalId}
+              initialName={editingGoalId === 'new' ? newGoalTitle : undefined}
               lists={memoizedLists}
               availableTodos={memoizedUncompletedTodos}
               onSave={handleSaveGoal}
