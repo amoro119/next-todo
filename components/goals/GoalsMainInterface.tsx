@@ -37,7 +37,10 @@ export default function GoalsMainInterface({
 
   return (
     <div className="goals-main-interface goals-container mode-transition">
-      {/* 移除了创建目标按钮，现在通过头部输入框创建目标 */}
+      <div className="bar-message">
+          {/* <button className="btn-small completed-all btn-allFinish">全部标为完成</button> */}
+          <div className="bar-message-text">目标列表</div>
+      </div>
 
       {/* 在此区域内切换 GoalsList 和 GoalDetails */}
       <div className="goals-list-container todo-list-container">
