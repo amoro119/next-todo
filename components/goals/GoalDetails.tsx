@@ -57,13 +57,15 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   // 按排序权重排序任务
   const sortedTodos = useMemo(() => {
     return [...todos].sort((a, b) => {
-      const weightA = a.sort_weight || 0;
-      const weightB = b.sort_weight || 0;
+      const weightA = a.sort_order_in_goal || a.sort_order || 0;
+      const weightB = b.sort_order_in_goal || b.sort_order || 0;
       if (weightA !== weightB) {
         return weightA - weightB;
       }
       // 如果权重相同，按创建时间排序
-      return new Date(a.created_time).getTime() - new Date(b.created_time).getTime();
+      const timeA = a.created_time ? new Date(a.created_time).getTime() : 0;
+      const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
+      return timeA - timeB;
     });
   }, [todos]);
 
@@ -140,56 +142,15 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     }
   };
 
-  const handleCreateTask = () => {
-    if (!newTaskForm.title.trim()) return;
-
-    const newTodo: Omit<Todo, 'id' | 'created_time'> = {
-      title: newTaskForm.title.trim(),
-      notes: newTaskForm.notes.trim() || undefined,
-      list_id: goal.list_id,
-      goal_id: goal.id,
-      completed: false,
-      priority: newTaskForm.priority,
-      due_date: newTaskForm.due_date || undefined,
-      sort_weight: todos.length // 添加到末尾
-    };
-
-    onCreateTodo(newTodo);
-    setNewTaskForm({ title: '', notes: '', priority: 0, due_date: '' });
-    setShowAddTask(false);
-  };
-
-  const handleEditTask = (todo: Todo) => {
-    setEditingTask(todo);
-    setNewTaskForm({
-      title: todo.title,
-      notes: todo.notes || '',
-      priority: todo.priority,
-      due_date: todo.due_date || ''
-    });
-  };
-
-  const handleUpdateTask = () => {
-    if (!editingTask || !newTaskForm.title.trim()) return;
-
-    const updatedTodo: Todo = {
-      ...editingTask,
-      title: newTaskForm.title.trim(),
-      notes: newTaskForm.notes.trim() || undefined,
-      priority: newTaskForm.priority,
-      due_date: newTaskForm.due_date || undefined
-    };
-
-    onUpdateTodo(updatedTodo);
-    setEditingTask(null);
-    setNewTaskForm({ title: '', notes: '', priority: 0, due_date: '' });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingTask(null);
-    setShowAddTask(false);
-    setNewTaskForm({ title: '', notes: '', priority: 0, due_date: '' });
-  };
+  // const handleEditTask = (todo: Todo) => {
+  //   setEditingTask(todo);
+  //   setNewTaskForm({
+  //     title: todo.title,
+  //     notes: todo.notes || '',
+  //     priority: todo.priority,
+  //     due_date: todo.due_date || ''
+  //   });
+  // };
 
   const getProgressColor = (progress: number) => {
     if (progress === 100) return 'bg-green-500';
@@ -199,7 +160,8 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     return 'bg-red-500';
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     return date.toLocaleDateString('zh-CN', {
       year: 'numeric',
@@ -208,7 +170,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     });
   };
 
-  const getDueDateStatus = (dueDate?: string) => {
+  const getDueDateStatus = (dueDate?: string | null) => {
     if (!dueDate) return null;
     
     const date = new Date(dueDate);
@@ -247,37 +209,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   return (
     <div>
       <div className="max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* 头部 */}
-        <div className="flex justify-between items-center p-6 border-b">
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">{goal.name}</h2>
-            <div className="flex items-center gap-4 text-sm text-gray-600">
-              {goal.list_name && (
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                  {goal.list_name}
-                </span>
-              )}
-              {goal.priority > 0 && (
-                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                  优先级 {goal.priority}
-                </span>
-              )}
-              {dueDateStatus && (
-                <span className={`text-xs font-medium ${dueDateStatus.color}`}>
-                  {dueDateStatus.text}
-                </span>
-              )}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+        {/* 头部信息已移到 GoalHeader 组件中处理 */}
 
         {/* 内容区域 */}
         <div className="flex-1 overflow-y-auto p-6">
@@ -397,9 +329,9 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                       <div className={`font-medium ${todo.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
                         {todo.title}
                       </div>
-                      {todo.notes && (
+                      {todo.content && (
                         <div className={`text-sm mt-1 ${todo.completed ? 'text-gray-400' : 'text-gray-600'}`}>
-                          {todo.notes}
+                          {todo.content}
                         </div>
                       )}
                       {todo.due_date && (
@@ -455,7 +387,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
           onClose={() => setShowAddTask(false)}
           onSubmit={(todoData) => {
             // 处理任务创建逻辑
-            const newTodo: Omit<Todo, 'id' | 'created_time' | 'completed_time'> = {
+            const newTodo: Omit<Todo, 'id' | 'created_time'> = {
               title: todoData.title,
               completed: false,
               deleted: false,
@@ -467,6 +399,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
               start_date: todoData.start_date,
               list_id: todoData.list_id,
               goal_id: goal.id,
+              completed_time: null,
               // 重复任务相关字段
               repeat: todoData.repeat,
               reminder: todoData.reminder,

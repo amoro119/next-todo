@@ -1,0 +1,72 @@
+'use client';
+
+import React, { useMemo } from 'react';
+import { Goal } from '@/lib/types';
+
+interface GoalHeaderProps {
+  selectedGoal: Goal | null;
+  goalCount: number;
+  onBackToList: () => void;
+}
+
+const GoalHeader: React.FC<GoalHeaderProps> = ({
+  selectedGoal,
+  onBackToList
+}) => {
+  // 计算截止日期状态
+  const dueDateStatus = useMemo(() => {
+    if (!selectedGoal?.due_date) return null;
+    
+    const date = new Date(selectedGoal.due_date);
+    const now = new Date();
+    const diffTime = date.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return { text: `逾期${Math.abs(diffDays)}天`, color: 'text-red-600' };
+    if (diffDays === 0) return { text: '今天到期', color: 'text-orange-600' };
+    if (diffDays <= 3) return { text: `${diffDays}天后到期`, color: 'text-orange-600' };
+    return { text: `${diffDays}天后到期`, color: 'text-gray-600' };
+  }, [selectedGoal?.due_date]);
+
+  // 在目标列表页面时显示
+  if (!selectedGoal) {
+    return (
+      <div className="bar-message">
+        <div className="bar-message-text">我的目标</div>
+      </div>
+    );
+  }
+
+  // 在目标详情页面时显示
+  return (
+    <div className="bar-message">
+      <div className="flex items-center w-full">
+            <button
+              onClick={onBackToList}
+              className="p-1 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          <div className="bar-message-text truncate max-w-xs sm:max-w-sm md:max-w-md">
+            {selectedGoal.name}
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedGoal.priority > 0 && (
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+              优先级 {selectedGoal.priority}
+            </span>
+          )}
+          {dueDateStatus && (
+            <span className={`text-xs font-medium ${dueDateStatus.color}`}>
+              {dueDateStatus.text}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default GoalHeader;
