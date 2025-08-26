@@ -667,43 +667,41 @@ const GoalModal: React.FC<GoalModalProps> = ({
 
         {/* 底部按钮 */}
   <div className="modal-footer">
-            <button
-              onClick={handleClose}
+          <button
+            onClick={handleClose}
+            disabled={isSubmitting}
+            className="modal-btn ghost interactive-hover"
+          >
+          取消
+          </button>
+
+          {currentStep === 2 && (
+              <button
+              onClick={handlePrevStep}
               disabled={isSubmitting}
               className="modal-btn ghost interactive-hover"
             >
-            取消
-          </button>
+              上一步
+            </button>
+          )}
           
-          <div className="flex space-x-3">
-            {currentStep === 2 && (
-                <button
-                onClick={handlePrevStep}
-                disabled={isSubmitting}
-                className="modal-btn ghost interactive-hover"
-              >
-                上一步
-              </button>
-            )}
-            
-            {currentStep === 1 ? (
-                <button
-                onClick={handleComplete}
-                disabled={isSubmitting}
-                className="modal-btn primary interactive-hover"
-              >
-                下一步
-              </button>
-            ) : (
+          {currentStep === 1 ? (
               <button
-                onClick={handleComplete}
-                disabled={isSubmitting}
-                className="modal-btn interactive-hover"
-              >
-                {isSubmitting ? '保存中...' : goal ? '更新目标' : '创建目标'}
-              </button>
-            )}
-          </div>
+              onClick={handleComplete}
+              disabled={isSubmitting}
+              className="modal-btn primary interactive-hover"
+            >
+              下一步
+            </button>
+          ) : (
+            <button
+              onClick={handleComplete}
+              disabled={isSubmitting}
+              className="modal-btn interactive-hover"
+            >
+              {isSubmitting ? '保存中...' : goal ? '更新目标' : '创建目标'}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -246,7 +246,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
   return (
     <div>
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* 头部 */}
         <div className="flex justify-between items-center p-6 border-b">
           <div className="flex-1">
