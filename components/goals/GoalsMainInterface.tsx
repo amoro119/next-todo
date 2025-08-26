@@ -1,5 +1,5 @@
 // components/goals/GoalsMainInterface.tsx
-import { useState, useCallback } from 'react';
+import { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Goal, Todo } from '@/lib/types';
 import GoalsList from './GoalsList';
 import GoalDetails from './GoalDetails';
@@ -15,9 +15,15 @@ interface GoalsMainInterfaceProps {
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
   onEditGoal: (goal: Goal) => void;
   onArchiveGoal: (goalId: string) => void;
+  onSelectGoal?: (goalId: string) => void;
 }
 
-export default function GoalsMainInterface({
+export interface GoalsMainInterfaceRef {
+  selectGoalById: (goalId: string) => void;
+  selectGoalDirectly: (goal: Goal) => void;
+}
+
+const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceProps>(({
   goals,
   todos,
   lists,
@@ -26,13 +32,43 @@ export default function GoalsMainInterface({
   onDeleteTodo,
   onCreateTodo,
   onEditGoal,
-  onArchiveGoal
-}: GoalsMainInterfaceProps) {
+  onArchiveGoal,
+  onSelectGoal
+}, ref) => {
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
 
   const handleGoalClick = useCallback((goal: Goal) => {
     setSelectedGoal(goal);
   }, []);
+
+  const handleSelectGoalById = useCallback((goalId: string) => {
+    console.log('GoalsMainInterface: 尝试选择目标', goalId);
+    console.log('GoalsMainInterface: 当前可用目标', goals.map(g => ({ id: g.id, name: g.name })));
+    
+    const goal = goals.find(g => g.id === goalId);
+    if (goal) {
+      console.log('GoalsMainInterface: 找到目标，设置为选中状态', goal);
+      setSelectedGoal(goal);
+      if (onSelectGoal) {
+        onSelectGoal(goalId);
+      }
+    } else {
+      console.warn('GoalsMainInterface: 未找到目标', goalId);
+    }
+  }, [goals, onSelectGoal]);
+
+  const handleSelectGoalDirectly = useCallback((goal: Goal) => {
+    console.log('GoalsMainInterface: 直接选择目标', goal);
+    setSelectedGoal(goal);
+    if (onSelectGoal) {
+      onSelectGoal(goal.id);
+    }
+  }, [onSelectGoal]);
+
+  useImperativeHandle(ref, () => ({
+    selectGoalById: handleSelectGoalById,
+    selectGoalDirectly: handleSelectGoalDirectly
+  }), [handleSelectGoalById, handleSelectGoalDirectly]);
 
   const handleBackToList = useCallback(() => {
     setSelectedGoal(null);
@@ -84,4 +120,8 @@ export default function GoalsMainInterface({
       </div>
     </div>
   );
-}
+});
+
+GoalsMainInterface.displayName = 'GoalsMainInterface';
+
+export default GoalsMainInterface;
