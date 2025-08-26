@@ -13,6 +13,7 @@ interface GoalsMainInterfaceProps {
   onUpdateTodo: (todo: Todo) => void;
   onDeleteTodo: (todoId: string) => void;
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
+  onAssociateTasks: (taskIds: string[], goalId: string) => void;
   onEditGoal: (goal: Goal) => void;
   onArchiveGoal: (goalId: string) => void;
   onSelectGoal?: (goalId: string) => void;
@@ -31,6 +32,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
   onUpdateTodo,
   onDeleteTodo,
   onCreateTodo,
+  onAssociateTasks,
   onEditGoal,
   onArchiveGoal,
   onSelectGoal
@@ -95,6 +97,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
               onUpdateTodo={onUpdateTodo}
               onDeleteTodo={onDeleteTodo}
               onCreateTodo={onCreateTodo}
+              onAssociateTasks={onAssociateTasks}
               onClose={handleBackToList}
             />
           </div>

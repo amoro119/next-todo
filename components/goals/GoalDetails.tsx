@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Goal, Todo } from '@/lib/types';
 import TodoModal from '@/components/TodoModal';
+import AssociateTaskModal from './AssociateTaskModal';
 
 interface GoalDetailsProps {
   goal: Goal;
@@ -13,6 +14,7 @@ interface GoalDetailsProps {
   onUpdateTodo: (todo: Todo) => void;
   onDeleteTodo: (todoId: string) => void;
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
+  onAssociateTasks: (taskIds: string[], goalId: string) => void;
   onClose: () => void;
   loading?: boolean;
 }
@@ -31,6 +33,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   onUpdateTodo,
   onDeleteTodo,
   onCreateTodo,
+  onAssociateTasks,
   loading = false
 }) => {
   const [dragState, setDragState] = useState<DragState>({
@@ -38,6 +41,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     dragOverIndex: null
   });
   const [showAddTask, setShowAddTask] = useState(false);
+  const [showAssociateTask, setShowAssociateTask] = useState(false);
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
 
   // 计算目标进度
@@ -65,19 +69,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   // 更新目标进度
   useEffect(() => {
     const newProgress = progress;
-    const newCompletedTasks = todos.filter(todo => todo.completed).length;
-    const newTotalTasks = todos.length;
 
-    if (
-      goal.progress !== newProgress ||
-      goal.completed_tasks !== newCompletedTasks ||
-      goal.total_tasks !== newTotalTasks
-    ) {
+    if (goal.progress !== newProgress) {
       onUpdateGoal({
         ...goal,
-        progress: newProgress,
-        completed_tasks: newCompletedTasks,
-        total_tasks: newTotalTasks
+        progress: newProgress
       });
     }
   }, [goal, progress, todos, onUpdateGoal]);
@@ -246,13 +242,19 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
           {/* 关联任务列表 */}
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">关联任务</h3>
+              <h3 className="text-lg font-semibold text-gray-900">相关任务</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowAddTask(true)}
                   className="px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
                 >
                   + 添加任务
+                </button>
+                <button
+                  onClick={() => setShowAssociateTask(true)}
+                  className="px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                >
+                  关联任务
                 </button>
                 <span className="text-sm text-gray-500">拖拽任务可重新排序</span>
               </div>
@@ -386,6 +388,16 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
             onCreateTodo(newTodo);
             setShowAddTask(false);
           }}
+        />
+      )}
+      
+      {showAssociateTask && (
+        <AssociateTaskModal
+          isOpen={showAssociateTask}
+          onClose={() => setShowAssociateTask(false)}
+          onAssociateTasks={onAssociateTasks}
+          goalId={goal.id}
+          existingTaskIds={todos.map(todo => todo.id)}
         />
       )}
       

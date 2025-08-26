@@ -1155,6 +1155,26 @@ export default function TodoListPage() {
     [db]
   );
 
+  const handleAssociateTasks = useCallback(
+    async (taskIds: string[], goalId: string) => {
+      try {
+        // 更新每个任务的 goal_id 字段
+        for (const taskId of taskIds) {
+          await db.update("todos", taskId, { goal_id: goalId });
+        }
+        console.log(`成功关联 ${taskIds.length} 个任务到目标 ${goalId}`);
+      } catch (error) {
+        console.error("关联任务失败:", error);
+        alert(
+          `关联任务失败: ${
+            error instanceof Error ? error.message : "未知错误"
+          }`
+        );
+      }
+    },
+    [db]
+  );
+
   const handleUndo = useCallback(async () => {
     if (!lastAction) {
       alert("没有可撤销的操作");
@@ -1521,6 +1541,7 @@ export default function TodoListPage() {
                   onUpdateTodo={handleUpdateTodo}
                   onDeleteTodo={handleDeleteTodo}
                   onCreateTodo={handleCreateTodoForGoal}
+                  onAssociateTasks={handleAssociateTasks}
                   onClose={() => setSelectedGoal(null)}
                 />
               ) : (
@@ -1538,6 +1559,7 @@ export default function TodoListPage() {
                     onUpdateTodo={handleUpdateTodo}
                     onDeleteTodo={handleDeleteTodo}
                     onCreateTodo={handleCreateTodoForGoal}
+                    onAssociateTasks={handleAssociateTasks}
                     onEditGoal={(goal) => console.log("Edit goal:", goal)}
                     onArchiveGoal={(goalId) =>
                       console.log("Archive goal:", goalId)
