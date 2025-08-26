@@ -31,7 +31,6 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   onUpdateTodo,
   onDeleteTodo,
   onCreateTodo,
-  onClose,
   loading = false
 }) => {
   const [dragState, setDragState] = useState<DragState>({
@@ -40,12 +39,6 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   });
   const [showAddTask, setShowAddTask] = useState(false);
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
-  const [newTaskForm, setNewTaskForm] = useState({
-    title: '',
-    notes: '',
-    priority: 0,
-    due_date: ''
-  });
 
   // 计算目标进度
   const progress = useMemo(() => {
