@@ -6,6 +6,8 @@ import { Goal } from '@/lib/types';
 interface GoalsListProps {
   goals: Goal[];
   onGoalClick: (goal: Goal) => void;
+  onEditGoal: (goal: Goal) => void;
+  onArchiveGoal: (goalId: string) => void;
   loading?: boolean;
 }
 
@@ -14,6 +16,8 @@ interface GoalsListProps {
 const GoalsList: React.FC<GoalsListProps> = ({
   goals,
   onGoalClick,
+  onEditGoal,
+  onArchiveGoal,
   loading = false
 }) => {
   // removed sort/filter state
@@ -92,6 +96,8 @@ const GoalsList: React.FC<GoalsListProps> = ({
                 key={goal.id}
                 goal={goal}
                 onGoalClick={onGoalClick}
+                onEditGoal={onEditGoal}
+                onArchiveGoal={onArchiveGoal}
                 formatDate={formatDate}
                 getDueDateColor={getDueDateColor}
               />
@@ -106,6 +112,8 @@ const GoalsList: React.FC<GoalsListProps> = ({
 interface GoalCardProps {
   goal: Goal;
   onGoalClick: (goal: Goal) => void;
+  onEditGoal: (goal: Goal) => void;
+  onArchiveGoal: (goalId: string) => void;
   formatDate: (dateString: string) => string;
   getDueDateColor: (dueDate?: string, progress?: number) => string;
 }
@@ -140,7 +148,6 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
         <h3 className="font-semibold text-lg text-gray-900 line-clamp-2 flex-1">
           {goal.name}
         </h3>
-  {/* 操作按钮已移除；整体点击卡片打开目标详情 */}
       </div>
 
         {/* 描述 */}
@@ -151,36 +158,34 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
         )}
 
       {/* 进度条 */}
-      <div className="mb-4">
-        <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-gray-700">
-            进度
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-sm font-medium text-gray-700">
+          进度
+        </span>
+        <span className="text-sm font-semibold text-gray-900">
+          {progress}%
+        </span>
+      </div>
+      <div className="progress-track w-full rounded-full h-2">
+        <div
+          className="progress-fill"
+          style={{ ['--progress']: `${progress}%`,
+            background: progress === 100 ? 'var(--completed)' : 
+                        progress >= 75 ? 'var(--normal)' : 
+                        progress >= 50 ? '#f5d99e' : 
+                        progress >= 25 ? '#f8d966' : 'var(--deleted)'
+          } as unknown as React.CSSProperties}
+        />
+      </div>
+      <div className="flex justify-between items-center mt-1">
+        <span className="text-xs text-gray-500">
+          {completedTasks}/{totalTasks} 任务
+        </span>
+        {progress === 100 && (
+          <span className="text-xs text-green-600 font-medium">
+            ✓ 已完成
           </span>
-          <span className="text-sm font-semibold text-gray-900">
-            {progress}%
-          </span>
-        </div>
-        <div className="progress-track w-full rounded-full h-2">
-          <div
-            className="progress-fill"
-            style={{ ['--progress']: `${progress}%`,
-              background: progress === 100 ? 'var(--completed)' : 
-                         progress >= 75 ? 'var(--normal)' : 
-                         progress >= 50 ? '#f5d99e' : 
-                         progress >= 25 ? '#f8d966' : 'var(--deleted)'
-            } as unknown as React.CSSProperties}
-          />
-        </div>
-        <div className="flex justify-between items-center mt-1">
-          <span className="text-xs text-gray-500">
-            {completedTasks}/{totalTasks} 任务
-          </span>
-          {progress === 100 && (
-            <span className="text-xs text-green-600 font-medium">
-              ✓ 已完成
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
         {/* 底部信息 */}

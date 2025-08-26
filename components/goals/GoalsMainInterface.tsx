@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import { Goal, Todo } from '@/lib/types';
 import GoalsList from './GoalsList';
 import GoalDetails from './GoalDetails';
+import GoalHeader from './GoalHeader';
 
 interface GoalsMainInterfaceProps {
   goals: Goal[];
@@ -42,10 +43,11 @@ export default function GoalsMainInterface({
 
       {/* 在此区域内切换 GoalsList 和 GoalDetails */}
       <div className="goals-list-container">
-        <div className="bar-message">
-          {/* <button className="btn-small completed-all btn-allFinish">全部标为完成</button> */}
-          <div className="bar-message-text">我的目标</div>
-        </div>
+        <GoalHeader 
+          selectedGoal={selectedGoal}
+          goalCount={goals.length}
+          onBackToList={handleBackToList}
+        />
         {selectedGoal ? (
           <div className="view-transition">
             <GoalDetails

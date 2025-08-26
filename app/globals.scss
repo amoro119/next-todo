@@ -81,6 +81,7 @@ button {
   margin: 0;
   background: transparent;
   color: $font-color;
+  cursor: pointer;
 
   &:focus {
     outline: 0;
