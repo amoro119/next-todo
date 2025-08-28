@@ -145,17 +145,22 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
       {/* 头部 */}
       <div className={`goal-content ${progress === 100 ? 'completed' : ''}`} onClick={handleCardClick}>
         <div className="flex justify-between items-start mb-3">
-        <h3 className="font-semibold text-lg text-gray-900 line-clamp-2 flex-1">
+          <h3 className="font-semibold text-lg text-gray-900 line-clamp-2 flex-1">
+          {goal.list_name && (
+            <span className="goal-list-name">
+              [{goal.list_name}]
+            </span>
+          )}
           {goal.name}
         </h3>
       </div>
 
         {/* 描述 */}
-        {goal.description && (
+        {/* {goal.description && (
           <p className="text-gray-600 text-sm mb-4 line-clamp-2">
             {goal.description}
           </p>
-        )}
+        )} */}
 
       {/* 进度条 */}
       <div className="flex justify-between items-center mb-2">
@@ -189,16 +194,11 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
       </div>
 
         {/* 底部信息 */}
-        <div className="flex justify-between items-center text-sm">
+        <div className="flex justify-between items-center text-sm mt-2">
           <div className="flex items-center gap-2">
           {goal.priority > 0 && (
-            <span className="pill pill-priority">
+            <span className="goal-priority">
               优先级 {goal.priority}
-            </span>
-          )}
-          {goal.list_name && (
-            <span className="pill pill-list">
-              {goal.list_name}
             </span>
           )}
         </div>
