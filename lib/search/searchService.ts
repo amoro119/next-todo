@@ -1,3 +1,4 @@
+
 // lib/search/searchService.ts
 import type { Todo } from '../types';
 import { getDbWrapper } from '../sync/initOfflineSync';
@@ -153,9 +154,13 @@ export class TaskSearchService {
    */
   private buildSearchQuery(query: string, options: SearchOptions): { sql: string; params: unknown[] } {
     const searchTerm = `%${query.trim()}%`;
+    if (!searchTerm || searchTerm === '%%') {
+        return { sql: 'SELECT * FROM todos WHERE false', params: [] };
+    }
+    
     const conditions: string[] = [];
-    const params: unknown[] = [searchTerm]; // 第一个参数用于排序
-    let paramIndex = 2; // 从第二个参数开始
+    const params: unknown[] = [searchTerm];
+    let paramIndex = 2;
 
     // 构建搜索条件
     const searchConditions: string[] = [];
@@ -178,13 +183,6 @@ export class TaskSearchService {
       paramIndex++;
     }
     
-    // 移除ID匹配以避免错误的搜索结果
-    // if (options.fields.includes('id')) {
-    //   searchConditions.push(`t.id::text ILIKE $${paramIndex}`);
-    //   params.push(searchTerm);
-    //   paramIndex++;
-    // }
-
     if (searchConditions.length > 0) {
       conditions.push(`(${searchConditions.join(' OR ')})`);
     }
@@ -220,6 +218,7 @@ export class TaskSearchService {
           WHEN t.tags ILIKE $1 THEN 3 
           ELSE 4 
         END,
+        t.due_date DESC NULLS LAST,
         t.completed ASC,
         t.priority DESC,
         t.created_time DESC 

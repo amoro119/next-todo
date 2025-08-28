@@ -148,9 +148,7 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`确认要删除目标 "${goal.name}" 吗？此操作无法撤销。`)) {
-      onDeleteGoal(goal.id);
-    }
+    onDeleteGoal(goal.id);
   };
 
   return (
