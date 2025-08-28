@@ -8,6 +8,7 @@ export interface SearchOptions {
   includeCompleted: boolean;
   includeDeleted: boolean;
   limit?: number;
+  offset?: number; // 添加偏移量支持分页
   forceRefresh?: boolean; // 强制刷新，跳过缓存
 }
 
@@ -27,7 +28,7 @@ export class TaskSearchService {
   private queryCache = new Map<string, { sql: string; params: unknown[]; timestamp: number }>();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
   private readonly QUERY_CACHE_DURATION = 10 * 60 * 1000; // 10分钟查询缓存
-  private readonly DEFAULT_LIMIT = 50;
+  private readonly DEFAULT_LIMIT = 100; // 增加默认限制到100
   private readonly MAX_CACHE_SIZE = 100;
   private searchAbortController: AbortController | null = null;
 
@@ -89,6 +90,13 @@ export class TaskSearchService {
         throw new Error('Search cancelled');
       }
       
+      // 执行计数查询获取总匹配数
+      const countOptions = { ...searchOptions, limit: undefined, offset: undefined };
+      const { sql: countSql, params: countParams } = this.buildCountQuery(query, countOptions);
+      const countResult = await dbWrapper.raw.query(countSql, countParams);
+      const totalMatches = countResult.rows[0]?.count ? parseInt(countResult.rows[0].count, 10) : 0;
+
+      // 执行搜索查询获取当前页结果
       const result = await dbWrapper.raw.query(sql, params);
       const todos = result.rows.map((raw: any) => this.normalizeTodo(raw));
       
@@ -96,7 +104,7 @@ export class TaskSearchService {
         todos,
         query: query.trim(),
         executionTime: Date.now() - startTime,
-        totalMatches: todos.length
+        totalMatches
       };
 
       // 缓存结果
@@ -223,6 +231,70 @@ export class TaskSearchService {
         t.priority DESC,
         t.created_time DESC 
       LIMIT ${options.limit || this.DEFAULT_LIMIT}
+      ${options.offset ? `OFFSET ${options.offset}` : ''}
+    `;
+
+    return { sql, params };
+  }
+
+  /**
+   * 构建计算总匹配数的查询
+   * @param query 搜索字符串
+   * @param options 搜索选项
+   * @returns SQL查询和参数
+   */
+  private buildCountQuery(query: string, options: SearchOptions): { sql: string; params: unknown[] } {
+    const searchTerm = `%${query.trim()}%`;
+    if (!searchTerm || searchTerm === '%%') {
+        return { sql: 'SELECT COUNT(*) as count FROM todos WHERE false', params: [] };
+    }
+    
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    // 构建搜索条件
+    const searchConditions: string[] = [];
+    
+    if (options.fields.includes('title')) {
+      searchConditions.push(`t.title ILIKE $${paramIndex}`);
+      params.push(searchTerm);
+      paramIndex++;
+    }
+    
+    if (options.fields.includes('content')) {
+      searchConditions.push(`t.content ILIKE $${paramIndex}`);
+      params.push(searchTerm);
+      paramIndex++;
+    }
+    
+    if (options.fields.includes('tags')) {
+      searchConditions.push(`t.tags ILIKE $${paramIndex}`);
+      params.push(searchTerm);
+      paramIndex++;
+    }
+    
+    if (searchConditions.length > 0) {
+      conditions.push(`(${searchConditions.join(' OR ')})`);
+    }
+
+    // 添加完成状态过滤
+    if (!options.includeCompleted) {
+      conditions.push('t.completed = false');
+    }
+
+    // 添加删除状态过滤
+    if (!options.includeDeleted) {
+      conditions.push('t.deleted = false');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    
+    // 构建计数查询
+    const sql = `
+      SELECT COUNT(*) as count
+      FROM todos t 
+      ${whereClause}
     `;
 
     return { sql, params };
@@ -238,7 +310,8 @@ export class TaskSearchService {
       fields: options?.fields || ['title', 'content', 'tags'],
       includeCompleted: options?.includeCompleted ?? true,
       includeDeleted: options?.includeDeleted ?? false,
-      limit: options?.limit || this.DEFAULT_LIMIT
+      limit: options?.limit || this.DEFAULT_LIMIT,
+      offset: options?.offset || 0
     };
   }
 

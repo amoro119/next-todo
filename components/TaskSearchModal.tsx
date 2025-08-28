@@ -27,9 +27,11 @@ interface TaskSearchModalState {
   searchQuery: string;
   searchResults: Todo[];
   isLoading: boolean;
+  isloadingMore: boolean; // 添加加载更多状态
   isVisible: boolean;
   searchError: string | null;
   lastSearchTime: number;
+  hasMoreResults: boolean; // 添加是否有更多结果的标志
 }
 
 // Helper function for date formatting
@@ -257,15 +259,21 @@ export default function TaskSearchModal({
     searchQuery: "",
     searchResults: [],
     isLoading: false,
+    isloadingMore: false, // 初始化加载更多状态
     isVisible: false,
     searchError: null,
     lastSearchTime: 0,
+    hasMoreResults: true, // 初始化更多结果标志
   });
+
+  // 添加状态来存储总匹配数
+  const [totalMatches, setTotalMatches] = useState<number>(0);
 
   const modalRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
   const searchAbortController = useRef<AbortController | null>(null);
+  const resultsListRef = useRef<HTMLDivElement>(null);
 
   // 使用防抖处理搜索查询
   const debouncedSearchQuery = useDebounce(state.searchQuery, 300);
@@ -297,6 +305,7 @@ export default function TaskSearchModal({
         searchError: null,
         lastSearchTime: 0,
       }));
+      setTotalMatches(0);
 
       // 取消正在进行的搜索
       if (searchAbortController.current) {
@@ -374,6 +383,47 @@ export default function TaskSearchModal({
     return () => modal.removeEventListener("keydown", handleTabKey);
   }, [isOpen]);
 
+  // Handle scroll for infinite loading
+  useEffect(() => {
+    if (!isOpen || !resultsListRef.current) return;
+
+    const resultsList = resultsListRef.current;
+    
+    const handleScroll = async () => {
+      // Check if we're near the bottom of the scrollable area
+      const { scrollTop, scrollHeight, clientHeight } = resultsList;
+      const isNearBottom = scrollTop + clientHeight >= scrollHeight - 100; // 100px from bottom
+      
+      // Load more results when near bottom and there are more results to load
+      if (isNearBottom && state.hasMoreResults && !state.isloadingMore && state.searchResults.length > 0) {
+        setState(prev => ({ ...prev, isloadingMore: true }));
+        
+        try {
+          const searchResult = await searchTodos(state.searchQuery, {
+            fields: ["title", "content", "tags"],
+            includeCompleted: true,
+            includeDeleted: false,
+            limit: 100,
+            offset: state.searchResults.length,
+          });
+          
+          setState(prev => ({
+            ...prev,
+            searchResults: [...prev.searchResults, ...searchResult.todos],
+            isloadingMore: false,
+            hasMoreResults: searchResult.todos.length === 100, // If we got less than 100 results, there are no more
+          }));
+        } catch (error) {
+          console.error("Failed to load more search results:", error);
+          setState(prev => ({ ...prev, isloadingMore: false }));
+        }
+      }
+    };
+
+    resultsList.addEventListener("scroll", handleScroll);
+    return () => resultsList.removeEventListener("scroll", handleScroll);
+  }, [isOpen, state.searchResults.length, state.hasMoreResults, state.isloadingMore, state.searchQuery]);
+
   // 执行搜索的效果
   useEffect(() => {
     if (!isOpen) return;
@@ -387,8 +437,11 @@ export default function TaskSearchModal({
           ...prev,
           searchResults: [],
           isLoading: false,
+          isloadingMore: false,
           searchError: null,
+          hasMoreResults: true,
         }));
+        setTotalMatches(0);
         return;
       }
 
@@ -416,7 +469,7 @@ export default function TaskSearchModal({
           fields: ["title", "content", "tags"],
           includeCompleted: true,
           includeDeleted: false,
-          limit: 50,
+          limit: 100,
         });
 
         // 检查请求是否被取消
@@ -432,9 +485,12 @@ export default function TaskSearchModal({
           ...prev,
           searchResults: searchResult.todos,
           isLoading: false,
+          isloadingMore: false,
           searchError: null,
           lastSearchTime: Date.now() - startTime,
+          hasMoreResults: searchResult.todos.length === 100,
         }));
+        setTotalMatches(searchResult.totalMatches);
       } catch (error) {
         // 检查是否是取消错误
         if (currentController.signal.aborted) {
@@ -450,6 +506,7 @@ export default function TaskSearchModal({
           searchError: "搜索失败，请重试",
           lastSearchTime: 0,
         }));
+        setTotalMatches(0);
       }
     };
 
@@ -495,7 +552,7 @@ export default function TaskSearchModal({
           fields: ["title", "content", "tags"],
           includeCompleted: true,
           includeDeleted: false,
-          limit: 50,
+          limit: 100,
           forceRefresh: true, // 强制刷新
         });
 
@@ -509,9 +566,12 @@ export default function TaskSearchModal({
           ...prev,
           searchResults: searchResult.todos,
           isLoading: false,
+          isloadingMore: false,
           searchError: null,
           lastSearchTime: Date.now() - startTime,
+          hasMoreResults: searchResult.todos.length === 100,
         }));
+        setTotalMatches(searchResult.totalMatches);
       } catch (error) {
         // 检查是否是取消错误
         if (currentController.signal.aborted) {
@@ -541,6 +601,7 @@ export default function TaskSearchModal({
     }));
   };
 
+  
   // Handle overlay click to close modal
   const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
@@ -548,6 +609,7 @@ export default function TaskSearchModal({
     }
   };
 
+  
   // Handle close button click
   const handleCloseClick = () => {
     onClose();
@@ -651,7 +713,7 @@ export default function TaskSearchModal({
               <div className="search-results">
                 <div className="search-results-header">
                   <span className="search-results-count">
-                    找到 {state.searchResults.length} 个匹配任务
+                    找到 {totalMatches} 个匹配任务
                   </span>
                   {state.lastSearchTime > 0 && (
                     <span className="search-results-time">
@@ -660,7 +722,7 @@ export default function TaskSearchModal({
                   )}
                 </div>
 
-                <div className="search-results-list">
+                <div className="search-results-list" ref={resultsListRef}>
                   <div className="search-todo-list">
                     <SearchResultsList
                       searchResults={state.searchResults}
@@ -669,6 +731,12 @@ export default function TaskSearchModal({
                       onDelete={onDelete}
                       onSelectTodo={onSelectTodo}
                     />
+                    {state.isloadingMore && (
+                      <div className="search-loading-more">
+                        <div className="loading-spinner"></div>
+                        <span>加载更多...</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
