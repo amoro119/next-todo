@@ -12,6 +12,7 @@ interface GoalsMainInterfaceProps {
   onUpdateGoal: (goal: Goal) => void;
   onUpdateTodo: (todo: Todo) => void;
   onDeleteTodo: (todoId: string) => void;
+  onDeleteGoal: (goalId: string) => void;
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
   onAssociateTasks: (taskIds: string[], goalId: string) => void;
   onEditGoal: (goal: Goal) => void;
@@ -31,6 +32,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
   onUpdateGoal,
   onUpdateTodo,
   onDeleteTodo,
+  onDeleteGoal,
   onCreateTodo,
   onAssociateTasks,
   onEditGoal,
@@ -108,6 +110,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
               onGoalClick={handleGoalClick}
               onEditGoal={onEditGoal}
               onArchiveGoal={onArchiveGoal}
+              onDeleteGoal={onDeleteGoal}
             />
             <div className="bar-message bar-bottom">
               <div className="bar-message-text">

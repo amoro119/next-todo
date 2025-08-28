@@ -1140,6 +1140,33 @@ export default function TodoListPage() {
     [db]
   );
 
+  const handleDeleteGoal = useCallback(
+    async (goalId: string) => {
+      const goalToDelete = goals.find((g: Goal) => g.id === goalId);
+      if (!goalToDelete) return;
+      
+      const confirmed = window.confirm(
+        `确认要删除目标 "${goalToDelete.name}" 吗？此操作无法撤销。`
+      );
+      
+      if (confirmed) {
+        await db.delete("goals", goalId);
+        // 同时删除与该目标关联的所有待办事项
+        const todosToUpdateQuery = await db.query<{ id: string }>(
+          `SELECT id FROM todos WHERE goal_id = $1`,
+          [goalId]
+        );
+        const todosToUpdate = todosToUpdateQuery.rows;
+        
+        // 将目标下的所有待办事项的目标ID设为null
+        for (const todo of todosToUpdate) {
+          await db.update("todos", todo.id, { goal_id: null });
+        }
+      }
+    },
+    [goals, db]
+  );
+
   const handleAssociateTasks = useCallback(
     async (taskIds: string[], goalId: string) => {
       try {
@@ -1543,6 +1570,7 @@ export default function TodoListPage() {
                     onUpdateGoal={handleUpdateGoal}
                     onUpdateTodo={handleUpdateTodo}
                     onDeleteTodo={handleDeleteTodo}
+                    onDeleteGoal={handleDeleteGoal}
                     onCreateTodo={handleCreateTodoForGoal}
                     onAssociateTasks={handleAssociateTasks}
                     onEditGoal={(goal) => console.log("Edit goal:", goal)}
