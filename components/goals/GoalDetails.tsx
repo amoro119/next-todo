@@ -242,7 +242,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
           {/* 关联任务列表 */}
           <div>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">相关任务</h3>
+              <h3 className="text-lg font-semibold text-gray-900">任务/步骤</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowAddTask(true)}
