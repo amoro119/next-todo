@@ -12,6 +12,12 @@ interface TodoModalProps {
   lists: List[];
   goals?: Goal[]; // 可选的 goals 列表
   goalId?: string; // 可选的 goalId 参数
+  context?: {
+    view?: string;
+    todayDate?: string;
+    selectedDate?: string;
+    listId?: string;
+  };
   onClose: () => void;
   onSubmit: (todoData: Todo) => void;
   onDelete?: (todoId: string) => void;
@@ -105,6 +111,7 @@ export default function TodoModal({
   lists, 
   goals = [], // 接收 goals 列表
   goalId, // 接收 goalId 参数
+  context,
   onClose, 
   onSubmit, 
   onDelete,
@@ -138,7 +145,43 @@ export default function TodoModal({
     next_due_date: initialData?.next_due_date || null,
   };
 
-  const [editableTodo, setEditableTodo] = useState<Todo>(initialTodo);
+  // 根据上下文设置默认值
+  const getContextDefaults = (): Partial<Todo> => {
+    if (mode !== 'create' || !context) return {};
+    
+    const defaults: Partial<Todo> = {};
+    
+    // 今日待办视图 - 默认选择今天
+    if (context.view === 'today') {
+      const today = context.todayDate || new Date().toISOString().split('T')[0];
+      const todayUTC = localDateToDbUTC(today);
+      defaults.start_date = todayUTC;
+      defaults.due_date = todayUTC;
+    }
+    
+    // 分类视图 - 默认选中当前分类
+    else if (context.view && context.listId && 
+             context.view !== 'inbox' && 
+             context.view !== 'today' && 
+             context.view !== 'calendar' && 
+             context.view !== 'recycle') {
+      defaults.list_id = context.listId;
+    }
+    
+    // 日历视图 - 默认选择用户选中的日期
+    else if (context.view === 'calendar' && context.selectedDate) {
+      const selectedDateUTC = localDateToDbUTC(context.selectedDate);
+      defaults.start_date = selectedDateUTC;
+      defaults.due_date = selectedDateUTC;
+    }
+    
+    return defaults;
+  };
+
+  const contextDefaults = getContextDefaults();
+  const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
+  
+  const [editableTodo, setEditableTodo] = useState<Todo>(mergedInitialTodo);
   const isRecycled = !!editableTodo.deleted;
 
     
@@ -150,7 +193,13 @@ export default function TodoModal({
         ...initialData
       });
     }
-  }, [initialData, mode]);
+    // 当上下文改变时，更新默认值（主要用于创建模式）
+    else if (mode === 'create') {
+      const contextDefaults = getContextDefaults();
+      const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
+      setEditableTodo(mergedInitialTodo);
+    }
+  }, [initialData, mode, context]);
 
   const handleSave = () => {
     onSubmit(cleanTodoDates(editableTodo));

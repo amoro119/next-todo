@@ -365,6 +365,7 @@ export default function TodoListPage() {
     useState(false);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string>("");
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
   const addTodoInputRef = useRef<HTMLInputElement>(null);
   const goalsMainInterfaceRef = useRef<GoalsMainInterfaceRef>(null);
 
@@ -462,6 +463,12 @@ export default function TodoListPage() {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  // 在视图切换时清空输入框
+  useEffect(() => {
+    setNewTodoTitle("");
+    setNewGoalTitle("");
+  }, [currentView]);
 
   // 模式切换事件监听器
   useEffect(() => {
@@ -680,51 +687,29 @@ export default function TodoListPage() {
     [handleUpdateSlogan, originalSlogan]
   );
 
-  const handleAddTodo = useCallback(async () => {
+  const handleAddTodo = useCallback(() => {
     if (!newTodoTitle.trim()) return;
-    let listId = null;
-    if (
-      currentView !== "list" &&
-      currentView !== "inbox" &&
-      currentView !== "calendar" &&
-      currentView !== "recycle"
-    ) {
-      const list = lists.find((l: List) => l.name === currentView);
-      if (list) listId = list.id;
-    }
-    // 修复: 在 today 视图下，dueDateString 应为 todayStrInUTC8
-    let dueDateString = newTodoDate;
-    if (!dueDateString) {
-      if (currentView === "list") {
-        dueDateString = todayStrInUTC8;
-      } else if (currentView === "today") {
-        dueDateString = todayStrInUTC8;
-      } else {
-        dueDateString = null;
+    setIsTodoModalOpen(true);
+  }, [newTodoTitle]);
+
+  const handleCreateTodo = useCallback(
+    async (todoData: Omit<Todo, "id" | "created_time">) => {
+      const newTodoData = {
+        ...todoData,
+        id: uuid(),
+        created_time: new Date().toISOString(),
+      };
+
+      await db.insert("todos", newTodoData);
+      setIsTodoModalOpen(false);
+      setNewTodoTitle("");
+      // 修复：只有在非日历视图下才重置日期，保持日历视图中的日期状态
+      if (currentView !== "calendar") {
+        setNewTodoDate(null);
       }
-    }
-
-    const dueDateUTC = localDateToEndOfDayUTC(dueDateString);
-
-    const newTodoData = {
-      id: uuid(),
-      title: newTodoTitle.trim(),
-      list_id: listId,
-      due_date: dueDateUTC,
-      start_date: dueDateUTC,
-      created_time: new Date().toISOString(),
-      completed: false,
-      deleted: false,
-    };
-
-    await db.insert("todos", newTodoData);
-
-    setNewTodoTitle("");
-    // 修复：只有在非日历视图下才重置日期，保持日历视图中的日期状态
-    if (currentView !== "calendar") {
-      setNewTodoDate(null);
-    }
-  }, [newTodoTitle, newTodoDate, currentView, lists, todayStrInUTC8, db]);
+    },
+    [db, currentView]
+  );
 
   const handleCreateTodoFromCalendar = useCallback(
     async (
@@ -1698,6 +1683,10 @@ export default function TodoListPage() {
                 start_date: localDateToEndOfDayUTC(calendarSelectedDate),
                 due_date: localDateToEndOfDayUTC(calendarSelectedDate),
               }}
+              context={{
+                view: "calendar",
+                selectedDate: calendarSelectedDate,
+              }}
               lists={lists}
               goals={goals}
               onClose={() => setIsCalendarCreateModalOpen(false)}
@@ -1709,6 +1698,66 @@ export default function TodoListPage() {
                   todoData.due_date
                 )
               }
+            />
+          )}
+
+          {isTodoModalOpen && (
+            <TodoModal
+              mode="create"
+              initialData={{
+                title: newTodoTitle,
+                start_date: newTodoDate ? localDateToEndOfDayUTC(newTodoDate) : null,
+                due_date: newTodoDate ? localDateToEndOfDayUTC(newTodoDate) : null,
+              }}
+              context={{
+                view: currentView,
+                todayDate: todayStrInUTC8,
+                selectedDate: newTodoDate || undefined,
+                listId: (() => {
+                  if (currentView !== "inbox" && currentView !== "today" && currentView !== "calendar" && currentView !== "recycle") {
+                    const list = lists.find((l: List) => l.name === currentView);
+                    return list ? list.id : undefined;
+                  }
+                  return undefined;
+                })()
+              }}
+              lists={lists}
+              goals={goals}
+              onClose={() => setIsTodoModalOpen(false)}
+              onSubmit={(todoData) => {
+                // 确保创建的待办事项包含列表信息
+                let listId = null;
+                if (
+                  currentView !== "list" &&
+                  currentView !== "inbox" &&
+                  currentView !== "calendar" &&
+                  currentView !== "recycle"
+                ) {
+                  const list = lists.find((l: List) => l.name === currentView);
+                  if (list) listId = list.id;
+                }
+                
+                // 修复: 在 today 视图下，dueDateString 应为 todayStrInUTC8
+                let dueDateString = newTodoDate;
+                if (!dueDateString) {
+                  if (currentView === "list") {
+                    dueDateString = todayStrInUTC8;
+                  } else if (currentView === "today") {
+                    dueDateString = todayStrInUTC8;
+                  } else {
+                    dueDateString = null;
+                  }
+                }
+
+                const dueDateUTC = dueDateString ? localDateToEndOfDayUTC(dueDateString) : null;
+
+                handleCreateTodo({
+                  ...todoData,
+                  list_id: listId,
+                  due_date: dueDateUTC,
+                  start_date: dueDateUTC,
+                });
+              }}
             />
           )}
 
