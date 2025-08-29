@@ -133,11 +133,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
 
   const getProgressColor = (progress: number) => {
-    if (progress === 100) return 'bg-green-500';
-    if (progress >= 75) return 'bg-blue-500';
-    if (progress >= 50) return 'bg-yellow-500';
-    if (progress >= 25) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (progress === 100) return 'bg-Progress';
+    if (progress >= 75) return 'bg-Progress';
+    if (progress >= 50) return 'bg-Progress';
+    if (progress >= 25) return 'bg-Progress';
+    return 'bg-Progress';
   };
 
   const formatDate = (dateString: string | null) => {
@@ -196,9 +196,8 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
           {/* 目标信息 */}
           <div className="mb-8">
             {goal.description && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">描述</h3>
-                <p className="text-gray-700 leading-relaxed">{goal.description}</p>
+              <div className="mb-6 goal-description">
+                <p className="leading-relaxed">📌  {goal.description}</p>
               </div>
             )}
 
@@ -208,9 +207,9 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                 <h3 className="text-lg font-semibold text-gray-900">进度</h3>
                 <span className="text-2xl font-bold text-gray-900">{progress}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3">
+              <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className={`h-3 rounded-full transition-all duration-300 ${getProgressColor(progress)}`}
+                  className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(progress)}`}
                   style={{ width: `${progress}%` }}
                 />
               </div>
@@ -219,21 +218,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                 {progress === 100 && (
                   <span className="text-green-600 font-medium">🎉 目标已完成！</span>
                 )}
-              </div>
-            </div>
-
-            {/* 日期信息 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium text-gray-700">开始日期：</span>
-                <span className="text-gray-600">
-                  {goal.start_date ? formatDate(goal.start_date) : '未设置'}
-                </span>
-              </div>
-              <div>
-                <span className="font-medium text-gray-700">截止日期：</span>
-                <span className={dueDateStatus ? dueDateStatus.color : 'text-gray-600'}>
-                  {goal.due_date ? formatDate(goal.due_date) : '未设置'}
+                <span>
+                  <span className="font-medium text-gray-700">截止日期：</span>
+                  <span className={dueDateStatus ? dueDateStatus.color : 'text-gray-600'}>
+                    {goal.due_date ? formatDate(goal.due_date) : '未设置'}
+                  </span>
                 </span>
               </div>
             </div>

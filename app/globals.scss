@@ -76,9 +76,6 @@ html {
 
 // Form elements
 button {
-  border: 0;
-  padding: 0;
-  margin: 0;
   background: transparent;
   color: $font-color;
   cursor: pointer;
@@ -337,10 +334,6 @@ h1 {
 
 // Bar message
 .bar-message {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-self: flex-start;
   border-bottom: $border;
   width: 100%;
   height: 44px;
@@ -439,14 +432,14 @@ h1 {
   max-height: calc(90vh - 200px);
 }
 
-.modal-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-top: var(--border);
-  background: var(--bg-normal);
-}
+// .modal-footer {
+//   display: flex;
+//   justify-content: space-between;
+//   align-items: center;
+//   padding: 1.5rem;
+//   border-top: var(--border);
+//   background: var(--bg-normal);
+// }
 
 .modal-btn {
   border: var(--border);
@@ -537,7 +530,6 @@ h1 {
   height: 100%;
   border-radius: var(--border-radius);
   transition: width 0.3s ease;
-  border: var(--border);
 }
 
 /* Use CSS variable --progress to control fill width */
@@ -828,6 +820,24 @@ h1 {
   line-height: 44px;
   width: 100%;
   cursor: pointer;
+}
+
+.goal-bar-message-text{
+  display: inline-block;
+  text-align: left;
+  font-weight: 600;
+  padding: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  line-height: 44px;
+  width: 100%;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bg-Progress{
+  background-color: $completed;
 }
 
 .slogan-input {
@@ -2774,7 +2784,7 @@ span.shortcut-name {
   border-radius: $border-radius;
   width: 90%;
   max-width: 600px;
-  max-height: 80vh;
+  max-height: 90vh;
   overflow: hidden;
   box-shadow: $box-shadow;
   border: $border;
@@ -3254,6 +3264,7 @@ span.shortcut-name {
   padding-right: 56px;
   cursor: pointer;
   min-height: 60px;
+  display: flex;
 }
 
 .search-todo-btn {
@@ -3661,6 +3672,14 @@ Goals Mode Styles .goals-container {
 // Goal Search Item Styles
 .search-goal-list {
   padding: 0 20px;
+}
+
+.goal-description{
+  background-color: #fff5eb;
+  padding: 16px;
+  border: 1px solid rgb(246, 168, 158);
+  border-radius: 8px;
+  color:#1f2329;
 }
 
 .search-goal-item {
