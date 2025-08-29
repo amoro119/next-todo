@@ -408,7 +408,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
             disabled={isSubmitting}
             className="modal-btn primary interactive-hover"
           >
-            {isSubmitting ? '保存中...' : goal ? '更新目标' : '创建目标'}
+            {isSubmitting ? '保存中...' : goal ? '保存' : '创建目标'}
           </button>
         </div>
       </div>

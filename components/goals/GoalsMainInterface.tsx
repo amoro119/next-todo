@@ -87,6 +87,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
           selectedGoal={selectedGoal}
           goalCount={goals.length}
           onBackToList={handleBackToList}
+          onEditGoal={onEditGoal}
         />
         {selectedGoal ? (
           <div className="view-transition">

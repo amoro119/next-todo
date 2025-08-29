@@ -7,11 +7,13 @@ interface GoalHeaderProps {
   selectedGoal: Goal | null;
   goalCount: number;
   onBackToList: () => void;
+  onEditGoal?: (goal: Goal) => void; // 添加编辑目标的回调
 }
 
 const GoalHeader: React.FC<GoalHeaderProps> = ({
   selectedGoal,
-  onBackToList
+  onBackToList,
+  onEditGoal
 }) => {
   // 计算截止日期状态
   const dueDateStatus = useMemo(() => {
@@ -49,7 +51,10 @@ const GoalHeader: React.FC<GoalHeaderProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-          <div className="goal-bar-message-text truncate">
+          <div 
+            className="goal-bar-message-text truncate cursor-pointer transition-colors"
+            onClick={() => selectedGoal && onEditGoal && onEditGoal(selectedGoal)}
+          >
             {selectedGoal.name}
         </div>
         <div className="flex items-center gap-2">
