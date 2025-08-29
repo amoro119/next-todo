@@ -236,13 +236,13 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowAddTask(true)}
-                  className="px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                  className="text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
                 >
                   + 添加任务
                 </button>
                 <button
                   onClick={() => setShowAssociateTask(true)}
-                  className="px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
+                  className="text-sm bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors"
                 >
                   关联任务
                 </button>
