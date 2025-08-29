@@ -231,13 +231,16 @@ export async function getFullShapeRows({
       table,
       columns,
     },
+    subscribe: false,
     offset: "-1",
     headers: {
       Authorization: `Bearer ${token}`,
     },
   });
   const fullShape = new Shape(fullShapeStream);
-  return await fullShape.rows;
+  await fullShape.rows;
+  fullShapeStream.unsubscribeAll();
+  return fullShape.rows;
 }
 
 /**
@@ -327,6 +330,7 @@ async function doFullTableSync({
   });
   const remoteIds = rows.map((r) => (r as { id: string }).id);
   console.log(`- Fetched ${remoteIds.length} remote rows for ${table}.`);
+
 
   await pg.transaction(async (tx) => {
     // 2. Delete local rows that are no longer present on the server.
@@ -562,7 +566,9 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       ]);
 
       const remoteHash = await calculateDataHash(remoteRows);
-      console.log(`📊 ${shapeName} 哈希校验 -> 远程:${remoteHash} 本地:${localHash}`);
+      const displayRemoteHash = remoteHash || '(空)';
+      const displayLocalHash = localHash || '(空)';
+      console.log(`📊 ${shapeName} 哈希校验 -> 远程:${displayRemoteHash} 本地:${displayLocalHash}`);
 
       // 哈希不一致时补偿
       if (localHash !== remoteHash) {
@@ -578,10 +584,12 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         });
 
         const finalHash = await getLocalDataHash(shapeName, pg);
-        console.log(`✅ ${shapeName} 补偿后哈希: ${finalHash}`);
+        const displayHash = finalHash || '(空)';
+        console.log(`✅ ${shapeName} 补偿后哈希: ${displayHash}`);
         setLastSyncHash(shapeName, finalHash);
       } else {
-        console.log(`✅ ${shapeName} 数据哈希一致，无需补偿`);
+        const displayHash = localHash || '(空)';
+        console.log(`✅ ${shapeName} 数据哈希一致，无需补偿 (${displayHash})`);
         setLastSyncHash(shapeName, localHash);
       }
     } catch (error) {
@@ -615,14 +623,6 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     let timeoutCheck: ReturnType<typeof setInterval> | null = null;
 
     const TIMEOUT_MS = 60_000;
-
-    /* 清理资源 */
-    function cleanup() {
-      if (timeoutCheck) {
-        clearInterval(timeoutCheck);
-        timeoutCheck = null;
-      }
-    }
 
     // 订阅处理函数
     const handleMessage = (messages: any[]) => {
@@ -678,33 +678,31 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         currentStream = new ShapeStream({
           url: `${electricProxyUrl}/v1/shape`,
           params: { table: shapeName, columns },
+          subscribe: false,
           headers: { Authorization: `Bearer ${token}` },
         });
       }
 
       lastMessageTime = Date.now();
 
-      // 超时检测
-      timeoutCheck = setInterval(() => {
-        if (Date.now() - lastMessageTime > TIMEOUT_MS) {
-          console.warn(`⏰ ${shapeName} 超时无消息 -> 重建连接`);
-          unsubscribeAll(); // 先取消订阅
-          subscribe(); // 重新订阅
-        }
-      }, 10_000);
+      // // 超时检测
+      // timeoutCheck = setInterval(() => {
+      //   if (Date.now() - lastMessageTime > TIMEOUT_MS) {
+      //     console.warn(`⏰ ${shapeName} 超时无消息 -> 重建连接`);
+      //     unsubscribeAll(); // 先取消订阅
+      //     subscribe(); // 重新订阅
+      //   }
+      // }, 10_000);
 
       // 订阅
       currentStream.subscribe(handleMessage, handleError);
+      currentStream.unsubscribeAll();
     }
 
     /* 取消订阅所有 */
     function unsubscribeAll() {
-      if (timeoutCheck) {
-        clearInterval(timeoutCheck);
-        timeoutCheck = null;
-      }
       if (currentStream) {
-        currentStream.unsubscribeAll?.(); // 取消所有订阅
+         currentStream.unsubscribeAll(); // 取消所有订阅
       }
     }
 

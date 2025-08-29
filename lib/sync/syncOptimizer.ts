@@ -316,6 +316,43 @@ export async function fastInitialSync(
         
         await tx.query(sql, values);
       }
+    } else if (table === "goals") {
+      // 构建批量INSERT语句
+      const values: any[] = [];
+      const placeholders: string[] = [];
+      
+      rows.forEach((rowRaw, index) => {
+        const row = rowRaw as Record<string, unknown>;
+        const baseIndex = index * 9;
+        placeholders.push(`($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5}, $${baseIndex + 6}, $${baseIndex + 7}, $${baseIndex + 8}, $${baseIndex + 9})`);
+        values.push(
+          row.id ?? null,
+          row.name ?? null,
+          row.description ?? null,
+          row.list_id ?? null,
+          row.start_date ?? null,
+          row.due_date ?? null,
+          row.priority ?? 0,
+          row.created_time ?? null,
+          row.is_archived ?? false
+        );
+      });
+
+      const sql = `
+        INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
+        VALUES ${placeholders.join(', ')}
+        ON CONFLICT(id) DO UPDATE SET 
+          name = EXCLUDED.name,
+          description = EXCLUDED.description,
+          list_id = EXCLUDED.list_id,
+          start_date = EXCLUDED.start_date,
+          due_date = EXCLUDED.due_date,
+          priority = EXCLUDED.priority,
+          created_time = EXCLUDED.created_time,
+          is_archived = EXCLUDED.is_archived
+      `;
+      
+      await tx.query(sql, values);
     }
   });
 
@@ -380,6 +417,25 @@ export async function optimizedTableSync(
             row.recurring_parent_id ?? null,
             row.instance_number ?? null,
             row.next_due_date ?? null,
+          ]
+        );
+      } else if (table === "goals") {
+        await pg.query(
+          `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT(id) DO UPDATE SET 
+           name = $2, description = $3, list_id = $4, start_date = $5, 
+           due_date = $6, priority = $7, created_time = $8, is_archived = $9`,
+          [
+            row.id ?? null,
+            row.name ?? null,
+            row.description ?? null,
+            row.list_id ?? null,
+            row.start_date ?? null,
+            row.due_date ?? null,
+            row.priority ?? 0,
+            row.created_time ?? null,
+            row.is_archived ?? false,
           ]
         );
       }
