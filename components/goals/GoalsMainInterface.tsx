@@ -23,6 +23,7 @@ interface GoalsMainInterfaceProps {
 export interface GoalsMainInterfaceRef {
   selectGoalById: (goalId: string) => void;
   selectGoalDirectly: (goal: Goal) => void;
+  updateSelectedGoal: (updatedGoal: Goal) => void;
 }
 
 const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceProps>(({
@@ -71,7 +72,15 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
 
   useImperativeHandle(ref, () => ({
     selectGoalById: handleSelectGoalById,
-    selectGoalDirectly: handleSelectGoalDirectly
+    selectGoalDirectly: handleSelectGoalDirectly,
+    updateSelectedGoal: (updatedGoal: Goal) => {
+      setSelectedGoal(prevSelectedGoal => {
+        if (prevSelectedGoal && prevSelectedGoal.id === updatedGoal.id) {
+          return updatedGoal;
+        }
+        return prevSelectedGoal;
+      });
+    }
   }), [handleSelectGoalById, handleSelectGoalDirectly]);
 
   const handleBackToList = useCallback(() => {

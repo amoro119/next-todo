@@ -1038,6 +1038,28 @@ export default function TodoListPage() {
           console.log("更新目标数据:", updateData);
           await db.update("goals", goalId, updateData);
           console.log("目标更新成功，ID:", goalId);
+          
+          // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据
+          setSelectedGoal(prevSelectedGoal => {
+            if (prevSelectedGoal && prevSelectedGoal.id === goalId) {
+              return {
+                ...prevSelectedGoal,
+                ...updateData,
+                id: goalId
+              };
+            }
+            return prevSelectedGoal;
+          });
+          
+          // 更新 GoalsMainInterface 组件内部的 selectedGoal 状态
+          if (goalsMainInterfaceRef.current) {
+            const updatedGoal = {
+              ...goals.find(g => g.id === goalId),
+              ...updateData,
+              id: goalId
+            };
+            goalsMainInterfaceRef.current.updateSelectedGoal(updatedGoal);
+          }
         } else {
           // 创建模式
           const goal = {
@@ -1115,6 +1137,19 @@ export default function TodoListPage() {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { list_name: _, ...updateData } = updatedGoal;
         await db.update("goals", updatedGoal.id, updateData);
+        
+        // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据
+        setSelectedGoal(prevSelectedGoal => {
+          if (prevSelectedGoal && prevSelectedGoal.id === updatedGoal.id) {
+            return updatedGoal;
+          }
+          return prevSelectedGoal;
+        });
+        
+        // 更新 GoalsMainInterface 组件内部的 selectedGoal 状态
+        if (goalsMainInterfaceRef.current) {
+          goalsMainInterfaceRef.current.updateSelectedGoal(updatedGoal);
+        }
       } catch (error) {
         console.error("更新目标失败:", error);
         alert(
@@ -1122,7 +1157,7 @@ export default function TodoListPage() {
         );
       }
     },
-    [db]
+    [db, setSelectedGoal]
   );
 
   const handleCreateTodoForGoal = useCallback(
