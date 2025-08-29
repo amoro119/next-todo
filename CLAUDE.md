@@ -2,8 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# 代码风格
-仔细思考，只执行我给你的具体任务，用最简洁优化的解决方案，尽可能少地修改代码。
+# 重要
+1. 仔细思考，只执行我给你的具体任务，用最简洁优化的解决方案，尽可能少地修改代码。
+2. 专注于解决核心问题！
 
 ## Project Overview
 

@@ -203,29 +203,11 @@ export class GoalProgressService {
 
   /**
    * 批量更新目标表中的进度字段
+   * @deprecated 进度字段应该动态计算，不需要存储到数据库
    */
   async syncProgressToDatabase(goalIds?: string[]): Promise<void> {
-    let progressData: BatchProgressResult;
-
-    if (goalIds) {
-      progressData = await this.batchCalculateProgress(goalIds, false);
-    } else {
-      progressData = await this.getAllGoalsProgress();
-    }
-
-    // 批量更新数据库
-    const updatePromises = Object.entries(progressData).map(([goalId, progress]) =>
-      this.db.query(`
-        UPDATE goals 
-        SET 
-          progress = $1,
-          total_tasks = $2,
-          completed_tasks = $3
-        WHERE id = $4
-      `, [progress.progress, progress.totalTasks, progress.completedTasks, goalId])
-    );
-
-    await Promise.all(updatePromises);
+    // 移除数据库写操作，进度字段应该动态计算
+    console.warn('syncProgressToDatabase 已废弃：进度字段应该动态计算，不需要存储到数据库');
   }
 
   /**

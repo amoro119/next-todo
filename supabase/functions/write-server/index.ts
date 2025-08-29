@@ -39,15 +39,35 @@ const todoChangeSchema = z.object({
   recurring_parent_id: z.string().nullable().optional(),
   instance_number: z.number().nullable().optional(),
   next_due_date: z.string().nullable().optional(),
+  // 目标关联字段
+  goal_id: z.string().nullable().optional(),
+  sort_order_in_goal: z.number().nullable().optional(),
   // local-first fields
   modified_columns: z.array(z.string()).nullable().optional(),
   new: z.boolean().nullable().optional(),
 })
 type TodoChange = z.infer<typeof todoChangeSchema>
 
+const goalChangeSchema = z.object({
+  id: z.string(),
+  name: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  list_id: z.string().nullable().optional(),
+  start_date: z.string().nullable().optional(),
+  due_date: z.string().nullable().optional(),
+  priority: z.number().nullable().optional(),
+  created_time: z.string().nullable().optional(),
+  is_archived: z.boolean().nullable().optional(),
+  // local-first fields
+  modified_columns: z.array(z.string()).nullable().optional(),
+  new: z.boolean().nullable().optional(),
+})
+type GoalChange = z.infer<typeof goalChangeSchema>
+
 const changeSetSchema = z.object({
   lists: z.array(listChangeSchema),
   todos: z.array(todoChangeSchema),
+  goals: z.array(goalChangeSchema),
 })
 type ChangeSet = z.infer<typeof changeSetSchema>
 
@@ -134,7 +154,7 @@ app.post('*', async (c) => {
 });
 
 async function applyChanges(changes: ChangeSet, supabase: SupabaseClient) {
-  const { lists, todos } = changes;
+  const { lists, todos, goals } = changes;
   
   for (const list of lists) {
     await applyTableChange('lists', list, supabase);
@@ -142,11 +162,14 @@ async function applyChanges(changes: ChangeSet, supabase: SupabaseClient) {
   for (const todo of todos) {
     await applyTableChange('todos', todo, supabase);
   }
+  for (const goal of goals) {
+    await applyTableChange('goals', goal, supabase);
+  }
 }
 
 async function applyTableChange(
-  tableName: 'lists' | 'todos',
-  change: ListChange | TodoChange,
+  tableName: 'lists' | 'todos' | 'goals',
+  change: ListChange | TodoChange | GoalChange,
   supabase: SupabaseClient
 ) {
   const { id, modified_columns, new: isNew, ...data } = change as Record<string, unknown>;
@@ -175,6 +198,12 @@ async function applyTableChange(
       if (error) throw new Error(`Failed to delete from ${tableName}: ${error.message}`);
       return;
     }
+  }
+  
+  // 对于 goals 表，处理 is_archived 字段作为软删除
+  if (tableName === 'goals') {
+    const { is_archived: isArchivedFlag } = change as GoalChange;
+    // 如果只是存档操作，不需要特殊处理，正常更新即可
   }
   
   // 为 lists 表添加 modified 时间戳
