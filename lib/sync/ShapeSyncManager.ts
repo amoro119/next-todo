@@ -2,7 +2,11 @@
 // Shape订阅管理器 - 统一管理所有ElectricSQL Shape订阅的生命周期
 
 export class ShapeSyncManager {
-  private subscriptions: Map<string, { connect: () => void; cleanup: () => void; }> = new Map();
+  private subscriptions: Map<string, { 
+    subscribe: () => void; 
+    unsubscribeAll: () => void;
+    isSubscribed: boolean;
+  }> = new Map();
   public isStopped = false;
   private listeners: Set<(isStopped: boolean) => void> = new Set();
 
@@ -34,10 +38,16 @@ export class ShapeSyncManager {
   /**
    * 注册Shape订阅
    * @param name 订阅名称
-   * @param controller 订阅控制器，包含connect和cleanup方法
+   * @param controller 订阅控制器，包含subscribe和unsubscribeAll方法
    */
-  register(name: string, controller: { connect: () => void; cleanup: () => void; }) {
-    this.subscriptions.set(name, controller);
+  register(name: string, controller: { 
+    subscribe: () => void; 
+    unsubscribeAll: () => void;
+  }) {
+    this.subscriptions.set(name, {
+      ...controller,
+      isSubscribed: true
+    });
     console.log(`[ShapeSyncManager] 已注册订阅: ${name}`);
   }
 
@@ -53,13 +63,16 @@ export class ShapeSyncManager {
     console.log('[ShapeSyncManager] 暂停所有订阅');
     this.isStopped = true;
     
-    // 清理所有订阅
+    // 取消订阅所有订阅
     this.subscriptions.forEach((sub, name) => {
       try {
-        console.log(`[ShapeSyncManager] 清理订阅: ${name}`);
-        sub.cleanup();
+        if (sub.isSubscribed) {
+          console.log(`[ShapeSyncManager] 取消订阅: ${name}`);
+          sub.unsubscribeAll();
+          sub.isSubscribed = false;
+        }
       } catch (error) {
-        console.error(`[ShapeSyncManager] 清理订阅 ${name} 时出错:`, error);
+        console.error(`[ShapeSyncManager] 取消订阅 ${name} 时出错:`, error);
       }
     });
     
@@ -78,13 +91,16 @@ export class ShapeSyncManager {
     console.log('[ShapeSyncManager] 启动所有订阅');
     this.isStopped = false;
     
-    // 重新连接所有订阅
+    // 重新订阅所有订阅
     this.subscriptions.forEach((sub, name) => {
       try {
-        console.log(`[ShapeSyncManager] 连接订阅: ${name}`);
-        sub.connect();
+        if (!sub.isSubscribed) {
+          console.log(`[ShapeSyncManager] 订阅: ${name}`);
+          sub.subscribe();
+          sub.isSubscribed = true;
+        }
       } catch (error) {
-        console.error(`[ShapeSyncManager] 连接订阅 ${name} 时出错:`, error);
+        console.error(`[ShapeSyncManager] 订阅 ${name} 时出错:`, error);
       }
     });
     
