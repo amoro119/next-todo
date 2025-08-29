@@ -1,5 +1,5 @@
 // lib/sync/NetworkMonitor.ts
-import { getAuthToken } from '../auth';
+// 不再需要导入认证模块
 
 export interface NetworkMonitor {
   // 开始监控网络状态
@@ -115,56 +115,54 @@ export class NetworkMonitorImpl implements NetworkMonitor {
   }
 
   async testServerConnection(): Promise<boolean> {
+    // 首先检查浏览器是否标记为离线
+    if (!navigator.onLine) return false;
+    
     try {
-      // 通过 getAuthToken 获取 token（已自动缓存）
-      const token = await getAuthToken();
-      if (!token) {
-        console.warn('NetworkMonitor: 无法获取认证令牌，假定服务器可达');
-        return true;
-      }
-
-      // 使用独立的健康检查地址
-      const healthcheckUrl = process.env.NEXT_PUBLIC_WRITE_SERVER_URL;
-      if (!healthcheckUrl) {
-        console.warn('NetworkMonitor: HEALTHCHECK_URL 未配置，假定服务器可达');
-        return true;
-      }
-
+      // 使用<img>标签探测网络连通性，不受CORS限制
       const startTime = Date.now();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.serverTestTimeout);
-
-      // 携带缓存token进行健康检查
-      const response = await fetch(healthcheckUrl, {
-        method: 'HEAD',
-        signal: controller.signal,
-        cache: 'no-cache',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+      
+      // 创建一个Promise来处理图片加载
+      const loadImagePromise = new Promise<boolean>((resolve) => {
+        const img = new Image();
+        const timeoutId = setTimeout(() => {
+          // 超时处理
+          img.onload = img.onerror = null;
+          resolve(false);
+        }, this.serverTestTimeout);
+        
+        img.onload = () => {
+          clearTimeout(timeoutId);
+          resolve(true);
+        };
+        
+        img.onerror = () => {
+          clearTimeout(timeoutId);
+          resolve(false);
+        };
+        
+        // 使用百度的favicon进行探测
+        img.src = `https://www.baidu.com/favicon.ico?t=${Date.now()}`;
       });
-
-      clearTimeout(timeoutId);
-      const responseTime = Date.now() - startTime;
-      const isReachable = response.ok;
-
+      
+      const isReachable = await loadImagePromise;
+      
       this.updateNetworkStatus({
         isOnline: navigator.onLine,
         serverReachable: isReachable,
-        responseTime,
         reconnectAttempts: isReachable ? 0 : this.reconnectAttempts + 1,
         lastChecked: new Date().toISOString()
       });
-
+      
       if (isReachable) {
         this.reconnectAttempts = 0;
       } else {
         this.reconnectAttempts++;
       }
-
+      
       return isReachable;
     } catch (error) {
-      console.warn('NetworkMonitor: Server connection test failed:', error);
+      console.warn('NetworkMonitor: Network connectivity test failed:', error);
       this.reconnectAttempts++;
       this.updateNetworkStatus({
         isOnline: navigator.onLine,
