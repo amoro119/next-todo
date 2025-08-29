@@ -5,6 +5,7 @@ import type { PGliteWithSync } from "@electric-sql/pglite-sync";
 import { getAuthToken, getCachedAuthToken } from "../lib/auth";
 import { useAppConfig } from "../lib/hooks/useAppConfig";
 import { updateUserState } from "../lib/user/userState";
+import { SyncControlButton } from "./SyncControlButton";
 
 type AppMode = 'todo' | 'goals';
 
@@ -164,6 +165,11 @@ export default function ShortcutSwitch({
                       onClick={onManageLists}
                     />
                   </li>
+                  {sync.enabled && (
+                    <li>
+                      <SyncControlButton />
+                    </li>
+                  )}
                   {recycleBinCount > 0 && (
                     <li>
                       <input
@@ -236,7 +242,7 @@ export default function ShortcutSwitch({
                       />
                     </li>
                   )}
-                  {sync.enabled ? (
+                  {sync.enabled && (
                     <li>
                       <input
                         value="手动全量同步"
@@ -317,17 +323,16 @@ export default function ShortcutSwitch({
                         }}
                       />
                     </li>
-                  ) : (
-                    sync.reason === 'free_user' && (
-                      <li>
-                        <input
-                          value="升级解锁同步"
-                          type="button"
-                          className="btn-small action-upgrade"
-                          onClick={() => handleUpgradeClick()}
-                        />
-                      </li>
-                    )
+                  )}
+                  {!sync.enabled && sync.reason === 'free_user' && (
+                    <li>
+                      <input
+                        value="升级解锁同步"
+                        type="button"
+                        className="btn-small action-upgrade"
+                        onClick={() => handleUpgradeClick()}
+                      />
+                    </li>
                   )}
                 </ul>
               </>

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ShapeStream, Shape } from "@electric-sql/client";
 import { getAuthToken, getCachedAuthToken, invalidateToken } from "../lib/auth"; // <--- 导入新的认证模块
 import { performanceMonitor, measureAsync } from "../lib/performance/performanceMonitor";
+import { shapeSyncManager } from "../lib/sync/ShapeSyncManager"; // 导入ShapeSyncManager
 
 type SyncStatus = "initial-sync" | "done" | "error" | "disabled" | "local-only";
 
@@ -629,6 +630,12 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
 
     /* 真正执行一次“创建 + 订阅” */
     function connect() {
+      // 在连接前检查ShapeSyncManager状态
+      if (shapeSyncManager.isStopped) {
+        console.log(`[ShapeSyncManager] 同步已暂停，跳过连接 ${shapeName}`);
+        return;
+      }
+      
       cleanup(); // 先关掉上一轮
 
       // 创建新的 ShapeStream
@@ -691,6 +698,9 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       );
     }
 
+    // 注册控制器到ShapeSyncManager
+    shapeSyncManager.register(shapeName, { connect, cleanup });
+    
     connect(); // 首次启动
   }
   // 6. 为每个表启动订阅
