@@ -141,13 +141,17 @@ export class GoalsService {
     // 清理数据（不进行完整验证，因为这是部分更新）
     const sanitizedData = sanitizeGoalData(updates);
     
-    // 构建更新查询
+    // 构建更新查询，过滤掉计算字段
     const updateFields: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
 
+    // 定义计算字段，这些字段不应该被更新
+    const computedFields = ['progress', 'total_tasks', 'completed_tasks'];
+    
     Object.entries(sanitizedData).forEach(([key, value]) => {
-      if (key !== 'id' && value !== undefined) {
+      // 排除ID和计算字段
+      if (key !== 'id' && value !== undefined && !computedFields.includes(key)) {
         updateFields.push(`${key} = $${paramIndex}`);
         values.push(value);
         paramIndex++;

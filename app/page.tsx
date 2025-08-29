@@ -740,7 +740,8 @@ export default function TodoListPage() {
       todoId: string,
       updates: Partial<Omit<Todo, "id" | "list_name">>
     ) => {
-      if (Object.keys(updates).length === 0) return;
+      // 检查 updates 是否为 null 或 undefined
+      if (!updates || Object.keys(updates).length === 0) return;
       await db.update("todos", todoId, updates);
     },
     [db]
