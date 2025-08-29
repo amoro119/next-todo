@@ -3938,6 +3938,34 @@ Goals Mode Styles .goals-container {
   justify-content: center;
 }
 
+.goals-todo-item{
+  border-radius: $border-radius;
+  border: $border;
+  background: $bg-normal;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  background: #fffbe7;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  width: 100%;
+  min-height: 60px;
+  padding: 20px 20px;
+  line-height: 1.5;
+  .due-date{
+    color: #333;
+    background-color: #f6a89e;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration:none!important;
+  }
+}
+
+.goals-todo-btn{
+  position: unset;
+}
+
 .goals-action-btn {
   display: flex;
   flex-direction: column;

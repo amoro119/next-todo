@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Goal, Todo } from '@/lib/types';
 import TodoModal from '@/components/TodoModal';
 import AssociateTaskModal from './AssociateTaskModal';
+import Image from "next/image";
 
 interface GoalDetailsProps {
   goal: Goal;
@@ -267,11 +268,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                     onDrop={(e) => handleDrop(e, index)}
                     onDragEnd={handleDragEnd}
                     className={`
-                      flex items-center gap-3 p-4 bg-white border rounded-lg cursor-move transition-all
+                      goals-todo-item flex items-center gap-3 p-4 cursor-move transition-all
                       ${dragState.draggedIndex === index ? 'opacity-50 scale-95' : ''}
                       ${dragState.dragOverIndex === index ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}
                       hover:shadow-md hover:border-gray-300
-                      ${todo.completed ? 'bg-gray-50' : ''}
+                      ${todo.completed ? 'completed' : ''}
                     `}
                   >
                     {/* 拖拽手柄 */}
@@ -283,37 +284,33 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
                     {/* 完成状态按钮 */}
                     <button
+                      className={`todo-btn goals-todo-btn ${
+                        todo.completed ? "btn-unfinish" : "btn-finish"
+                      }`}
                       onClick={() => handleToggleTodo(todo)}
-                      className={`
-                        w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors
-                        ${todo.completed 
-                          ? 'bg-green-500 border-green-500 text-white' 
-                          : 'border-gray-300 hover:border-green-500'
-                        }
-                      `}
                     >
                       {todo.completed && (
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
+                        <Image
+                          src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
+                          alt="标为未完成"
+                          className="icon-finish"
+                          draggable={false}
+                          width={24}
+                          height={18}
+                        />
                       )}
                     </button>
 
                     {/* 任务内容 */}
                     <div className="flex-1 min-w-0">
-                      <div className={`font-medium ${todo.completed ? 'line-through text-gray-500' : 'text-gray-900'}`}>
+                      <div className={`flex justify-between`}>
                         {todo.title}
+                        {todo.due_date && (
+                          <span className="text-xs text-gray-500 mt-1 due-date">
+                            {formatDate(todo.due_date)}
+                          </span>
+                        )}
                       </div>
-                      {todo.content && (
-                        <div className={`text-sm mt-1 ${todo.completed ? 'text-gray-400' : 'text-gray-600'}`}>
-                          {todo.content}
-                        </div>
-                      )}
-                      {todo.due_date && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          截止：{formatDate(todo.due_date)}
-                        </div>
-                      )}
                     </div>
 
                     {/* 优先级标识 */}
