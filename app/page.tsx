@@ -923,6 +923,11 @@ export default function TodoListPage() {
     setIsGoalModalOpen(true);
   }, []);
 
+  const handleEditGoal = useCallback((goal: Goal) => {
+    setEditingGoalId(goal.id);
+    setIsGoalModalOpen(true);
+  }, []);
+
   const handleSubmitGoal = useCallback(async () => {
     if (!newGoalTitle.trim()) return;
 
@@ -1574,7 +1579,7 @@ export default function TodoListPage() {
                     onDeleteGoal={handleDeleteGoal}
                     onCreateTodo={handleCreateTodoForGoal}
                     onAssociateTasks={handleAssociateTasks}
-                    onEditGoal={(goal) => console.log("Edit goal:", goal)}
+                    onEditGoal={handleEditGoal}
                     onArchiveGoal={(goalId) =>
                       console.log("Archive goal:", goalId)
                     }
@@ -1793,10 +1798,12 @@ export default function TodoListPage() {
           {isGoalModalOpen && (
             <GoalModal
               isOpen={isGoalModalOpen}
+              goal={editingGoalId && editingGoalId !== "new" ? goals.find(g => g.id === editingGoalId) || undefined : undefined}
               goalId={editingGoalId}
               initialName={editingGoalId === "new" ? newGoalTitle : undefined}
               lists={memoizedLists}
               availableTodos={memoizedUncompletedTodos}
+              goalTodos={editingGoalId && editingGoalId !== "new" ? todos.filter(t => t.goal_id === editingGoalId) : undefined}
               onSave={handleSaveGoal}
               onClose={handleCloseGoalModal}
               onGoalCreated={handleGoalCreated}
