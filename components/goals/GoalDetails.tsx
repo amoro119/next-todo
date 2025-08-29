@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Goal, Todo } from '@/lib/types';
+import { Goal, Todo, List } from '@/lib/types';
 import TodoModal from '@/components/TodoModal';
 import AssociateTaskModal from './AssociateTaskModal';
 import Image from "next/image";
@@ -44,17 +44,27 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   const [showAddTask, setShowAddTask] = useState(false);
   const [showAssociateTask, setShowAssociateTask] = useState(false);
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
+  const [sortUpdateKey, setSortUpdateKey] = useState(0);
+  const [localTodos, setLocalTodos] = useState<Todo[]>([]);
+
+  // 同步props到本地状态
+  useEffect(() => {
+    setLocalTodos(todos);
+  }, [todos]);
 
   // 计算目标进度
   const progress = useMemo(() => {
-    if (todos.length === 0) return 0;
-    const completedTodos = todos.filter(todo => todo.completed).length;
-    return Math.round((completedTodos / todos.length) * 100);
-  }, [todos]);
+    const todosToUse = localTodos.length > 0 ? localTodos : todos;
+    if (todosToUse.length === 0) return 0;
+    const completedTodos = todosToUse.filter(todo => todo.completed).length;
+    return Math.round((completedTodos / todosToUse.length) * 100);
+  }, [todos, localTodos]);
 
   // 按排序权重排序任务
   const sortedTodos = useMemo(() => {
-    return [...todos].sort((a, b) => {
+    const todosToSort = localTodos.length > 0 ? localTodos : todos;
+    console.log('重新计算排序:', todosToSort.map(t => `${t.title}(${t.sort_order_in_goal})`));
+    return [...todosToSort].sort((a, b) => {
       const weightA = a.sort_order_in_goal || a.sort_order || 0;
       const weightB = b.sort_order_in_goal || b.sort_order || 0;
       if (weightA !== weightB) {
@@ -65,7 +75,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
       return timeA - timeB;
     });
-  }, [todos]);
+  }, [todos, localTodos]);
 
   // 更新目标进度
   useEffect(() => {
@@ -80,8 +90,10 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   }, [goal, progress, todos, onUpdateGoal]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
+    console.log('拖拽开始:', index);
     setDragState({ draggedIndex: index, dragOverIndex: null });
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -96,7 +108,10 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
   const handleDrop = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
+    e.stopPropagation();
+    
     const { draggedIndex } = dragState;
+    console.log('拖拽放下:', { draggedIndex, dropIndex });
     
     if (draggedIndex === null || draggedIndex === dropIndex) {
       setDragState({ draggedIndex: null, dragOverIndex: null });
@@ -109,12 +124,23 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     reorderedTodos.splice(draggedIndex, 1);
     reorderedTodos.splice(dropIndex, 0, draggedTodo);
 
-    // 更新排序权重
+    // 立即更新本地状态
+    const updatedTodos = reorderedTodos.map((todo, index) => ({
+      ...todo,
+      sort_order_in_goal: index
+    }));
+    
+    setLocalTodos(updatedTodos);
+
+    // 更新排序权重到数据库
     reorderedTodos.forEach((todo, index) => {
-      const updatedTodo = { ...todo, sort_weight: index };
+      const updatedTodo = { ...todo, sort_order_in_goal: index };
+      console.log('更新任务排序:', todo.title, '新位置:', index);
       onUpdateTodo(updatedTodo);
     });
 
+    // 强制重新渲染
+    setSortUpdateKey(prev => prev + 1);
     setDragState({ draggedIndex: null, dragOverIndex: null });
   };
 
@@ -261,70 +287,81 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                 {sortedTodos.map((todo, index) => (
                   <div
                     key={todo.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, index)}
-                    onDragEnd={handleDragEnd}
                     className={`
-                      goals-todo-item flex items-center gap-3 p-4 cursor-move transition-all
-                      ${dragState.draggedIndex === index ? 'opacity-50 scale-95' : ''}
-                      ${dragState.dragOverIndex === index ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}
+                      goals-todo-item flex items-center gap-3 p-4 border rounded-lg transition-all duration-200
+                      ${dragState.draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''}
+                      ${dragState.dragOverIndex === index ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 bg-white'}
                       hover:shadow-md hover:border-gray-300
-                      ${todo.completed ? 'completed' : ''}
+                      ${todo.completed ? 'completed bg-gray-50' : ''}
                     `}
                   >
-                    {/* 拖拽手柄 */}
-                    <div className="text-gray-400 cursor-move">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-                      </svg>
-                    </div>
-
-                    {/* 完成状态按钮 */}
-                    <button
-                      className={`todo-btn goals-todo-btn ${
-                        todo.completed ? "btn-unfinish" : "btn-finish"
-                      }`}
-                      onClick={() => handleToggleTodo(todo)}
+                    {/* 拖拽区域 - 只有这个区域可以拖拽 */}
+                    <div
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragEnd={handleDragEnd}
+                      className="cursor-move flex items-center gap-3 flex-1"
                     >
-                      {todo.completed && (
-                        <Image
-                          src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
-                          alt="标为未完成"
-                          className="icon-finish"
-                          draggable={false}
-                          width={24}
-                          height={18}
-                        />
-                      )}
-                    </button>
-
-                    {/* 任务内容 */}
-                    <div className="flex-1 min-w-0">
-                      <div className={`flex justify-between`}>
-                        {todo.title}
-                        {todo.due_date && (
-                          <span className="text-xs text-gray-500 mt-1 due-date">
-                            {formatDate(todo.due_date)}
-                          </span>
-                        )}
+                      {/* 拖拽手柄 */}
+                      <div className="text-gray-400 cursor-move p-1 hover:text-gray-600">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+                        </svg>
                       </div>
+
+                      {/* 完成状态按钮 */}
+                      <button
+                        className={`todo-btn goals-todo-btn ${
+                          todo.completed ? "btn-unfinish" : "btn-finish"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleTodo(todo);
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        {todo.completed && (
+                          <Image
+                            src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
+                            alt="标为未完成"
+                            className="icon-finish"
+                            draggable={false}
+                            width={24}
+                            height={18}
+                          />
+                        )}
+                      </button>
+
+                      {/* 任务内容 */}
+                      <div className="flex-1 min-w-0">
+                        <div className={`flex justify-between`}>
+                          {todo.title}
+                          {todo.due_date && (
+                            <span className="text-xs text-gray-500 mt-1 due-date">
+                              {formatDate(todo.due_date)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 优先级标识 */}
+                      {todo.priority > 0 && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                          P{todo.priority}
+                        </span>
+                      )}
                     </div>
 
-                    {/* 优先级标识 */}
-                    {todo.priority > 0 && (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        P{todo.priority}
-                      </span>
-                    )}
-
-                    {/* 编辑按钮已移除，使用任务模态框进行编辑 */}
-
-                    {/* 删除按钮 */}
+                    {/* 删除按钮 - 在拖拽区域外 */}
                     <button
-                      onClick={() => handleDeleteTodo(todo.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteTodo(todo.id);
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="p-1 text-gray-400 hover:text-red-600 transition-colors"
                       title="删除任务"
                     >
