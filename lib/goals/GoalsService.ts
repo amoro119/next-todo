@@ -15,6 +15,7 @@ import {
   getGoalStatus,
   isGoalOverdue
 } from '@/lib/types';
+import { DatabaseWrapper } from '@/lib/sync/ChangeInterceptor';
 
 /**
  * 目标查询选项
@@ -34,7 +35,12 @@ export interface GoalQueryOptions {
  * 目标服务类 - 处理所有目标相关的数据库操作
  */
 export class GoalsService {
-  constructor(private db: PGlite) {}
+  constructor(private dbWrapper: DatabaseWrapper) {}
+
+  // 获取原始数据库实例用于只读操作
+  private get db(): PGlite {
+    return this.dbWrapper.raw;
+  }
 
   /**
    * 创建新目标
@@ -57,30 +63,20 @@ export class GoalsService {
       created_time: new Date().toISOString()
     };
 
-    // 插入数据库
-    const query = `
-      INSERT INTO goals (
-        id, name, description, list_id, start_date, due_date, 
-        priority, created_time, is_archived
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9
-      )
-      RETURNING *
-    `;
+    // 插入数据库（使用包装器确保同步）
+    await this.dbWrapper.insert('goals', {
+      id: goal.id,
+      name: goal.name,
+      description: goal.description,
+      list_id: goal.list_id,
+      start_date: goal.start_date,
+      due_date: goal.due_date,
+      priority: goal.priority,
+      created_time: goal.created_time,
+      is_archived: goal.is_archived
+    });
 
-    const result = await this.db.query(query, [
-      goal.id,
-      goal.name,
-      goal.description,
-      goal.list_id,
-      goal.start_date,
-      goal.due_date,
-      goal.priority,
-      goal.created_time,
-      goal.is_archived
-    ]);
-
-    return result.rows[0] as Goal;
+    return goal;
   }
 
   /**
@@ -141,43 +137,31 @@ export class GoalsService {
     // 清理数据（不进行完整验证，因为这是部分更新）
     const sanitizedData = sanitizeGoalData(updates);
     
-    // 构建更新查询，过滤掉计算字段
-    const updateFields: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
-
-    // 定义计算字段，这些字段不应该被更新
+    // 过滤掉计算字段，这些字段不应该被更新
     const computedFields = ['progress', 'total_tasks', 'completed_tasks'];
+    const updateData: Record<string, any> = {};
     
     Object.entries(sanitizedData).forEach(([key, value]) => {
       // 排除ID和计算字段
       if (key !== 'id' && value !== undefined && !computedFields.includes(key)) {
-        updateFields.push(`${key} = $${paramIndex}`);
-        values.push(value);
-        paramIndex++;
+        updateData[key] = value;
       }
     });
 
-    if (updateFields.length === 0) {
+    if (Object.keys(updateData).length === 0) {
       throw new Error('没有要更新的字段');
     }
 
-    values.push(id); // 添加 WHERE 条件的参数
-
-    const query = `
-      UPDATE goals 
-      SET ${updateFields.join(', ')}
-      WHERE id = $${paramIndex}
-      RETURNING *
-    `;
-
-    const result = await this.db.query(query, values);
+    // 使用包装器更新（确保同步）
+    await this.dbWrapper.update('goals', id, updateData);
     
-    if (result.rows.length === 0) {
+    // 获取更新后的目标
+    const updatedGoal = await this.getGoalById(id);
+    if (!updatedGoal) {
       throw new Error('目标不存在');
     }
 
-    return result.rows[0] as Goal;
+    return updatedGoal;
   }
 
   /**
@@ -204,14 +188,17 @@ export class GoalsService {
       throw new Error('目标不存在');
     }
 
-    // 取消关联的待办事项
-    await this.db.query(
-      'UPDATE todos SET goal_id = NULL, sort_order_in_goal = NULL WHERE goal_id = $1',
-      [id]
-    );
+    // 取消关联的待办事项（使用包装器确保同步）
+    const associatedTodos = await this.getGoalTodos(id);
+    for (const todo of associatedTodos) {
+      await this.dbWrapper.update('todos', todo.id, {
+        goal_id: null,
+        sort_order_in_goal: null
+      });
+    }
 
-    // 删除目标
-    await this.db.query('DELETE FROM goals WHERE id = $1', [id]);
+    // 删除目标（使用包装器确保同步）
+    await this.dbWrapper.delete('goals', id);
   }
 
   /**
@@ -396,17 +383,12 @@ export class GoalsService {
     goalId: string | null, 
     sortOrder?: number
   ): Promise<void> {
-    let query: string;
-    let params: any[];
-
     if (goalId === null) {
-      // 取消关联
-      query = `
-        UPDATE todos 
-        SET goal_id = NULL, sort_order_in_goal = NULL 
-        WHERE id = $1
-      `;
-      params = [todoId];
+      // 取消关联（使用包装器确保同步）
+      await this.dbWrapper.update('todos', todoId, {
+        goal_id: null,
+        sort_order_in_goal: null
+      });
     } else {
       // 如果没有指定排序，自动分配到最后
       if (sortOrder === undefined) {
@@ -417,27 +399,17 @@ export class GoalsService {
         sortOrder = maxOrderResult.rows[0]?.next_order || 1;
       }
 
-      // 关联到目标
-      query = `
-        UPDATE todos 
-        SET goal_id = $1, sort_order_in_goal = $2 
-        WHERE id = $3
-      `;
-      params = [goalId, sortOrder, todoId];
-    }
-
-    // 如果是关联操作，先检查待办事项是否存在
-    if (goalId !== null) {
+      // 检查待办事项是否存在
       const todoExists = await this.db.query('SELECT id FROM todos WHERE id = $1', [todoId]);
       if (todoExists.rows.length === 0) {
         throw new Error('待办事项不存在');
       }
-    }
 
-    const result = await this.db.query(query, params);
-    
-    if (result.rowCount === 0) {
-      throw new Error('待办事项不存在');
+      // 关联到目标（使用包装器确保同步）
+      await this.dbWrapper.update('todos', todoId, {
+        goal_id: goalId,
+        sort_order_in_goal: sortOrder
+      });
     }
   }
 
@@ -468,10 +440,9 @@ export class GoalsService {
    */
   async reorderGoalTodos(goalId: string, todoIds: string[]): Promise<void> {
     const updatePromises = todoIds.map((todoId, index) => 
-      this.db.query(
-        'UPDATE todos SET sort_order_in_goal = $1 WHERE id = $2 AND goal_id = $3',
-        [index + 1, todoId, goalId]
-      )
+      this.dbWrapper.update('todos', todoId, {
+        sort_order_in_goal: index + 1
+      })
     );
 
     await Promise.all(updatePromises);
@@ -517,19 +488,17 @@ export class GoalsService {
           const todoId = uuidv4();
           const sortOrder = existingTodos.length + index + 1;
 
-          await this.db.query(`
-            INSERT INTO todos (
-              id, title, completed, deleted, sort_order, 
-              list_id, goal_id, sort_order_in_goal, created_time
-            ) VALUES ($1, $2, false, false, 0, $3, $4, $5, $6)
-          `, [
-            todoId,
-            title.trim(),
-            goal.list_id,
-            goal.id,
-            sortOrder,
-            new Date().toISOString()
-          ]);
+          await this.dbWrapper.insert('todos', {
+            id: todoId,
+            title: title.trim(),
+            completed: false,
+            deleted: false,
+            sort_order: 0,
+            list_id: goal.list_id,
+            goal_id: goal.id,
+            sort_order_in_goal: sortOrder,
+            created_time: new Date().toISOString()
+          });
         });
 
         await Promise.all(newTodoPromises);
@@ -623,6 +592,6 @@ export class GoalsService {
 /**
  * 创建目标服务实例
  */
-export function createGoalsService(db: PGlite): GoalsService {
-  return new GoalsService(db);
+export function createGoalsService(dbWrapper: DatabaseWrapper): GoalsService {
+  return new GoalsService(dbWrapper);
 }
