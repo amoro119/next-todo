@@ -65,15 +65,10 @@ export class ShapeSyncManager {
     
     // 取消订阅所有订阅
     this.subscriptions.forEach((sub, name) => {
-      try {
-        if (sub.isSubscribed) {
-          console.log(`[ShapeSyncManager] 取消订阅: ${name}`);
-          sub.unsubscribeAll();
-          sub.isSubscribed = false;
-        }
-      } catch (error) {
-        console.error(`[ShapeSyncManager] 取消订阅 ${name} 时出错:`, error);
-      }
+      console.log(sub);
+      sub.unsubscribeAll();
+      sub.isSubscribed = false;
+      console.log(`[ShapeSyncManager] 取消订阅: ${name}`);
     });
     
     this.notifyListeners();
