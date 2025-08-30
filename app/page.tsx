@@ -1624,7 +1624,7 @@ export default function TodoListPage() {
             ) : // 待办模式界面
             currentView !== "calendar" ? (
               <div className="todo-list-box">
-                <div className="bar-message">
+                <div className="bar-message flex">
                   {currentView !== "recycle" &&
                     displayTodos.some((t: Todo) => !t.completed_time) && (
                       <button
