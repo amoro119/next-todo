@@ -92,46 +92,53 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
 
       {/* 在此区域内切换 GoalsList 和 GoalDetails */}
       <div className="goals-list-container">
-        <GoalHeader 
-          selectedGoal={selectedGoal}
-          goalCount={goals.length}
-          onBackToList={handleBackToList}
-          onEditGoal={onEditGoal}
-        />
         {selectedGoal ? (
-          <div className="view-transition">
-            <GoalDetails
-              goal={selectedGoal}
-              todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
-              goals={goals}
-              lists={lists}
-              onUpdateGoal={onUpdateGoal}
-              onUpdateTodo={onUpdateTodo}
-              onDeleteTodo={onDeleteTodo}
-              onCreateTodo={onCreateTodo}
-              onAssociateTasks={onAssociateTasks}
-              onClose={handleBackToList}
-            />
-          </div>
-        ) : (
-          <div className="view-transition">
-            <GoalsList 
-              goals={goals}
-              onGoalClick={handleGoalClick}
+          <>
+            <GoalHeader 
+              selectedGoal={selectedGoal}
+              goalCount={goals.length}
+              onBackToList={handleBackToList}
               onEditGoal={onEditGoal}
-              onArchiveGoal={onArchiveGoal}
-              onDeleteGoal={onDeleteGoal}
             />
-            <div className="bar-message bar-bottom">
-              <div className="bar-message-text">
-                {goals.length > 0 ? (
-                  <span>{goals.length} 项目标</span>
-                ) : (
-                  <span>暂无目标</span>
-                )}
+            <div className="view-transition">
+              <GoalDetails
+                goal={selectedGoal}
+                todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+                goals={goals}
+                lists={lists}
+                onUpdateGoal={onUpdateGoal}
+                onUpdateTodo={onUpdateTodo}
+                onDeleteTodo={onDeleteTodo}
+                onCreateTodo={onCreateTodo}
+                onAssociateTasks={onAssociateTasks}
+                onClose={handleBackToList}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bar-message">
+              <div className="bar-message-text">我的目标</div>
+            </div>
+            <div className="view-transition">
+              <GoalsList 
+                goals={goals}
+                onGoalClick={handleGoalClick}
+                onEditGoal={onEditGoal}
+                onArchiveGoal={onArchiveGoal}
+                onDeleteGoal={onDeleteGoal}
+              />
+              <div className="bar-message bar-bottom">
+                <div className="bar-message-text">
+                  {goals.length > 0 ? (
+                    <span>{goals.length} 项目标</span>
+                  ) : (
+                    <span>暂无目标</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>
