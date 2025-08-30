@@ -232,14 +232,25 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
       modifiedColumns = []; // 删除操作不需要修改列信息
     }
 
-    return {
-      id: data.id,
-      name: data.name,
-      sort_order: data.sort_order,
-      is_hidden: data.is_hidden,
+    // 构建ListChange对象，只包含实际存在的字段
+    const listChange: ListChange = {
+      id: data.id as string,
       modified_columns: modifiedColumns,
       new: isNew
     };
+
+    // 只有当字段在数据中存在时才添加到变更对象中
+    if ('name' in data && data.name !== undefined) {
+      listChange.name = data.name as string;
+    }
+    if ('sort_order' in data && data.sort_order !== undefined) {
+      listChange.sort_order = data.sort_order as number;
+    }
+    if ('is_hidden' in data && data.is_hidden !== undefined) {
+      listChange.is_hidden = data.is_hidden as boolean;
+    }
+
+    return listChange;
   }
 
   private convertToTodoChange(change: ChangeRecord): TodoChange {
@@ -258,33 +269,30 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
       data.deleted = true;
     }
 
-    return {
-      id: data.id,
-      title: data.title,
-      completed: data.completed,
-      deleted: data.deleted,
-      sort_order: data.sort_order,
-      due_date: data.due_date,
-      content: data.content,
-      tags: data.tags,
-      priority: data.priority,
-      created_time: data.created_time,
-      completed_time: data.completed_time,
-      start_date: data.start_date,
-      list_id: data.list_id,
-      // 重复任务相关字段
-      repeat: data.repeat,
-      reminder: data.reminder,
-      is_recurring: data.is_recurring,
-      recurring_parent_id: data.recurring_parent_id,
-      instance_number: data.instance_number,
-      next_due_date: data.next_due_date,
-      // 目标关联字段
-      goal_id: data.goal_id,
-      sort_order_in_goal: data.sort_order_in_goal,
+    // 构建TodoChange对象，只包含实际存在的字段
+    const todoChange: TodoChange = {
+      id: data.id as string,
       modified_columns: modifiedColumns,
       new: isNew
     };
+
+    // 只有当字段在数据中存在时才添加到变更对象中
+    const todoFields = [
+      'title', 'completed', 'deleted', 'sort_order', 'due_date', 'content',
+      'tags', 'priority', 'created_time', 'completed_time', 'start_date', 'list_id',
+      // 重复任务相关字段
+      'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date',
+      // 目标关联字段
+      'goal_id', 'sort_order_in_goal'
+    ];
+
+    for (const field of todoFields) {
+      if (field in data && data[field] !== undefined) {
+        (todoChange as any)[field] = data[field];
+      }
+    }
+
+    return todoChange;
   }
 
   private convertToGoalChange(change: ChangeRecord): GoalChange {
@@ -300,19 +308,26 @@ export class BatchSyncProcessorImpl implements BatchSyncProcessor {
       modifiedColumns = ['is_archived']; // 存档操作
     }
 
-    return {
-      id: data.id,
-      name: data.name,
-      description: data.description,
-      list_id: data.list_id,
-      start_date: data.start_date,
-      due_date: data.due_date,
-      priority: data.priority,
-      created_time: data.created_time,
-      is_archived: data.is_archived,
+    // 构建GoalChange对象，只包含实际存在的字段
+    const goalChange: GoalChange = {
+      id: data.id as string,
       modified_columns: modifiedColumns,
       new: isNew
     };
+
+    // 只有当字段在数据中存在时才添加到变更对象中
+    const goalFields = [
+      'name', 'description', 'list_id', 'start_date', 'due_date',
+      'priority', 'created_time', 'is_archived'
+    ];
+
+    for (const field of goalFields) {
+      if (field in data && data[field] !== undefined) {
+        (goalChange as any)[field] = data[field];
+      }
+    }
+
+    return goalChange;
   }
 
   // 私有方法：调用 write-server API
