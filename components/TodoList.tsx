@@ -10,10 +10,13 @@ import React, {
 } from "react";
 import Image from "next/image";
 import { TransitionGroup, CSSTransition } from "react-transition-group";
-import type { Todo } from "../lib/types";
+import type { Todo, Goal, List } from "../lib/types";
 import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator";
 import { inboxCache } from "./InboxPerformanceOptimizer";
 import { useINPOptimization, useOptimizedClick, useINPMonitoring } from "./INPOptimizer";
+import { GoalGroup } from "./GoalGroup";
+import GoalDetails from "./goals/GoalDetails";
+import GoalHeader from "./goals/GoalHeader";
 
 // 优化的日期转换函数 - 使用缓存
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
@@ -208,23 +211,49 @@ TodoItem.displayName = "TodoItem";
 
 interface TodoListProps {
   todos: Todo[];
+  goals: Goal[];
+  lists: List[]; // 添加lists参数
   currentView: string;
   onToggleComplete: (todo: Todo) => void;
   onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
+  onViewGoal: (goalId: string) => void;
+  onUpdateGoal: (goal: Goal) => void; // 添加更新目标的函数
+  onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void; // 添加创建待办的函数
+  onAssociateTasks: (taskIds: string[], goalId: string) => void; // 添加关联任务的函数
+  onEditGoal: (goal: Goal) => void; // 添加编辑目标的函数
 }
 
 const TodoListComponent: React.FC<TodoListProps> = ({
   todos,
+  goals,
+  lists,
   currentView,
   onToggleComplete,
   onDelete,
   onRestore,
   onSelectTodo,
+  onViewGoal,
+  onUpdateGoal,
+  onCreateTodo,
+  onAssociateTasks,
+  onEditGoal,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(400);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  
+  const handleViewGoal = (goalId: string) => {
+    const goal = goals.find(g => g.id === goalId);
+    if (goal) {
+      setSelectedGoal(goal);
+    }
+  };
+  
+  const handleBackToList = () => {
+    setSelectedGoal(null);
+  };
   
   // INP优化
   const { scheduleInteraction, batchDOMUpdates } = useINPOptimization();
@@ -288,6 +317,37 @@ const TodoListComponent: React.FC<TodoListProps> = ({
     return () => window.removeEventListener("resize", updateHeight);
   }, []);
 
+  // 按目标分组待办事项
+  const groupedTodos = useMemo(() => {
+    if (currentView !== "today") {
+      return { ungrouped: todos, grouped: [] };
+    }
+
+    const goalMap = new Map(goals.map(goal => [goal.id, goal]));
+    const grouped = new Map<string, { goal: Goal; todos: Todo[] }>();
+    const ungrouped: Todo[] = [];
+
+    todos.forEach(todo => {
+      if (todo.goal_id && goalMap.has(todo.goal_id)) {
+        const goalId = todo.goal_id;
+        if (!grouped.has(goalId)) {
+          grouped.set(goalId, {
+            goal: goalMap.get(goalId)!,
+            todos: []
+          });
+        }
+        grouped.get(goalId)?.todos.push(todo);
+      } else {
+        ungrouped.push(todo);
+      }
+    });
+
+    return {
+      ungrouped,
+      grouped: Array.from(grouped.values())
+    };
+  }, [todos, goals, currentView]);
+
   if (todos.length === 0) {
     const emptyMessage = () => {
       if (currentView === "recycle") return <div>回收站是空的！🗑️</div>;
@@ -298,6 +358,32 @@ const TodoListComponent: React.FC<TodoListProps> = ({
     return (
       <div className="todo-list">
         <div className="empty-tips">{emptyMessage()}</div>
+      </div>
+    );
+  }
+
+  // 如果选中了目标，显示目标详情页面
+  if (selectedGoal) {
+    return (
+      <div className="todo-list-container">
+        <GoalHeader
+          selectedGoal={selectedGoal}
+          goalCount={goals.length}
+          onBackToList={handleBackToList}
+          onEditGoal={onEditGoal}
+        />
+        <GoalDetails
+          goal={selectedGoal}
+          todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+          goals={goals}
+          lists={lists}
+          onUpdateGoal={onUpdateGoal}
+          onUpdateTodo={onToggleComplete}
+          onDeleteTodo={onDelete}
+          onCreateTodo={onCreateTodo}
+          onAssociateTasks={onAssociateTasks}
+          onClose={handleBackToList}
+        />
       </div>
     );
   }
@@ -313,7 +399,8 @@ const TodoListComponent: React.FC<TodoListProps> = ({
       }}
     >
       <TransitionGroup component="ul" className="todo-list">
-        {todos.map((todo, idx) => {
+        {/* 渲染未分组的待办事项 */}
+        {groupedTodos.ungrouped.map((todo, idx) => {
           // 确保每个todo都有nodeRef
           if (!nodeRefs.current[todo.id]) {
             nodeRefs.current[todo.id] = React.createRef<HTMLLIElement>();
@@ -341,9 +428,25 @@ const TodoListComponent: React.FC<TodoListProps> = ({
             </CSSTransition>
           );
         })}
+
+        {/* 渲染目标分组 */}
+        {groupedTodos.grouped.map((group) => (
+          <GoalGroup
+            key={group.goal.id}
+            goal={group.goal}
+            todos={group.todos}
+            currentView={currentView}
+            onToggleComplete={onToggleComplete}
+            onDelete={onDelete}
+            onRestore={onRestore}
+            onSelectTodo={onSelectTodo}
+            onViewAllClick={handleViewGoal}
+          />
+        ))}
       </TransitionGroup>
     </div>
   );
 };
 
 export const TodoList = memo(TodoListComponent);
+export { TodoItem };
