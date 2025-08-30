@@ -610,110 +610,56 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     console.log("✅ 初始同步完成，准备开始实时同步...");
   }
 
-  // 5. 在 initialSyncDone 后订阅变动
-  function subscribeShapeStream(
-    shapeName: string,
-    columns: string[],
-    pg: PGliteWithExtensions,
-    electricProxyUrl: string,
-    token: string
-  ) {
-    let currentStream: ShapeStream | null = null;
-    let lastMessageTime = Date.now();
-    let timeoutCheck: ReturnType<typeof setInterval> | null = null;
-
-    const TIMEOUT_MS = 60_000;
-
-    // 订阅处理函数
-    const handleMessage = (messages: any[]) => {
-      lastMessageTime = Date.now();
-      (async () => {
-        if (!messages?.length) return;
-        for (const msg of messages) {
-          /// 处理消息的逻辑...
-          if (msg.headers?.control === "must-refetch") {
-            console.warn(
-              `[must-refetch] ${shapeName} 收到 must-refetch 控制消息，需要全量同步！`
-            );
-          }
-
-          const msgLsn = msg.headers.global_last_seen_lsn;
-          const lastSeenLsn = getGlobalLastSeenLsn(shapeName);
-          if (lastSeenLsn !== msg.headers.global_last_seen_lsn) {
-            if (typeof msgLsn === "string") {
-              setGlobalLastSeenLsn(shapeName, msgLsn);
-            }
-          }
-
-          if (!("value" in msg && "lsn" in msg.headers)) continue;
-
-          const rowLsn = msg.headers.lsn;
-          if (rowLsn && compareLsn(String(rowLsn), String(msgLsn)) >= 0)
-            continue;
-
-          const row = msg.value;
-          const operation = msg.headers?.operation;
-          if (!operation) continue;
-          await processShapeChange(shapeName, operation, row, pg);
-        }
-        console.log(`🔄 ${shapeName} 实时变更已同步`);
-      })();
-    };
-
-    const handleError = (err: any) => {
-      console.error(`❌ ${shapeName} 订阅错误 -> 重建连接`, err);
-      setTimeout(subscribe, 1_000); // 错误后 1 秒重试
-    };
-
-    /* 订阅ShapeStream */
-    function subscribe() {
-      // 在订阅前检查ShapeSyncManager状态
-      if (shapeSyncManager.isStopped) {
-        console.log(`[ShapeSyncManager] 同步已暂停，跳过订阅 ${shapeName}`);
-        return;
-      }
-      
-      if (!currentStream) {
-        // 创建新的 ShapeStream（如果还没有）
-        currentStream = new ShapeStream({
-          url: `${electricProxyUrl}/v1/shape`,
-          params: { table: shapeName, columns },
-          subscribe: false,
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-
-      lastMessageTime = Date.now();
-
-      // // 超时检测
-      // timeoutCheck = setInterval(() => {
-      //   if (Date.now() - lastMessageTime > TIMEOUT_MS) {
-      //     console.warn(`⏰ ${shapeName} 超时无消息 -> 重建连接`);
-      //     unsubscribeAll(); // 先取消订阅
-      //     subscribe(); // 重新订阅
-      //   }
-      // }, 10_000);
-
-      // 订阅
-      currentStream.subscribe(handleMessage, handleError);
-      currentStream.unsubscribeAll();
-    }
-
-    /* 取消订阅所有 */
-    function unsubscribeAll() {
-      if (currentStream) {
-         currentStream.unsubscribeAll(); // 取消所有订阅
-      }
-    }
-
-    // 注册控制器到ShapeSyncManager
-    shapeSyncManager.register(shapeName, { subscribe, unsubscribeAll });
+  // 5. 使用SimpleSyncManager启动实时同步订阅
+  const { simpleSyncManager } = await import('../lib/sync/SimpleSyncManager');
+  
+  // 创建消息处理器，处理实时变更
+  const messageProcessor = async (shapeName: string, messages: any[]) => {
+    if (!messages?.length) return;
     
-    subscribe(); // 首次订阅
-  }
-  // 6. 为每个表启动订阅
-  for (const { name: shapeName, columns } of shapes) {
-    subscribeShapeStream(shapeName, columns, pg, electricProxyUrl, token);
+    for (const msg of messages) {
+      // 处理控制消息
+      if (msg.headers?.control === "must-refetch") {
+        console.warn(
+          `[must-refetch] ${shapeName} 收到 must-refetch 控制消息，需要全量同步！`
+        );
+        continue;
+      }
+
+      // 处理LSN
+      const msgLsn = msg.headers.global_last_seen_lsn;
+      const lastSeenLsn = getGlobalLastSeenLsn(shapeName);
+      if (lastSeenLsn !== msg.headers.global_last_seen_lsn) {
+        if (typeof msgLsn === "string") {
+          setGlobalLastSeenLsn(shapeName, msgLsn);
+        }
+      }
+
+      if (!("value" in msg && "lsn" in msg.headers)) continue;
+
+      const rowLsn = msg.headers.lsn;
+      if (rowLsn && compareLsn(String(rowLsn), String(msgLsn)) >= 0)
+        continue;
+
+      const row = msg.value;
+      const operation = msg.headers?.operation;
+      if (!operation) continue;
+      
+      // 处理数据变更
+      await processShapeChange(shapeName, operation, row, pg);
+    }
+    
+    console.log(`🔄 ${shapeName} 实时变更已同步`);
+  };
+
+  // 设置消息处理器并启动SimpleSyncManager订阅
+  try {
+    simpleSyncManager.setMessageProcessor(messageProcessor);
+    await simpleSyncManager.startSync();
+    console.log('✅ SimpleSyncManager 订阅已启动');
+  } catch (error) {
+    console.error('❌ SimpleSyncManager 启动失败:', error);
+    throw error;
   }
 }
 
