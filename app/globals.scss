@@ -3501,20 +3501,7 @@ span.shortcut-name {
     color: #d63384;
   }
 }
-//
-Goals Mode Styles .goals-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  background: var(--bg-normal);
-  border-radius: var(--border-radius);
-  border: var(--border);
-  box-shadow: var(--box-shadow);
-}
+//Goals Mode Styles 
 
 .goals-placeholder {
   display: flex;
@@ -3543,6 +3530,15 @@ Goals Mode Styles .goals-container {
   color: var(--placeholder);
   margin-bottom: 2rem;
   font-size: 1rem;
+}
+
+.goal-group{
+  padding: 20px;
+  .goal-group-todos{
+    .todo-item{
+      box-shadow:none;
+    }
+  }
 }
 
 // Mode Switcher Animation

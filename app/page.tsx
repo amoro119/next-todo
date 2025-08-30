@@ -1679,11 +1679,25 @@ export default function TodoListPage() {
 
                 <TodoList
                   todos={displayTodos}
+                  goals={goals}
+                  lists={lists}
                   currentView={currentView}
                   onToggleComplete={handleToggleComplete}
                   onDelete={handleDeleteTodo}
                   onRestore={handleRestoreTodo}
                   onSelectTodo={setSelectedTodo}
+                  onViewGoal={(goalId) => {
+                    const goal = goals.find(g => g.id === goalId);
+                    if (goal) {
+                      setSelectedGoal(goal);
+                      setCurrentMode("goals");
+                      localStorage.setItem("app_mode", "goals");
+                    }
+                  }}
+                  onUpdateGoal={handleUpdateGoal}
+                  onCreateTodo={handleCreateTodoForGoal}
+                  onAssociateTasks={handleAssociateTasks}
+                  onEditGoal={handleEditGoal}
                 />
 
                 <div className="bar-message bar-bottom">
