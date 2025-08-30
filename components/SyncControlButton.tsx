@@ -10,23 +10,17 @@ interface SyncControlButtonProps {
 
 interface SyncControlState {
   isRunning: boolean;
-  isTransitioning: boolean;
 }
 
 export function SyncControlButton({ className = '' }: SyncControlButtonProps) {
   const [syncState, setSyncState] = useState<SyncControlState>({
     isRunning: false,
-    isTransitioning: false,
   });
 
   // 订阅SimpleSyncManager状态变化
   useEffect(() => {
     const unsubscribe = simpleSyncManager.subscribe((isRunning) => {
-      setSyncState(prev => ({
-        ...prev,
-        isRunning,
-        isTransitioning: false, // 状态更新时清除过渡状态
-      }));
+      setSyncState({ isRunning });
     });
     
     return () => unsubscribe();
@@ -39,39 +33,25 @@ export function SyncControlButton({ className = '' }: SyncControlButtonProps) {
     };
   }, []);
 
-  const handleToggleSync = async () => {
-    // 防止重复点击
-    if (syncState.isTransitioning) {
+  const handleStartSync = async () => {
+    // 如果已在同步中，不执行任何操作
+    if (syncState.isRunning) {
       return;
     }
 
-    setSyncState(prev => ({ ...prev, isTransitioning: true }));
-
     try {
-      if (syncState.isRunning) {
-        // 停止同步
-        simpleSyncManager.stopSync();
-        console.log('SyncControlButton: 同步已停止');
-      } else {
-        // 启动同步 - 使用SimpleSyncManager的基础功能
-        // 完整的同步逻辑（包括初始同步）应该在应用启动时处理
-        // 这里只负责控制实时订阅的启动和停止
-        await simpleSyncManager.startSync();
-        console.log('SyncControlButton: 同步已启动');
-      }
+      // 启动同步 - 使用SimpleSyncManager的基础功能
+      // 完整的同步逻辑（包括初始同步）应该在应用启动时处理
+      // 这里只负责控制实时订阅的启动
+      await simpleSyncManager.startSync();
+      console.log('SyncControlButton: 同步已启动');
     } catch (error) {
-      console.error('SyncControlButton: 同步操作失败:', error);
-      // 操作失败时重置过渡状态
-      setSyncState(prev => ({ ...prev, isTransitioning: false }));
+      console.error('SyncControlButton: 同步启动失败:', error);
     }
   };
 
   // 显示适当的按钮文本和图标
   const getButtonText = () => {
-    if (syncState.isTransitioning) {
-      return syncState.isRunning ? '⏸ 停止中...' : '▶ 启动中...';
-    }
-    
     if (syncState.isRunning) {
       return '同步中...';
     }
@@ -80,7 +60,7 @@ export function SyncControlButton({ className = '' }: SyncControlButtonProps) {
 
   const getButtonClass = () => {
     if (syncState.isRunning) {
-      return 'action-sync-pause';
+      return 'action-sync-running';
     }
     return 'action-sync-resume';
   };
@@ -96,8 +76,8 @@ export function SyncControlButton({ className = '' }: SyncControlButtonProps) {
       type="button"
       className={`btn-small ${getButtonClass()} ${className}`}
       value={getButtonText()}
-      onClick={handleToggleSync}
-      disabled={syncState.isTransitioning}
+      onClick={handleStartSync}
+      disabled={syncState.isRunning}
     />
   );
 }
