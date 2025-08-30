@@ -304,7 +304,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                       draggable
                       onDragStart={(e) => handleDragStart(e, index)}
                       onDragEnd={handleDragEnd}
-                      className="cursor-move flex items-center gap-3 flex-1"
+                      className="flex items-center gap-3 flex-1"
                     >
                       {/* 拖拽手柄 */}
                       <div className="text-gray-400 cursor-move p-1 hover:text-gray-600">
