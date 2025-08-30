@@ -16,6 +16,7 @@ import GoalsMainInterface, {
 import GoalsList from "../components/goals/GoalsList";
 import GoalModal, { GoalFormData } from "../components/goals/GoalModal";
 import GoalDetails from "../components/goals/GoalDetails";
+import GoalHeader from "../components/goals/GoalHeader";
 import TodoModal from "../components/TodoModal";
 import ManageListsModal from "../components/ManageListsModal";
 import TaskSearchModal from "../components/TaskSearchModal";
@@ -359,8 +360,7 @@ export default function TodoListPage() {
     return "todo";
   });
 
-  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
-  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+    const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
 
   const [currentView, setCurrentView] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -370,7 +370,8 @@ export default function TodoListPage() {
     return "today";
   });
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
-  const [isManageListsOpen, setIsManageListsOpen] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+    const [isManageListsOpen, setIsManageListsOpen] = useState(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [newTodoTitle, setNewTodoTitle] = useState("");
   const [newGoalTitle, setNewGoalTitle] = useState("");
@@ -1648,73 +1649,96 @@ export default function TodoListPage() {
             ) : // 待办模式界面
             currentView !== "calendar" ? (
               <div className="todo-list-box">
-                <div className="bar-message flex">
-                  {currentView !== "recycle" &&
-                    displayTodos.some((t: Todo) => !t.completed_time) && (
-                      <button
-                        className="btn-small completed-all btn-allFinish"
-                        onClick={handleMarkAllCompleted}
-                      >
-                        全部标为完成
-                      </button>
-                    )}
-                  {isEditingSlogan ? (
-                    <input
-                      type="text"
-                      className="slogan-input"
-                      value={slogan}
-                      onChange={(e) => setSlogan(e.target.value)}
-                      onKeyDown={handleSloganKeyDown}
-                      onBlur={handleUpdateSlogan}
+                {selectedGoal ? (
+                  <>
+                    <GoalHeader
+                      selectedGoal={selectedGoal}
+                      goalCount={goals.length}
+                      onBackToList={() => setSelectedGoal(null)}
+                      onEditGoal={handleEditGoal}
                     />
-                  ) : (
-                    <div
-                      className="bar-message-text"
-                      onDoubleClick={handleEditSlogan}
-                    >
-                      {slogan}
+                    <GoalDetails
+                      goal={selectedGoal}
+                      todos={displayTodos.filter(todo => todo.goal_id === selectedGoal.id)}
+                      goals={goals}
+                      lists={lists}
+                      onUpdateGoal={handleUpdateGoal}
+                      onUpdateTodo={handleToggleComplete}
+                      onDeleteTodo={handleDeleteTodo}
+                      onCreateTodo={handleCreateTodoForGoal}
+                      onAssociateTasks={handleAssociateTasks}
+                      onClose={() => setSelectedGoal(null)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div className="bar-message flex">
+                      {currentView !== "recycle" &&
+                        displayTodos.some((t: Todo) => !t.completed_time) && (
+                          <button
+                            className="btn-small completed-all btn-allFinish"
+                            onClick={handleMarkAllCompleted}
+                          >
+                            全部标为完成
+                          </button>
+                        )}
+                      {isEditingSlogan ? (
+                        <input
+                          type="text"
+                          className="slogan-input"
+                          value={slogan}
+                          onChange={(e) => setSlogan(e.target.value)}
+                          onKeyDown={handleSloganKeyDown}
+                          onBlur={handleUpdateSlogan}
+                        />
+                      ) : (
+                        <div
+                          className="bar-message-text"
+                          onDoubleClick={handleEditSlogan}
+                        >
+                          {slogan}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <TodoList
-                  todos={displayTodos}
-                  goals={goals}
-                  lists={lists}
-                  currentView={currentView}
-                  onToggleComplete={handleToggleComplete}
-                  onDelete={handleDeleteTodo}
-                  onRestore={handleRestoreTodo}
-                  onSelectTodo={setSelectedTodo}
-                  onViewGoal={(goalId) => {
-                    const goal = goals.find(g => g.id === goalId);
-                    if (goal) {
-                      setSelectedGoal(goal);
-                      setCurrentMode("goals");
-                      localStorage.setItem("app_mode", "goals");
-                    }
-                  }}
-                  onUpdateGoal={handleUpdateGoal}
-                  onCreateTodo={handleCreateTodoForGoal}
-                  onAssociateTasks={handleAssociateTasks}
-                  onEditGoal={handleEditGoal}
-                />
+                    <TodoList
+                      todos={displayTodos}
+                      goals={goals}
+                      lists={lists}
+                      currentView={currentView}
+                      onToggleComplete={handleToggleComplete}
+                      onDelete={handleDeleteTodo}
+                      onRestore={handleRestoreTodo}
+                      onSelectTodo={setSelectedTodo}
+                      onViewGoal={(goalId) => {
+                        const goal = goals.find(g => g.id === goalId);
+                        if (goal) {
+                          setSelectedGoal(goal);
+                        }
+                      }}
+                      onUpdateGoal={handleUpdateGoal}
+                      onCreateTodo={handleCreateTodoForGoal}
+                      onAssociateTasks={handleAssociateTasks}
+                      onEditGoal={handleEditGoal}
+                    />
 
-                <div className="bar-message bar-bottom">
-                  <div className="bar-message-text">
-                    {currentView !== "recycle" ? (
-                      <span>
-                        {
-                          displayTodos.filter((t: Todo) => !t.completed_time)
-                            .length
-                        }{" "}
-                        项未完成
-                      </span>
-                    ) : (
-                      <span>共 {recycledTodos.length} 项</span>
-                    )}
-                  </div>
-                </div>
+                    <div className="bar-message bar-bottom">
+                      <div className="bar-message-text">
+                        {currentView !== "recycle" ? (
+                          <span>
+                            {
+                              displayTodos.filter((t: Todo) => !t.completed_time)
+                                .length
+                            }{" "}
+                            项未完成
+                          </span>
+                        ) : (
+                          <span>共 {recycledTodos.length} 项</span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <CalendarView

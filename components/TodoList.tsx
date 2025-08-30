@@ -15,8 +15,6 @@ import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator"
 import { inboxCache } from "./InboxPerformanceOptimizer";
 import { useINPOptimization, useOptimizedClick, useINPMonitoring } from "./INPOptimizer";
 import { GoalGroup } from "./GoalGroup";
-import GoalDetails from "./goals/GoalDetails";
-import GoalHeader from "./goals/GoalHeader";
 
 // 优化的日期转换函数 - 使用缓存
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
@@ -242,18 +240,6 @@ const TodoListComponent: React.FC<TodoListProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(400);
-  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
-  
-  const handleViewGoal = (goalId: string) => {
-    const goal = goals.find(g => g.id === goalId);
-    if (goal) {
-      setSelectedGoal(goal);
-    }
-  };
-  
-  const handleBackToList = () => {
-    setSelectedGoal(null);
-  };
   
   // INP优化
   const { scheduleInteraction, batchDOMUpdates } = useINPOptimization();
@@ -362,31 +348,7 @@ const TodoListComponent: React.FC<TodoListProps> = ({
     );
   }
 
-  // 如果选中了目标，显示目标详情页面
-  if (selectedGoal) {
-    return (
-      <div className="todo-list-container">
-        <GoalHeader
-          selectedGoal={selectedGoal}
-          goalCount={goals.length}
-          onBackToList={handleBackToList}
-          onEditGoal={onEditGoal}
-        />
-        <GoalDetails
-          goal={selectedGoal}
-          todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
-          goals={goals}
-          lists={lists}
-          onUpdateGoal={onUpdateGoal}
-          onUpdateTodo={onToggleComplete}
-          onDeleteTodo={onDelete}
-          onCreateTodo={onCreateTodo}
-          onAssociateTasks={onAssociateTasks}
-          onClose={handleBackToList}
-        />
-      </div>
-    );
-  }
+  // 移除内部的状态管理，通过onViewGoal回调通知父组件
 
   return (
     <div
@@ -440,7 +402,7 @@ const TodoListComponent: React.FC<TodoListProps> = ({
             onDelete={onDelete}
             onRestore={onRestore}
             onSelectTodo={onSelectTodo}
-            onViewAllClick={handleViewGoal}
+            onViewAllClick={onViewGoal}
           />
         ))}
       </TransitionGroup>
