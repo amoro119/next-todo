@@ -290,8 +290,9 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, index)}
+                    onClick={() => setEditingTask(todo)}
                     className={`
-                      goals-todo-item flex items-center gap-3 p-4 border rounded-lg transition-all duration-200
+                      goals-todo-item flex items-center gap-3 p-4 border rounded-lg transition-all duration-200 cursor-pointer
                       ${dragState.draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''}
                       ${dragState.dragOverIndex === index ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 bg-white'}
                       hover:shadow-md hover:border-gray-300

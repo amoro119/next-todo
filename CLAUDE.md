@@ -5,6 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # 重要
 1. 仔细思考，只执行我给你的具体任务，用最简洁优化的解决方案，尽可能少地修改代码。
 2. 专注于解决核心问题！
+3. 禁止自动编译
+4. 禁止自动提交Git
+5. 禁止乱写测试
 
 ## Project Overview
 
