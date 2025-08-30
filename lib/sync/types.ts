@@ -212,13 +212,13 @@ export interface ListChange {
   id: string;
   
   /** 列表名称 */
-  name: string;
+  name?: string;
   
   /** 排序顺序 */
-  sort_order: number;
+  sort_order?: number;
   
   /** 是否隐藏 */
-  is_hidden: boolean;
+  is_hidden?: boolean;
   
   /** 修改的列 */
   modified_columns: string[];
@@ -235,16 +235,16 @@ export interface TodoChange {
   id: string;
   
   /** 任务标题 */
-  title: string;
+  title?: string;
   
   /** 是否完成 */
-  completed: boolean;
+  completed?: boolean;
   
   /** 是否删除 */
   deleted?: boolean;
   
   /** 排序顺序 */
-  sort_order: number;
+  sort_order?: number;
   
   /** 截止日期 */
   due_date?: string;
@@ -259,7 +259,7 @@ export interface TodoChange {
   priority?: number;
   
   /** 创建时间 */
-  created_time: string;
+  created_time?: string;
   
   /** 完成时间 */
   completed_time?: string;
@@ -309,7 +309,7 @@ export interface GoalChange {
   id: string;
   
   /** 目标名称 */
-  name: string;
+  name?: string;
   
   /** 目标描述 */
   description?: string;
@@ -327,7 +327,7 @@ export interface GoalChange {
   priority?: number;
   
   /** 创建时间 */
-  created_time: string;
+  created_time?: string;
   
   /** 是否存档 */
   is_archived?: boolean;

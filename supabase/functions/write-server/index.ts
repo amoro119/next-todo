@@ -174,8 +174,16 @@ async function applyTableChange(
 ) {
   const { id, modified_columns, new: isNew, ...data } = change as Record<string, unknown>;
 
-  // 过滤掉远程数据库不存在的列
-  const { new: _new, modified_columns: _mc, ...cleanData } = data as Record<string, unknown>;
+  // 过滤掉远程数据库不存在的列和undefined值
+  const { new: _new, modified_columns: _mc, ...rawData } = data as Record<string, unknown>;
+  
+  // 只保留有定义值的字段
+  const cleanData: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rawData)) {
+    if (value !== undefined && value !== null) {
+      cleanData[key] = value;
+    }
+  }
 
   // 检查是否为删除操作（对于lists表，如果modified_columns为空且不是新记录，则认为是删除）
   const isEmptyUpdate = !modified_columns || modified_columns.length === 0;
@@ -214,9 +222,22 @@ async function applyTableChange(
   // 确保 id 字段包含在 upsert 数据中
   const upsertData = { id, ...cleanData };
   
-  const { error } = await supabase.from(tableName).upsert(upsertData);
+  let error;
+  if (isNew) {
+    // 新记录使用insert
+    const insertData = { id, ...cleanData };
+    ({ error } = await supabase.from(tableName).insert(insertData));
+  } else {
+    // 更新记录使用update，只更新cleanData中的字段
+    if (Object.keys(cleanData).length > 0) {
+      ({ error } = await supabase.from(tableName).update(cleanData).eq('id', id));
+    } else {
+      return; // 没有字段需要更新
+    }
+  }
+  
   if (error) {
-    throw new Error(`Failed to upsert into ${tableName}: ${error.message}`);
+    throw new Error(`Failed to ${isNew ? 'insert into' : 'update'} ${tableName}: ${error.message}`);
   }
 }
 
