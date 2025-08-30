@@ -4,10 +4,9 @@
  * 专门优化ElectricSQL同步过程的性能
  */
 
-import type { PGliteWithLive } from "@electric-sql/pglite/live";
-import type { PGliteWithSync } from "@electric-sql/pglite-sync";
+import type { PGlite } from "@electric-sql/pglite";
 
-type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
+type PGliteWithExtensions = PGlite;
 
 interface SyncOptimizationConfig {
   batchSize: number;
