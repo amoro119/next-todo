@@ -13,6 +13,26 @@ type SyncStatus = "initial-sync" | "done" | "error" | "disabled" | "local-only";
 
 type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
 
+/**
+ * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
+ */
+function sanitizeUuidField(value: unknown): string | null {
+  if (!value) return null;
+  
+  const stringValue = String(value);
+  
+  // 检查是否是有效的 UUID 格式 (8-4-4-4-12 格式)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  
+  if (uuidRegex.test(stringValue)) {
+    return stringValue;
+  }
+  
+  // 如果不是有效的 UUID，返回 null
+  console.warn(`Invalid UUID value received: ${stringValue}, setting to null`);
+  return null;
+}
+
 // --- 认证逻辑现在已移至 lib/auth.ts ---
 
 /**
@@ -614,7 +634,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
   const { simpleSyncManager } = await import('../lib/sync/SimpleSyncManager');
   
   // 创建消息处理器，处理实时变更
-  const messageProcessor = async (shapeName: string, messages: any[]) => {
+  const messageProcessor = async (shapeName: string, messages: unknown[]) => {
     if (!messages?.length) return;
     
     for (const msg of messages) {
@@ -705,9 +725,9 @@ async function processShapeChange(
     switch (operation) {
       case "insert":
         await pg.query(
-          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19`,
+          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, goal_id, sort_order_in_goal)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+            ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19, goal_id=$20, sort_order_in_goal=$21`,
           [
             row.id ?? null,
             row.title ?? null,
@@ -721,13 +741,15 @@ async function processShapeChange(
             row.created_time ?? null,
             row.completed_time ?? null,
             row.start_date ?? null,
-            row.list_id ?? null,
+            sanitizeUuidField(row.list_id), // 清理 list_id
             row.repeat ?? null,
             row.reminder ?? null,
             row.is_recurring ?? false,
-            row.recurring_parent_id ?? null,
+            sanitizeUuidField(row.recurring_parent_id), // 清理 recurring_parent_id
             row.instance_number ?? null,
             row.next_due_date ?? null,
+            sanitizeUuidField(row.goal_id), // 清理 goal_id
+            row.sort_order_in_goal ?? null,
           ]
         );
         break;
@@ -750,6 +772,17 @@ async function processShapeChange(
   } else if (shapeName === "goals") {
     switch (operation) {
       case "insert":
+        // 调试日志：记录原始数据和清理后的数据
+        console.log(`🔍 [DEBUG] Goals insert - 原始数据:`, {
+          id: row.id,
+          name: row.name,
+          list_id_original: row.list_id,
+          list_id_type: typeof row.list_id,
+          list_id_cleaned: sanitizeUuidField(row.list_id)
+        });
+        
+        const cleanedListId = sanitizeUuidField(row.list_id);
+        
         await pg.query(
           `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -760,7 +793,7 @@ async function processShapeChange(
             row.id ?? null,
             row.name ?? null,
             row.description ?? null,
-            row.list_id ?? null,
+            cleanedListId, // 确保 list_id 是有效的 UUID 或 null
             row.start_date ?? null,
             row.due_date ?? null,
             row.priority ?? 0,
@@ -768,16 +801,39 @@ async function processShapeChange(
             row.is_archived ?? false,
           ]
         );
+        
+        console.log(`✅ [DEBUG] Goals insert 成功完成`);
         break;
 
       case "update":
         const updateFields = Object.keys(row).filter((key) => key !== "id");
         if (updateFields.length > 0) {
+          // 调试日志：记录更新操作的详细信息
+          console.log(`🔍 [DEBUG] Goals update - 原始数据:`, {
+            id: row.id,
+            updateFields: updateFields,
+            list_id_in_update: updateFields.includes('list_id'),
+            list_id_original: row.list_id,
+            list_id_type: typeof row.list_id
+          });
+          
           const setClause = updateFields
-            .map((key, idx) => `${key} = ${idx + 2}`)
+            .map((key, idx) => `${key} = $${idx + 2}`)
             .join(", ");
-          const values = [row.id, ...updateFields.map((key) => row[key])];
+          // 清理 UUID 字段
+          const values = [row.id, ...updateFields.map((key) => {
+            if (key === 'list_id' || key === 'recurring_parent_id' || key === 'goal_id') {
+              return sanitizeUuidField(row[key]);
+            }
+            return row[key];
+          })];
+          
+          console.log(`🔍 [DEBUG] Goals update SQL:`, `UPDATE goals SET ${setClause} WHERE id = $1`);
+          console.log(`🔍 [DEBUG] Goals update 参数:`, values);
+          
           await pg.query(`UPDATE goals SET ${setClause} WHERE id = $1`, values);
+          
+          console.log(`✅ [DEBUG] Goals update 成功完成`);
         }
         break;
 

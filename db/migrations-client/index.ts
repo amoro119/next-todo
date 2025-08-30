@@ -276,6 +276,132 @@ async function checkAndFixSchema(db: PGlite) {
       } else {
         console.log("✅ 目标相关字段已存在，无需修复");
       }
+      
+      // 清理现有数据中的无效 UUID 值
+      console.log("🧹 清理现有数据中的无效 UUID 值...");
+      try {
+        // 清理 todos 表中的无效 list_id
+        const invalidListIds = await db.query(`
+          SELECT id, list_id 
+          FROM todos 
+          WHERE list_id IS NOT NULL 
+          AND list_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        `);
+        
+        if (invalidListIds.rows.length > 0) {
+          console.log(`⚠️  发现 ${invalidListIds.rows.length} 条无效的 list_id 数据，正在清理...`);
+          await db.exec(`
+            UPDATE todos 
+            SET list_id = NULL 
+            WHERE list_id IS NOT NULL 
+            AND list_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          `);
+          console.log("✅ 无效的 list_id 数据已清理");
+        }
+        
+        // 清理 todos 表中的无效 recurring_parent_id
+        const invalidRecurringIds = await db.query(`
+          SELECT id, recurring_parent_id 
+          FROM todos 
+          WHERE recurring_parent_id IS NOT NULL 
+          AND recurring_parent_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        `);
+        
+        if (invalidRecurringIds.rows.length > 0) {
+          console.log(`⚠️  发现 ${invalidRecurringIds.rows.length} 条无效的 recurring_parent_id 数据，正在清理...`);
+          await db.exec(`
+            UPDATE todos 
+            SET recurring_parent_id = NULL 
+            WHERE recurring_parent_id IS NOT NULL 
+            AND recurring_parent_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          `);
+          console.log("✅ 无效的 recurring_parent_id 数据已清理");
+        }
+        
+        // 清理 todos 表中的无效 goal_id（如果字段存在）
+        if (hasGoalId) {
+          const invalidGoalIds = await db.query(`
+            SELECT id, goal_id 
+            FROM todos 
+            WHERE goal_id IS NOT NULL 
+            AND goal_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          `);
+          
+          if (invalidGoalIds.rows.length > 0) {
+            console.log(`⚠️  发现 ${invalidGoalIds.rows.length} 条无效的 goal_id 数据，正在清理...`);
+            await db.exec(`
+              UPDATE todos 
+              SET goal_id = NULL 
+              WHERE goal_id IS NOT NULL 
+              AND goal_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            `);
+            console.log("✅ 无效的 goal_id 数据已清理");
+          }
+        }
+        
+        // 清理 goals 表中的无效 list_id（如果表存在）
+        const goalsTableExists = await db.query(`
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public' AND table_name = 'goals'
+        `);
+        
+        if (goalsTableExists.rows.length > 0) {
+          // 首先检查所有可能的无效数据类型
+          const allGoalsData = await db.query(`
+            SELECT id, list_id, typeof(list_id) as list_id_type
+            FROM goals 
+            WHERE list_id IS NOT NULL
+          `);
+          
+          console.log(`📊 goals 表中的 list_id 数据类型分析:`);
+          const typeCount = {};
+          allGoalsData.rows.forEach(row => {
+            const type = typeof row.list_id;
+            typeCount[type] = (typeCount[type] || 0) + 1;
+            if (type !== 'string' || !row.list_id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) {
+              console.log(`   ⚠️  ID: ${row.id}, list_id: ${row.list_id} (类型: ${type})`);
+            }
+          });
+          
+          Object.entries(typeCount).forEach(([type, count]) => {
+            console.log(`   ${type}: ${count} 条记录`);
+          });
+          
+          // 使用更强的清理逻辑，包括类型检查
+          const invalidGoalsListIds = await db.query(`
+            SELECT id, list_id 
+            FROM goals 
+            WHERE list_id IS NOT NULL 
+            AND (
+              typeof(list_id) != 'text' 
+              OR list_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            )
+          `);
+          
+          if (invalidGoalsListIds.rows.length > 0) {
+            console.log(`⚠️  发现 ${invalidGoalsListIds.rows.length} 条无效的 goals.list_id 数据，正在清理...`);
+            
+            // 逐条清理，以便更好地处理类型转换问题
+            for (const row of invalidGoalsListIds.rows) {
+              try {
+                await db.exec(`UPDATE goals SET list_id = NULL WHERE id = '${row.id}'`);
+                console.log(`   ✅ 清理了 goal ${row.id} 的无效 list_id: ${row.list_id}`);
+              } catch (error) {
+                console.warn(`   ⚠️  清理 goal ${row.id} 失败:`, error.message);
+              }
+            }
+            
+            console.log("✅ 无效的 goals.list_id 数据已清理");
+          } else {
+            console.log("✅ goals 表中没有发现无效的 list_id 数据");
+          }
+        }
+        
+        console.log("✅ 数据清理完成");
+      } catch (error) {
+        console.warn("⚠️  数据清理失败:", error.message);
+      }
     } else {
       console.log("ℹ️  todos 表不存在，将通过正常迁移创建");
     }

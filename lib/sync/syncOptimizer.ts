@@ -8,6 +8,26 @@ import type { PGlite } from "@electric-sql/pglite";
 
 type PGliteWithExtensions = PGlite;
 
+/**
+ * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
+ */
+function sanitizeUuidField(value: unknown): string | null {
+  if (!value) return null;
+  
+  const stringValue = String(value);
+  
+  // 检查是否是有效的 UUID 格式 (8-4-4-4-12 格式)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  
+  if (uuidRegex.test(stringValue)) {
+    return stringValue;
+  }
+  
+  // 如果不是有效的 UUID，返回 null
+  console.warn(`Invalid UUID value received: ${stringValue}, setting to null`);
+  return null;
+}
+
 interface SyncOptimizationConfig {
   batchSize: number;
   maxConcurrentRequests: number;
@@ -279,11 +299,11 @@ export async function fastInitialSync(
             row.created_time ?? null,
             row.completed_time ?? null,
             row.start_date ?? null,
-            row.list_id ?? null,
+            sanitizeUuidField(row.list_id), // 确保 list_id 是有效的 UUID 或 null
             row.repeat ?? null,
             row.reminder ?? null,
             row.is_recurring ?? false,
-            row.recurring_parent_id ?? null,
+            sanitizeUuidField(row.recurring_parent_id), // 确保 recurring_parent_id 是有效的 UUID 或 null
             row.instance_number ?? null,
             row.next_due_date ?? null
           );
@@ -328,7 +348,7 @@ export async function fastInitialSync(
           row.id ?? null,
           row.name ?? null,
           row.description ?? null,
-          row.list_id ?? null,
+          sanitizeUuidField(row.list_id), // 确保 list_id 是有效的 UUID 或 null
           row.start_date ?? null,
           row.due_date ?? null,
           row.priority ?? 0,
@@ -409,11 +429,11 @@ export async function optimizedTableSync(
             row.created_time ?? null,
             row.completed_time ?? null,
             row.start_date ?? null,
-            row.list_id ?? null,
+            sanitizeUuidField(row.list_id), // 确保 list_id 是有效的 UUID 或 null
             row.repeat ?? null,
             row.reminder ?? null,
             row.is_recurring ?? false,
-            row.recurring_parent_id ?? null,
+            sanitizeUuidField(row.recurring_parent_id), // 确保 recurring_parent_id 是有效的 UUID 或 null
             row.instance_number ?? null,
             row.next_due_date ?? null,
           ]
@@ -429,7 +449,7 @@ export async function optimizedTableSync(
             row.id ?? null,
             row.name ?? null,
             row.description ?? null,
-            row.list_id ?? null,
+            sanitizeUuidField(row.list_id), // 确保 list_id 是有效的 UUID 或 null
             row.start_date ?? null,
             row.due_date ?? null,
             row.priority ?? 0,

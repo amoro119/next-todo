@@ -41,13 +41,33 @@ const OfflineSyncDebugger = dynamic(
   { ssr: false }
 );
 
+/**
+ * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
+ */
+function sanitizeUuidField(value: unknown): string | null {
+  if (!value) return null;
+  
+  const stringValue = String(value);
+  
+  // 检查是否是有效的 UUID 格式 (8-4-4-4-12 格式)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  
+  if (uuidRegex.test(stringValue)) {
+    return stringValue;
+  }
+  
+  // 如果不是有效的 UUID，返回 null
+  console.warn(`Invalid UUID value received: ${stringValue}, setting to null`);
+  return null;
+}
+
 // --- 统一的数据库API层 ---
 interface DatabaseAPI {
   query: <T = any>(sql: string, params?: any[]) => Promise<{ rows: T[] }>;
   insert: (
     table: "todos" | "lists" | "goals",
     data: Record<string, any>
-  ) => Promise<any>;
+  ) => Promise<unknown>;
   update: (
     table: "todos" | "lists" | "goals",
     id: string,
@@ -286,7 +306,7 @@ const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
   instance_number: raw.instance_number ? Number(raw.instance_number) : null,
   next_due_date: formatDbDate(raw.next_due_date),
   // 目标关联字段
-  goal_id: raw.goal_id ? String(raw.goal_id) : null,
+  goal_id: sanitizeUuidField(raw.goal_id),
   sort_order_in_goal: raw.sort_order_in_goal
     ? Number(raw.sort_order_in_goal)
     : null,
@@ -1029,7 +1049,7 @@ export default function TodoListPage() {
           const updateData = {
             name: goalData.name,
             description: goalData.description || null,
-            list_id: goalData.listId || null,
+            list_id: sanitizeUuidField(goalData.listId), // 使用 UUID 清理
             start_date: goalData.startDate || null,
             due_date: goalData.dueDate || null,
             priority: goalData.priority || 0,
@@ -1066,7 +1086,7 @@ export default function TodoListPage() {
             id: goalId,
             name: goalData.name,
             description: goalData.description || null,
-            list_id: goalData.listId || null,
+            list_id: sanitizeUuidField(goalData.listId), // 使用 UUID 清理
             start_date: goalData.startDate || null,
             due_date: goalData.dueDate || null,
             priority: goalData.priority || 0,
@@ -1136,6 +1156,10 @@ export default function TodoListPage() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { list_name: _, ...updateData } = updatedGoal;
+        // 清理 UUID 字段
+        if (updateData.list_id !== undefined) {
+          updateData.list_id = sanitizeUuidField(updateData.list_id);
+        }
         await db.update("goals", updatedGoal.id, updateData);
         
         // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据

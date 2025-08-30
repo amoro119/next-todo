@@ -130,7 +130,7 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
       sanitized.instance_number = data.instance_number !== undefined ? Number(data.instance_number) : null
       sanitized.next_due_date = data.next_due_date || null
       // 目标关联字段
-      sanitized.goal_id = data.goal_id || null
+      sanitized.goal_id = this.sanitizeUuidField(data.goal_id)
       sanitized.sort_order_in_goal = data.sort_order_in_goal !== undefined ? Number(data.sort_order_in_goal) : null
     } else if (operation === 'update') {
       // 更新操作只包含变更的字段
@@ -149,6 +149,9 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
             sanitized[field] = Boolean(data[field])
           } else if (field === 'sort_order' || field === 'priority' || field === 'instance_number' || field === 'sort_order_in_goal') {
             sanitized[field] = Number(data[field]) || 0
+          } else if (field === 'goal_id' || field === 'list_id' || field === 'recurring_parent_id') {
+            // UUID 字段需要特殊处理
+            sanitized[field] = this.sanitizeUuidField(data[field])
           } else {
             sanitized[field] = data[field]
           }
@@ -197,6 +200,26 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
     return sanitized
   }
 
+  /**
+   * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
+   */
+  private sanitizeUuidField(value: unknown): string | null {
+    if (!value) return null;
+    
+    const stringValue = String(value);
+    
+    // 检查是否是有效的 UUID 格式 (8-4-4-4-12 格式)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    
+    if (uuidRegex.test(stringValue)) {
+      return stringValue;
+    }
+    
+    // 如果不是有效的 UUID，返回 null
+    console.warn(`Invalid UUID value received: ${stringValue}, setting to null`);
+    return null;
+  }
+
   private sanitizeGoalData(data: Record<string, unknown>, operation: string): Record<string, unknown> {
     const sanitized: Record<string, unknown> = { id: data.id }
     
@@ -204,7 +227,8 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
       // 插入操作需要所有必要字段
       sanitized.name = data.name || ''
       sanitized.description = data.description || null
-      sanitized.list_id = data.list_id || null
+      // 确保 list_id 是正确的 UUID 字符串类型或 null
+      sanitized.list_id = this.sanitizeUuidField(data.list_id)
       sanitized.start_date = data.start_date || null
       sanitized.due_date = data.due_date || null
       sanitized.priority = Number(data.priority) || 0
@@ -223,6 +247,9 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
             sanitized[field] = Boolean(data[field])
           } else if (field === 'priority') {
             sanitized[field] = Number(data[field]) || 0
+          } else if (field === 'list_id') {
+            // 确保 list_id 是正确的 UUID 字符串类型或 null
+            sanitized[field] = this.sanitizeUuidField(data[field])
           } else {
             sanitized[field] = data[field]
           }
