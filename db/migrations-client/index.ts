@@ -139,10 +139,163 @@ const syncTriggers = `
 SELECT 1; -- No-op query
 `;
 
+// 架构检查和修复函数
+async function checkAndFixSchema(db: PGlite) {
+  console.log("🔍 检查现有数据库架构...");
+  
+  try {
+    // 检查 todos 表是否存在以及其结构
+    const tablesResult = await db.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' AND table_name = 'todos'
+    `);
+    
+    if (tablesResult.rows.length > 0) {
+      console.log("📋 发现现有 todos 表，检查字段...");
+      
+      // 检查 todos 表的列
+      const columnsResult = await db.query(`
+        SELECT column_name, data_type, is_nullable
+        FROM information_schema.columns 
+        WHERE table_name = 'todos' AND table_schema = 'public'
+        ORDER BY ordinal_position
+      `);
+      
+      const existingColumns = columnsResult.rows.map(row => row.column_name);
+      console.log("现有字段:", existingColumns);
+      
+      // 检查是否缺少目标相关字段
+      const hasGoalId = existingColumns.includes('goal_id');
+      const hasSortOrderInGoal = existingColumns.includes('sort_order_in_goal');
+      
+      if (!hasGoalId || !hasSortOrderInGoal) {
+        console.log("⚠️  检测到缺少目标相关字段，开始修复...");
+        
+        // 首先确保 goals 表存在（如果 todos 表存在但 goals 表不存在）
+        const goalsTableResult = await db.query(`
+          SELECT table_name 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public' AND table_name = 'goals'
+        `);
+        
+        if (goalsTableResult.rows.length === 0) {
+          console.log("➕ 创建 goals 表...");
+          await db.exec(`
+            CREATE TABLE "goals" (
+                "id" UUID NOT NULL,
+                "name" TEXT NOT NULL,
+                "description" TEXT,
+                "list_id" UUID,
+                "start_date" TIMESTAMPTZ,
+                "due_date" TIMESTAMPTZ,
+                "priority" INTEGER NOT NULL DEFAULT 0,
+                "created_time" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                "is_archived" BOOLEAN NOT NULL DEFAULT FALSE,
+                CONSTRAINT "goals_pkey" PRIMARY KEY ("id")
+            );
+          `);
+        }
+        
+        // 添加缺少的字段
+        if (!hasGoalId) {
+          console.log("➕ 添加 goal_id 字段...");
+          await db.exec(`ALTER TABLE "todos" ADD COLUMN "goal_id" UUID;`);
+        }
+        
+        if (!hasSortOrderInGoal) {
+          console.log("➕ 添加 sort_order_in_goal 字段...");
+          await db.exec(`ALTER TABLE "todos" ADD COLUMN "sort_order_in_goal" INTEGER;`);
+        }
+        
+        // 添加外键约束（如果不存在）
+        try {
+          // 先检查外键约束是否已存在
+          const constraintsResult = await db.query(`
+            SELECT constraint_name 
+            FROM information_schema.table_constraints 
+            WHERE table_name = 'todos' 
+            AND constraint_type = 'FOREIGN KEY' 
+            AND constraint_name = 'todos_goal_id_fkey'
+          `);
+          
+          if (constraintsResult.rows.length === 0) {
+            await db.exec(`
+              ALTER TABLE "todos" 
+              ADD CONSTRAINT "todos_goal_id_fkey" 
+              FOREIGN KEY ("goal_id") REFERENCES "goals"("id") ON DELETE SET NULL;
+            `);
+            console.log("✅ 目标外键约束添加成功");
+          } else {
+            console.log("ℹ️  目标外键约束已存在");
+          }
+        } catch (error) {
+          console.warn("⚠️  目标外键约束添加失败:", error.message);
+        }
+        
+        // 添加 goals 表的 list_id 外键约束（如果不存在）
+        try {
+          const goalsConstraintsResult = await db.query(`
+            SELECT constraint_name 
+            FROM information_schema.table_constraints 
+            WHERE table_name = 'goals' 
+            AND constraint_type = 'FOREIGN KEY' 
+            AND constraint_name = 'goals_list_id_fkey'
+          `);
+          
+          if (goalsConstraintsResult.rows.length === 0) {
+            await db.exec(`
+              ALTER TABLE "goals" 
+              ADD CONSTRAINT "goals_list_id_fkey" 
+              FOREIGN KEY ("list_id") REFERENCES "lists"("id") ON DELETE SET NULL;
+            `);
+            console.log("✅ 目标列表外键约束添加成功");
+          }
+        } catch (error) {
+          console.warn("⚠️  目标列表外键约束添加失败:", error.message);
+        }
+        
+        // 创建索引
+        try {
+          await db.exec(`
+            CREATE INDEX IF NOT EXISTS "idx_todos_goal_id" ON "todos" ("goal_id");
+            CREATE INDEX IF NOT EXISTS "idx_todos_goal_sort" ON "todos" ("goal_id", "sort_order_in_goal") 
+                WHERE "goal_id" IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS "idx_goals_list_id" ON "goals" ("list_id");
+            CREATE INDEX IF NOT EXISTS "idx_goals_archived" ON "goals" ("is_archived");
+            CREATE INDEX IF NOT EXISTS "idx_goals_priority" ON "goals" ("priority");
+            CREATE INDEX IF NOT EXISTS "idx_goals_due_date" ON "goals" ("due_date") WHERE "due_date" IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS "idx_goals_created_time" ON "goals" ("created_time");
+          `);
+          console.log("✅ 目标相关索引创建成功");
+        } catch (error) {
+          console.warn("⚠️  索引创建失败:", error.message);
+        }
+        
+        console.log("🎉 架构修复完成！");
+      } else {
+        console.log("✅ 目标相关字段已存在，无需修复");
+      }
+    } else {
+      console.log("ℹ️  todos 表不存在，将通过正常迁移创建");
+    }
+    
+  } catch (error) {
+    console.error("❌ 架构检查失败:", error);
+    // 不抛出错误，让正常迁移继续进行
+    console.log("⚠️  架构检查失败，继续执行正常迁移流程");
+  }
+}
+
 export async function migrate(db: PGlite) {
   console.log("Starting database migration...");
   
   try {
+    // 步骤 0: 检查并修复现有架构
+    console.log("Step 0: Checking and fixing existing schema...");
+    await checkAndFixSchema(db);
+    console.log("✓ Schema check and fix completed");
+
     // 步骤 1: 创建基础表
     console.log("Step 1: Creating basic tables...");
     await db.exec(createTables);
