@@ -66,14 +66,27 @@ export class RecurringTaskIntegration {
 
         const completedTask = { ...taskResult.rows[0], ...updates } as Todo;
 
-        // 获取相关的原始重复任务
-        const originalTasks = await this.getOriginalRecurringTasks(databaseAPI);
+        // 检查是否为重复任务
+        if (RecurringTaskGenerator.isRecurringTask(completedTask)) {
+          console.log('Processing recurring task completion:', completedTask.title);
+          
+          // 直接处理重复任务完成
+          const result = RecurringTaskGenerator.handleRecurringTaskCompletion(
+            completedTask,
+            new Date()
+          );
 
-        // 处理任务完成
-        await taskCompletionHandler.handleTaskCompletion(
-          completedTask,
-          originalTasks
-        );
+          if (result.shouldGenerateNext && result.newRecurringTask) {
+            // 生成新的重复任务
+            const newTaskId = this.generateUUID();
+            const newTask = { ...result.newRecurringTask, id: newTaskId };
+            
+            await databaseAPI.insert('todos', newTask);
+            console.log('Generated new recurring task:', newTask.title, 'due:', newTask.due_date);
+          } else {
+            console.log('No new recurring task generated for:', completedTask.title);
+          }
+        }
       } catch (error) {
         console.error('Error handling task completion:', error);
       }
