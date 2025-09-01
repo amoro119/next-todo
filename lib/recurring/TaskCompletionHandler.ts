@@ -41,7 +41,7 @@ export class TaskCompletionHandler {
   /**
    * 处理任务完成事件
    * @param task 完成的任务
-   * @param originalTasks 原始重复任务映射（用于查找父任务）
+   * @param originalTasks 原始重复任务映射（用于查找父任务，现在已不再使用）
    * @param currentDate 当前日期
    */
   async handleTaskCompletion(
@@ -52,7 +52,7 @@ export class TaskCompletionHandler {
     let result: TaskCompletionResult;
 
     if (RecurringTaskGenerator.isRecurringTask(task)) {
-      // 处理重复任务完成（不再区分原始任务和实例）
+      // 处理重复任务完成
       const generationResult = RecurringTaskGenerator.handleRecurringTaskCompletion(task, currentDate);
       result = {
         completedTask: task,

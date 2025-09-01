@@ -472,4 +472,43 @@ export class RecurringTaskGenerator {
   static supportsCompletionGeneration(task: Todo): boolean {
     return this.isOriginalRecurringTask(task) || this.isTaskInstance(task);
   }
+
+  /**
+   * 生成任务实例（向后兼容方法）
+   * @param originalTask 原始重复任务
+   * @param dueDate 到期日期
+   * @param instanceNumber 实例编号
+   * @returns 新的任务实例
+   * @deprecated 不再区分实例和原始任务，使用generateNextRecurringTask代替
+   */
+  static generateTaskInstance(
+    originalTask: Todo,
+    dueDate: Date,
+    instanceNumber: number
+  ): Omit<Todo, 'id'> {
+    return this.generateNextRecurringTask(originalTask, dueDate);
+  }
+
+  /**
+   * 处理原始重复任务完成事件（向后兼容方法）
+   * @param originalTask 原始重复任务
+   * @param currentDate 当前日期
+   * @returns 生成结果
+   * @deprecated 使用handleRecurringTaskCompletion代替
+   */
+  static handleOriginalTaskCompletion(
+    originalTask: Todo,
+    currentDate: Date = new Date()
+  ): {
+    shouldGenerateNext: boolean;
+    newInstance?: Omit<Todo, 'id'>;
+    parentTaskUpdates?: Partial<Todo>;
+  } {
+    const result = this.handleRecurringTaskCompletion(originalTask, currentDate);
+    return {
+      shouldGenerateNext: result.shouldGenerateNext,
+      newInstance: result.newRecurringTask,
+      parentTaskUpdates: result.shouldGenerateNext ? this.updateNextDueDate(originalTask, new Date()) : undefined
+    };
+  }
 }
