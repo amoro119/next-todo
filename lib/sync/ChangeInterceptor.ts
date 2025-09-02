@@ -132,6 +132,8 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
       // 目标关联字段
       sanitized.goal_id = this.sanitizeUuidField(data.goal_id)
       sanitized.sort_order_in_goal = data.sort_order_in_goal !== undefined ? Number(data.sort_order_in_goal) : null
+      // 修改时间字段
+      sanitized.modified = data.modified || new Date().toISOString()
     } else if (operation === 'update') {
       // 更新操作只包含变更的字段
       const updatableFields = [
@@ -140,7 +142,9 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
         // 重复任务相关字段
         'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date',
         // 目标关联字段
-        'goal_id', 'sort_order_in_goal'
+        'goal_id', 'sort_order_in_goal',
+        // 修改时间字段
+        'modified'
       ]
       
       for (const field of updatableFields) {
@@ -152,6 +156,9 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
           } else if (field === 'goal_id' || field === 'list_id' || field === 'recurring_parent_id') {
             // UUID 字段需要特殊处理
             sanitized[field] = this.sanitizeUuidField(data[field])
+          } else if (field === 'modified') {
+            // modified 字段需要特殊处理，确保是有效的日期字符串
+            sanitized[field] = this.sanitizeModifiedField(data[field])
           } else {
             sanitized[field] = data[field]
           }
@@ -217,6 +224,26 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
     
     // 如果不是有效的 UUID，返回 null
     console.warn(`Invalid UUID value received: ${stringValue}, setting to null`);
+    return null;
+  }
+
+  /**
+   * 清理 modified 字段，确保是有效的日期字符串
+   */
+  private sanitizeModifiedField(value: unknown): string | null {
+    if (!value) return null;
+    
+    const stringValue = String(value);
+    
+    // 检查是否是有效的 ISO 日期格式
+    const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})?$/;
+    
+    if (isoDateRegex.test(stringValue)) {
+      return stringValue;
+    }
+    
+    // 如果不是有效的日期格式，返回 null
+    console.warn(`Invalid modified date value received: ${stringValue}, setting to null`);
     return null;
   }
 

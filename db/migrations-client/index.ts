@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS "todos" (
   "goal_id" UUID, -- 关联的目标ID
   "sort_order_in_goal" INTEGER, -- 在目标中的排序
   
+  -- 修改时间字段
+  "modified" TIMESTAMPTZ DEFAULT NOW(),
+  
   CONSTRAINT "todos_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "todos_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES "lists"("id") ON DELETE SET NULL,
   CONSTRAINT "todos_goal_id_fkey" FOREIGN KEY ("goal_id") REFERENCES "goals"("id") ON DELETE SET NULL,
@@ -165,12 +168,13 @@ async function checkAndFixSchema(db: PGlite) {
       const existingColumns = columnsResult.rows.map(row => row.column_name);
       console.log("现有字段:", existingColumns);
       
-      // 检查是否缺少目标相关字段
+      // 检查是否缺少目标相关字段和modified字段
       const hasGoalId = existingColumns.includes('goal_id');
       const hasSortOrderInGoal = existingColumns.includes('sort_order_in_goal');
+      const hasModified = existingColumns.includes('modified');
       
-      if (!hasGoalId || !hasSortOrderInGoal) {
-        console.log("⚠️  检测到缺少目标相关字段，开始修复...");
+      if (!hasGoalId || !hasSortOrderInGoal || !hasModified) {
+        console.log("⚠️  检测到缺少字段，开始修复...");
         
         // 首先确保 goals 表存在（如果 todos 表存在但 goals 表不存在）
         const goalsTableResult = await db.query(`
@@ -206,6 +210,11 @@ async function checkAndFixSchema(db: PGlite) {
         if (!hasSortOrderInGoal) {
           console.log("➕ 添加 sort_order_in_goal 字段...");
           await db.exec(`ALTER TABLE "todos" ADD COLUMN "sort_order_in_goal" INTEGER;`);
+        }
+        
+        if (!hasModified) {
+          console.log("➕ 添加 modified 字段...");
+          await db.exec(`ALTER TABLE "todos" ADD COLUMN "modified" TIMESTAMPTZ DEFAULT NOW();`);
         }
         
         // 添加外键约束（如果不存在）

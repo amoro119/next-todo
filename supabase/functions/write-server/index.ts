@@ -12,6 +12,7 @@ const listChangeSchema = z.object({
   name: z.string().nullable().optional(),
   sort_order: z.number().nullable().optional(),
   is_hidden: z.boolean().nullable().optional(),
+  modified: z.string().nullable().optional(),
   // local-first fields
   modified_columns: z.array(z.string()).nullable().optional(),
   new: z.boolean().nullable().optional(),
@@ -42,6 +43,8 @@ const todoChangeSchema = z.object({
   // 目标关联字段
   goal_id: z.string().nullable().optional(),
   sort_order_in_goal: z.number().nullable().optional(),
+  // 修改时间字段
+  modified: z.string().nullable().optional(),
   // local-first fields
   modified_columns: z.array(z.string()).nullable().optional(),
   new: z.boolean().nullable().optional(),
@@ -217,6 +220,17 @@ async function applyTableChange(
   // 为 lists 表添加 modified 时间戳
   if (tableName === 'lists') {
     (cleanData as ListChange).modified = new Date().toISOString();
+  }
+  
+  // 为 todos 表处理 modified 字段
+  if (tableName === 'todos') {
+    // 如果传入了modified字段且不是新记录，则使用传入的值
+    // 否则使用当前时间戳
+    if ('modified' in data && !isNew) {
+      (cleanData as TodoChange).modified = (data as TodoChange).modified || new Date().toISOString();
+    } else {
+      (cleanData as TodoChange).modified = new Date().toISOString();
+    }
   }
   
   // 确保 id 字段包含在 upsert 数据中
