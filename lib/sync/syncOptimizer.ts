@@ -284,8 +284,12 @@ export async function fastInitialSync(
         
         batch.forEach((rowRaw, index) => {
           const row = rowRaw as Record<string, unknown>;
-          const baseIndex = index * 19;
-          placeholders.push(`($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5}, $${baseIndex + 6}, $${baseIndex + 7}, $${baseIndex + 8}, $${baseIndex + 9}, $${baseIndex + 10}, $${baseIndex + 11}, $${baseIndex + 12}, $${baseIndex + 13}, $${baseIndex + 14}, $${baseIndex + 15}, $${baseIndex + 16}, $${baseIndex + 17}, $${baseIndex + 18}, $${baseIndex + 19})`);
+          const baseIndex = index * 21; // 更新为21个字段
+          placeholders.push(`($${baseIndex + 1}, $${baseIndex + 2}, $${baseIndex + 3}, $${baseIndex + 4}, $${baseIndex + 5}, $${baseIndex + 6}, $${baseIndex + 7}, $${baseIndex + 8}, $${baseIndex + 9}, $${baseIndex + 10}, $${baseIndex + 11}, $${baseIndex + 12}, $${baseIndex + 13}, $${baseIndex + 14}, $${baseIndex + 15}, $${baseIndex + 16}, $${baseIndex + 17}, $${baseIndex + 18}, $${baseIndex + 19}, $${baseIndex + 20}, $${baseIndex + 21})`);
+          
+                    
+          const cleanedGoalId = sanitizeUuidField(row.goal_id);
+                    
           values.push(
             row.id ?? null,
             row.title ?? null,
@@ -305,12 +309,14 @@ export async function fastInitialSync(
             row.is_recurring ?? false,
             sanitizeUuidField(row.recurring_parent_id), // 确保 recurring_parent_id 是有效的 UUID 或 null
             row.instance_number ?? null,
-            row.next_due_date ?? null
+            row.next_due_date ?? null,
+            cleanedGoalId, // 添加 goal_id 字段
+            row.sort_order_in_goal ?? null // 添加 sort_order_in_goal 字段
           );
         });
 
         const sql = `
-          INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
+          INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, goal_id, sort_order_in_goal)
           VALUES ${placeholders.join(', ')}
           ON CONFLICT(id) DO UPDATE SET 
             title = EXCLUDED.title,
@@ -330,7 +336,9 @@ export async function fastInitialSync(
             is_recurring = EXCLUDED.is_recurring,
             recurring_parent_id = EXCLUDED.recurring_parent_id,
             instance_number = EXCLUDED.instance_number,
-            next_due_date = EXCLUDED.next_due_date
+            next_due_date = EXCLUDED.next_due_date,
+            goal_id = EXCLUDED.goal_id,
+            sort_order_in_goal = EXCLUDED.sort_order_in_goal
         `;
         
         await tx.query(sql, values);
@@ -371,7 +379,23 @@ export async function fastInitialSync(
           is_archived = EXCLUDED.is_archived
       `;
       
-      await tx.query(sql, values);
+      try {
+        await tx.query(sql, values);
+      } catch (error) {
+        // 如果违反外键约束，记录详细信息并重新抛出错误
+        if (error instanceof Error && error.message.includes('goals_list_id_fkey')) {
+          console.error(`❌ goals 表外键约束违规: ${error.message}`);
+          // 记录导致问题的具体数据
+          for (const rowRaw of rows) {
+            const row = rowRaw as Record<string, unknown>;
+            const listId = row.list_id;
+            if (listId && !sanitizeUuidField(listId)) {
+              console.error(`📝 无效的 list_id: ${listId} (类型: ${typeof listId})`);
+            }
+          }
+        }
+        throw error;
+      }
     }
   });
 
@@ -412,10 +436,13 @@ export async function optimizedTableSync(
           ]
         );
       } else if (table === "todos") {
+                
+        const cleanedGoalId = sanitizeUuidField(row.goal_id);
+                
         await pg.query(
-          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-           ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19`,
+          `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, goal_id, sort_order_in_goal)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+           ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19, goal_id=$20, sort_order_in_goal=$21`,
           [
             row.id ?? null,
             row.title ?? null,
@@ -436,27 +463,40 @@ export async function optimizedTableSync(
             sanitizeUuidField(row.recurring_parent_id), // 确保 recurring_parent_id 是有效的 UUID 或 null
             row.instance_number ?? null,
             row.next_due_date ?? null,
+            cleanedGoalId, // 添加 goal_id 字段
+            row.sort_order_in_goal ?? null, // 添加 sort_order_in_goal 字段
           ]
         );
+        
+        console.log(`[DEBUG] Todo upsertFn - 完成，goal_id:`, cleanedGoalId);
       } else if (table === "goals") {
-        await pg.query(
-          `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           ON CONFLICT(id) DO UPDATE SET 
-           name = $2, description = $3, list_id = $4, start_date = $5, 
-           due_date = $6, priority = $7, created_time = $8, is_archived = $9`,
-          [
-            row.id ?? null,
-            row.name ?? null,
-            row.description ?? null,
-            sanitizeUuidField(row.list_id), // 确保 list_id 是有效的 UUID 或 null
-            row.start_date ?? null,
-            row.due_date ?? null,
-            row.priority ?? 0,
-            row.created_time ?? null,
-            row.is_archived ?? false,
-          ]
-        );
+        try {
+          await pg.query(
+            `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT(id) DO UPDATE SET 
+             name = $2, description = $3, list_id = $4, start_date = $5, 
+             due_date = $6, priority = $7, created_time = $8, is_archived = $9`,
+            [
+              row.id ?? null,
+              row.name ?? null,
+              row.description ?? null,
+              sanitizeUuidField(row.list_id), // 确保 list_id 是有效的 UUID 或 null
+              row.start_date ?? null,
+              row.due_date ?? null,
+              row.priority ?? 0,
+              row.created_time ?? null,
+              row.is_archived ?? false,
+            ]
+          );
+        } catch (error) {
+          // 如果违反外键约束，记录详细信息并重新抛出错误
+          if (error instanceof Error && error.message.includes('goals_list_id_fkey')) {
+            console.error(`❌ goals 表外键约束违规: ${error.message}`);
+            console.error(`📝 问题数据 - ID: ${row.id}, list_id: ${row.list_id} (类型: ${typeof row.list_id})`);
+          }
+          throw error;
+        }
       }
     }
   };
