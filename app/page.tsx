@@ -1512,7 +1512,7 @@ export default function TodoListPage() {
           ? todo.reminder.replace(/'/g, "''")
           : null;
 
-        sqlContent += `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date) VALUES (`;
+        sqlContent += `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, modified) VALUES (`;
         sqlContent += `'${todo.id}', `;
         sqlContent += `'${title}', `;
         sqlContent += `${todo.completed}, `;
@@ -1537,7 +1537,8 @@ export default function TodoListPage() {
         sqlContent += `${todo.instance_number || "NULL"}, `;
         sqlContent += `${
           todo.next_due_date ? `'${todo.next_due_date}'` : "NULL"
-        }`;
+        }, `;
+        sqlContent += `${todo.modified ? `'${todo.modified}'` : "NULL"}`;
         sqlContent += ");\n";
       }
 
