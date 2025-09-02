@@ -1155,8 +1155,9 @@ export default function TodoListPage() {
   const handleUpdateGoal = useCallback(
     async (updatedGoal: Goal) => {
       try {
+        // 移除计算字段和只读字段，这些字段不应该被更新到数据库中
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { list_name: _, ...updateData } = updatedGoal;
+        const { list_name: _, progress: __, total_tasks: ___, completed_tasks: ____, ...updateData } = updatedGoal;
         // 清理 UUID 字段
         if (updateData.list_id !== undefined) {
           updateData.list_id = sanitizeUuidField(updateData.list_id);

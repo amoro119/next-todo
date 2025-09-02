@@ -77,17 +77,17 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     });
   }, [todos, localTodos]);
 
-  // 更新目标进度
-  useEffect(() => {
-    const newProgress = progress;
+  // 注释掉进度更新逻辑，因为 progress 应该是计算字段，不应该存储在数据库中
+  // useEffect(() => {
+  //   const newProgress = progress;
 
-    if (goal.progress !== newProgress) {
-      onUpdateGoal({
-        ...goal,
-        progress: newProgress
-      });
-    }
-  }, [goal, progress, todos, onUpdateGoal]);
+  //   if (goal.progress !== newProgress) {
+  //     onUpdateGoal({
+  //       ...goal,
+  //       progress: newProgress
+  //     });
+  //   }
+  // }, [goal, progress, todos, onUpdateGoal]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     console.log('拖拽开始:', index);

@@ -137,8 +137,8 @@ export class GoalsService {
     // 清理数据（不进行完整验证，因为这是部分更新）
     const sanitizedData = sanitizeGoalData(updates);
     
-    // 过滤掉计算字段，这些字段不应该被更新
-    const computedFields = ['progress', 'total_tasks', 'completed_tasks'];
+    // 过滤掉计算字段和只读字段，这些字段不应该被更新
+    const computedFields = ['progress', 'total_tasks', 'completed_tasks', 'list_name'];
     const updateData: Record<string, any> = {};
     
     Object.entries(sanitizedData).forEach(([key, value]) => {
