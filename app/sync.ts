@@ -17,14 +17,21 @@ type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
  * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
  */
 function sanitizeUuidField(value: unknown): string | null {
-  if (!value) return null;
+  console.log(`[DEBUG] sanitizeUuidField 输入:`, { value, type: typeof value });
   
-  const stringValue = String(value);
+  if (!value || value === 'null' || value === 'undefined') {
+    console.log(`[DEBUG] sanitizeUuidField 返回 null (空值或特殊字符串)`);
+    return null;
+  }
+  
+  const stringValue = String(value).trim();
+  console.log(`[DEBUG] sanitizeUuidField 字符串值:`, stringValue);
   
   // 检查是否是有效的 UUID 格式 (8-4-4-4-12 格式)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   
   if (uuidRegex.test(stringValue)) {
+    console.log(`[DEBUG] sanitizeUuidField 返回有效UUID:`, stringValue);
     return stringValue;
   }
   
@@ -245,6 +252,13 @@ export async function getFullShapeRows({
   electricProxyUrl: string;
   token: string;
 }): Promise<unknown[]> {
+    
+  // 检查 columns 配置是否包含 goal_id 字段
+  if (table === 'todos' && !columns.includes('goal_id')) {
+    console.warn(`[WARN] getFullShapeRows - todos 表的 columns 配置中缺少 goal_id 字段!`);
+  }
+  
+    
   const fullShapeStream = new ShapeStream({
     url: `${electricProxyUrl}/v1/shape`,
     params: {
@@ -257,10 +271,15 @@ export async function getFullShapeRows({
       Authorization: `Bearer ${token}`,
     },
   });
+  
   const fullShape = new Shape(fullShapeStream);
   await fullShape.rows;
+  
+  const rows = await fullShape.rows;
+  return rows;
+  
   fullShapeStream.unsubscribeAll();
-  return fullShape.rows;
+  // return fullShape.rows; // 已经在上面返回了
 }
 
 /**
@@ -340,65 +359,77 @@ async function doFullTableSync({
   upsertSql: string; // Kept for compatibility, but logic is now self-contained.
 }): Promise<void> {
   console.log(`- Starting full reconciliation for table: ${table}`);
+  
+  
+  try {
+    // 1. Fetch all rows from the remote server.
+    console.log(`[DEBUG] doFullTableSync - 开始获取 ${table} 表的全量数据`);
+    const rows = await getFullShapeRows({
+      table,
+      columns,
+      electricProxyUrl,
+      token,
+    });
+    
+        
+    const remoteIds = rows.map((r) => (r as { id: string }).id);
+    console.log(`- Fetched ${remoteIds.length} remote rows for ${table}.`);
 
-  // 1. Fetch all rows from the remote server.
-  const rows = await getFullShapeRows({
-    table,
-    columns,
-    electricProxyUrl,
-    token,
-  });
-  const remoteIds = rows.map((r) => (r as { id: string }).id);
-  console.log(`- Fetched ${remoteIds.length} remote rows for ${table}.`);
-
-
-  await pg.transaction(async (tx) => {
-    // 2. Delete local rows that are no longer present on the server.
-    // This is the key step to fix the localCount > remoteCount issue.
-    if (remoteIds.length > 0) {
-      const { rows: deletedRows } = await tx.query(
-        // Note the removal of the "main" schema prefix.
-        `DELETE FROM "${table}" WHERE id NOT IN (${remoteIds
-          .map((_, i) => `$${i + 1}`)
-          .join(",")}) RETURNING id`,
-        remoteIds
-      );
-      if (deletedRows.length > 0) {
-        console.log(
-          `- Deleted ${deletedRows.length} orphan rows from local ${table}.`
-        );
-      }
-    } else {
-      // 对于goals表，不要在远程为空时清除本地数据
-      // 因为goals可能是本地创建的，还没有同步到远程
-      if (table !== 'goals') {
-        // If the remote table is empty, clear the entire local table.
+    await pg.transaction(async (tx) => {
+      // 2. Delete local rows that are no longer present on the server.
+      // This is the key step to fix the localCount > remoteCount issue.
+      if (remoteIds.length > 0) {
         const { rows: deletedRows } = await tx.query(
-          `DELETE FROM "${table}" RETURNING id`
+          // Note the removal of the "main" schema prefix.
+          `DELETE FROM "${table}" WHERE id NOT IN (${remoteIds
+            .map((_, i) => `$${i + 1}`)
+            .join(",")}) RETURNING id`,
+          remoteIds
         );
         if (deletedRows.length > 0) {
           console.log(
-            `- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`
+            `- Deleted ${deletedRows.length} orphan rows from local ${table}.`
           );
         }
       } else {
-        console.log(
-          `- Remote goals table is empty, but preserving local goals data.`
-        );
+        // 对于goals表，不要在远程为空时清除本地数据
+        // 因为goals可能是本地创建的，还没有同步到远程
+        if (table !== 'goals') {
+          // If the remote table is empty, clear the entire local table.
+          const { rows: deletedRows } = await tx.query(
+            `DELETE FROM "${table}" RETURNING id`
+          );
+          if (deletedRows.length > 0) {
+            console.log(
+              `- Remote table ${table} is empty. Deleted all ${deletedRows.length} local rows.`
+            );
+          }
+        } else {
+          console.log(
+            `- Remote goals table is empty, but preserving local goals data.`
+          );
+        }
       }
+    });
+
+    // 3. 优化：使用快速同步处理初始化数据
+    if (rows.length > 0) {
+      // 动态导入优化器以减少初始加载时间
+      const { optimizedTableSync } = await import('../lib/sync/syncOptimizer');
+      // 初始化阶段使用快速同步，无分批处理
+      await optimizedTableSync(pg, table, columns, rows, true);
     }
 
-  });
-
-  // 3. 优化：使用快速同步处理初始化数据
-  if (rows.length > 0) {
-    // 动态导入优化器以减少初始加载时间
-    const { optimizedTableSync } = await import('../lib/sync/syncOptimizer');
-    // 初始化阶段使用快速同步，无分批处理
-    await optimizedTableSync(pg, table, columns, rows, true);
+    console.log(`- ✅ ${table} optimized reconciliation complete.`);
+  } catch (error) {
+    console.error(`❌ ${table} 表同步失败:`, error);
+    // 提供更详细的错误信息
+    if (error instanceof Error) {
+      console.error(`📝 错误详情: ${error.message}`);
+      console.error(`📋 错误堆栈: ${error.stack}`);
+    }
+    throw error;
   }
-
-  console.log(`- ✅ ${table} optimized reconciliation complete.`);
 }
 
 /**
@@ -531,48 +562,115 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
     throw new Error("Authentication token is not available for sync.");
   }
 
-  // 1. 优化：并行检查和同步所有表
-  const initialSyncPromises = shapes.map(async (shapeDef) => {
-    const { name: shapeName, columns } = shapeDef;
-    
+  // 1. 优化：按依赖顺序同步表（lists -> goals -> todos）
+  // 先同步 lists 表
+  const listsShape = shapes.find(s => s.name === "lists");
+  if (listsShape) {
     try {
-      const res = await pg.query(`SELECT 1 FROM ${shapeName} LIMIT 1`);
+      const res = await pg.query(`SELECT 1 FROM ${listsShape.name} LIMIT 1`);
       const shouldInitialUpsert = res.rows.length === 0;
 
       if (shouldInitialUpsert) {
         await doFullTableSync({
-          table: shapeName,
-          columns,
+          table: listsShape.name,
+          columns: listsShape.columns,
           electricProxyUrl,
           token: token!,
           pg,
           upsertSql: "",
         });
-        console.log(`📥 ${shapeName} 初始同步完成，已写入本地`);
+        console.log(`📥 ${listsShape.name} 初始同步完成，已写入本地`);
       } else {
-        console.log(`📥 本地${shapeName}表已有数据，跳过初始全量写入`);
+        console.log(`📥 本地${listsShape.name}表已有数据，跳过初始全量写入`);
       }
     } catch (e) {
-      console.warn(`${shapeName} 表检查失败，进行初始同步:`, e);
+      console.warn(`${listsShape.name} 表检查失败，进行初始同步:`, e);
       await doFullTableSync({
-        table: shapeName,
-        columns,
+        table: listsShape.name,
+        columns: listsShape.columns,
         electricProxyUrl,
         token: token!,
         pg,
         upsertSql: "",
       });
-      console.log(`📥 ${shapeName} 初始同步完成（异常恢复）`);
+      console.log(`📥 ${listsShape.name} 初始同步完成（异常恢复）`);
     }
-  });
+  }
 
-  // 等待所有初始同步完成
-  await Promise.all(initialSyncPromises);
+  // 再同步 goals 表（依赖 lists 表）
+  const goalsShape = shapes.find(s => s.name === "goals");
+  if (goalsShape) {
+    try {
+      const res = await pg.query(`SELECT 1 FROM ${goalsShape.name} LIMIT 1`);
+      const shouldInitialUpsert = res.rows.length === 0;
+
+      if (shouldInitialUpsert) {
+        await doFullTableSync({
+          table: goalsShape.name,
+          columns: goalsShape.columns,
+          electricProxyUrl,
+          token: token!,
+          pg,
+          upsertSql: "",
+        });
+        console.log(`📥 ${goalsShape.name} 初始同步完成，已写入本地`);
+      } else {
+        console.log(`📥 本地${goalsShape.name}表已有数据，跳过初始全量写入`);
+      }
+    } catch (e) {
+      console.warn(`${goalsShape.name} 表检查失败，进行初始同步:`, e);
+      await doFullTableSync({
+        table: goalsShape.name,
+        columns: goalsShape.columns,
+        electricProxyUrl,
+        token: token!,
+        pg,
+        upsertSql: "",
+      });
+      console.log(`📥 ${goalsShape.name} 初始同步完成（异常恢复）`);
+    }
+  }
+
+  // 最后同步 todos 表（依赖 lists 和 goals 表）
+  const todosShape = shapes.find(s => s.name === "todos");
+  if (todosShape) {
+    try {
+      const res = await pg.query(`SELECT 1 FROM ${todosShape.name} LIMIT 1`);
+      const shouldInitialUpsert = res.rows.length === 0;
+
+      if (shouldInitialUpsert) {
+        await doFullTableSync({
+          table: todosShape.name,
+          columns: todosShape.columns,
+          electricProxyUrl,
+          token: token!,
+          pg,
+          upsertSql: "",
+        });
+        console.log(`📥 ${todosShape.name} 初始同步完成，已写入本地`);
+      } else {
+        console.log(`📥 本地${todosShape.name}表已有数据，跳过初始全量写入`);
+      }
+    } catch (e) {
+      console.warn(`${todosShape.name} 表检查失败，进行初始同步:`, e);
+      
+      await doFullTableSync({
+        table: todosShape.name,
+        columns: todosShape.columns,
+        electricProxyUrl,
+        token: token!,
+        pg,
+        upsertSql: "",
+      });
+      console.log(`📥 ${todosShape.name} 初始同步完成（异常恢复）`);
+    }
+  }
 
   // 2. 优化：并行执行哈希校验，减少串行等待时间
   const hashValidationPromises = shapes.map(async (shapeDef) => {
     const { name: shapeName, columns } = shapeDef;
-
+    
+    
     try {
       // 并行获取远程和本地数据哈希
       const [remoteRows, localHash] = await Promise.all([
@@ -724,6 +822,17 @@ async function processShapeChange(
   } else if (shapeName === "todos") {
     switch (operation) {
       case "insert":
+        // 添加调试日志
+        console.log(`[DEBUG] Todo insert - 原始数据:`, {
+          id: row.id,
+          title: row.title,
+          goal_id_original: row.goal_id,
+          goal_id_type: typeof row.goal_id
+        });
+        
+        const cleanedGoalId = sanitizeUuidField(row.goal_id);
+        console.log(`[DEBUG] Todo insert - 清理后的goal_id:`, cleanedGoalId);
+        
         await pg.query(
           `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, goal_id, sort_order_in_goal)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
@@ -748,20 +857,50 @@ async function processShapeChange(
             sanitizeUuidField(row.recurring_parent_id), // 清理 recurring_parent_id
             row.instance_number ?? null,
             row.next_due_date ?? null,
-            sanitizeUuidField(row.goal_id), // 清理 goal_id
+            cleanedGoalId, // 使用已清理的 goal_id
             row.sort_order_in_goal ?? null,
           ]
         );
+        
+        console.log(`[DEBUG] Todo insert - 完成，goal_id:`, cleanedGoalId);
         break;
 
       case "update":
+        // 添加调试日志
+        console.log(`[DEBUG] Todo update - 原始数据:`, {
+          id: row.id,
+          updateFields: Object.keys(row).filter(key => key !== "id"),
+          goal_id_original: row.goal_id,
+          goal_id_type: typeof row.goal_id
+        });
+        
         const updateFields = Object.keys(row).filter((key) => key !== "id");
         if (updateFields.length > 0) {
           const setClause = updateFields
             .map((key, idx) => `${key} = $${idx + 2}`)
             .join(", ");
-          const values = [row.id, ...updateFields.map((key) => row[key])];
+          // 清理 UUID 字段
+          const values = [row.id, ...updateFields.map((key) => {
+            if (key === 'list_id' || key === 'recurring_parent_id' || key === 'goal_id') {
+              const cleanedValue = sanitizeUuidField(row[key]);
+              if (key === 'goal_id') {
+                console.log(`[DEBUG] Todo update - 清理后的goal_id:`, cleanedValue);
+              }
+              return cleanedValue;
+            }
+            return row[key];
+          })];
+          
+          console.log(`[DEBUG] Todo update - SQL:`, `UPDATE todos SET ${setClause} WHERE id = $1`);
+          console.log(`[DEBUG] Todo update - 参数:`, values);
+          
           await pg.query(`UPDATE todos SET ${setClause} WHERE id = $1`, values);
+          
+          // 检查更新后的数据
+          const updatedTodo = await pg.query(`SELECT goal_id FROM todos WHERE id = $1`, [row.id]);
+          if (updatedTodo.rows.length > 0) {
+            console.log(`[DEBUG] Todo update - 更新后数据库中的goal_id:`, updatedTodo.rows[0].goal_id);
+          }
         }
         break;
 
@@ -822,7 +961,7 @@ async function processShapeChange(
             .join(", ");
           // 清理 UUID 字段
           const values = [row.id, ...updateFields.map((key) => {
-            if (key === 'list_id' || key === 'recurring_parent_id' || key === 'goal_id') {
+            if (key === 'list_id') {
               return sanitizeUuidField(row[key]);
             }
             return row[key];

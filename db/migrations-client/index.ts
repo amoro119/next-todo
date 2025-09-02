@@ -285,7 +285,7 @@ async function checkAndFixSchema(db: PGlite) {
           SELECT id, list_id 
           FROM todos 
           WHERE list_id IS NOT NULL 
-          AND list_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND list_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
         `);
         
         if (invalidListIds.rows.length > 0) {
@@ -294,7 +294,7 @@ async function checkAndFixSchema(db: PGlite) {
             UPDATE todos 
             SET list_id = NULL 
             WHERE list_id IS NOT NULL 
-            AND list_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            AND list_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
           `);
           console.log("✅ 无效的 list_id 数据已清理");
         }
@@ -304,7 +304,7 @@ async function checkAndFixSchema(db: PGlite) {
           SELECT id, recurring_parent_id 
           FROM todos 
           WHERE recurring_parent_id IS NOT NULL 
-          AND recurring_parent_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND recurring_parent_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
         `);
         
         if (invalidRecurringIds.rows.length > 0) {
@@ -313,7 +313,7 @@ async function checkAndFixSchema(db: PGlite) {
             UPDATE todos 
             SET recurring_parent_id = NULL 
             WHERE recurring_parent_id IS NOT NULL 
-            AND recurring_parent_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            AND recurring_parent_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
           `);
           console.log("✅ 无效的 recurring_parent_id 数据已清理");
         }
@@ -324,7 +324,7 @@ async function checkAndFixSchema(db: PGlite) {
             SELECT id, goal_id 
             FROM todos 
             WHERE goal_id IS NOT NULL 
-            AND goal_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            AND goal_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
           `);
           
           if (invalidGoalIds.rows.length > 0) {
@@ -333,7 +333,7 @@ async function checkAndFixSchema(db: PGlite) {
               UPDATE todos 
               SET goal_id = NULL 
               WHERE goal_id IS NOT NULL 
-              AND goal_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+              AND goal_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
             `);
             console.log("✅ 无效的 goal_id 数据已清理");
           }
@@ -349,7 +349,7 @@ async function checkAndFixSchema(db: PGlite) {
         if (goalsTableExists.rows.length > 0) {
           // 首先检查所有可能的无效数据类型
           const allGoalsData = await db.query(`
-            SELECT id, list_id, typeof(list_id) as list_id_type
+            SELECT id, list_id, pg_typeof(list_id) as list_id_type
             FROM goals 
             WHERE list_id IS NOT NULL
           `);
@@ -374,8 +374,8 @@ async function checkAndFixSchema(db: PGlite) {
             FROM goals 
             WHERE list_id IS NOT NULL 
             AND (
-              typeof(list_id) != 'text' 
-              OR list_id !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+              pg_typeof(list_id) != 'text'::regtype 
+              OR list_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
             )
           `);
           
