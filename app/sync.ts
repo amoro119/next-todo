@@ -17,21 +17,16 @@ type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
  * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
  */
 function sanitizeUuidField(value: unknown): string | null {
-  console.log(`[DEBUG] sanitizeUuidField 输入:`, { value, type: typeof value });
-  
   if (!value || value === 'null' || value === 'undefined') {
-    console.log(`[DEBUG] sanitizeUuidField 返回 null (空值或特殊字符串)`);
     return null;
   }
   
   const stringValue = String(value).trim();
-  console.log(`[DEBUG] sanitizeUuidField 字符串值:`, stringValue);
   
   // 检查是否是有效的 UUID 格式 (8-4-4-4-12 格式)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   
   if (uuidRegex.test(stringValue)) {
-    console.log(`[DEBUG] sanitizeUuidField 返回有效UUID:`, stringValue);
     return stringValue;
   }
   
@@ -284,56 +279,116 @@ export async function getFullShapeRows({
 
 /**
  * 优化的数据集哈希值计算（用于快速比较）
+ * 使用modified字段替代id字段进行哈希计算，能更好地检测数据变更
  */
-async function calculateDataHash(rows: unknown[]): Promise<string> {
+async function calculateDataHash(rows: unknown[], tableName: string = 'unknown'): Promise<string> {
   if (rows.length === 0) return '';
 
-  // 对所有行的ID进行排序后计算哈希，这样可以快速检测数据差异
-  const sortedIds = rows
-    .map((row) => (row as { id: string }).id)
-    .filter(Boolean)
-    .sort();
-
-  if (sortedIds.length === 0) return '';
-
-  const str = sortedIds.join("|");
-
-  // 优化：使用Web Crypto API进行哈希计算（如果可用）
-  if (typeof crypto !== 'undefined' && crypto.subtle) {
-    try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(str);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
-    } catch (error) {
-      console.warn('Web Crypto API不可用，使用备用哈希算法');
+  
+  // 使用modified字段进行哈希计算，按id排序确保一致性
+  const processedRows = rows
+    .map((row, index) => {
+      const r = row as { id: string; modified?: string | Date };
+      
+      // 统一时间格式处理，确保本地和远程数据格式一致
+      let modifiedStr: string;
+      if (r.modified instanceof Date) {
+        // 对于todos表，统一转换为UTC0时区；对于goals和lists表，保持现有逻辑
+        if (tableName === 'todos') {
+          // todos表：Date对象直接转换为UTC时间字符串
+          modifiedStr = r.modified.toISOString();
+        } else {
+          // goals和lists表：保持原有逻辑
+          modifiedStr = r.modified.toISOString();
+        }
+      } else if (typeof r.modified === 'string') {
+        modifiedStr = r.modified;
+        // 对于字符串时间，需要正确处理时区
+        try {
+          let date: Date;
+            date = new Date(modifiedStr);
+            if (tableName === 'todos') {
+              // todos表：本地数据库中的时间被当成了UTC时间，需要转换回正确的UTC时间
+              // 本地时间 = UTC时间 + 8小时（北京时间）
+              const correctUtcDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
+              modifiedStr = correctUtcDate.toISOString();
+            } else {
+            // 有时区信息，转换为UTC时间
+            date = new Date(modifiedStr);
+            modifiedStr = date.toISOString();
+          }
+        } catch {
+          modifiedStr = new Date().toISOString();
+        }
+      } else {
+        modifiedStr = new Date().toISOString();
+      }
+      
+      // 统一时间精度：截断到秒级别，避免毫秒/微秒差异导致哈希不一致
+      // 处理各种时间格式：.xxxZ, .xxxxxxZ, .xxx+00, .xxxxxx+00, .xxx+00:00 等
+      modifiedStr = modifiedStr.replace(/\.\d+([Z]|[+-]\d{2}:?\d{2}|[+-]\d{2})$/, '.000$1');
+      
+      
+      return {
+        id: r.id,
+        modified: modifiedStr
+      };
+    })
+    .filter(item => item.id && typeof item.id === 'string' && item.id.length > 0);
+    
+  // 确保排序的一致性，使用更严格的排序规则
+  const sortedRows = processedRows.sort((a, b) => {
+    // 首先按ID排序
+    const idComparison = a.id.localeCompare(b.id);
+    if (idComparison !== 0) {
+      return idComparison;
     }
-  }
+    // 如果ID相同，再按modified时间排序
+    return a.modified.localeCompare(b.modified);
+  });
 
-  // 备用：简单的字符串哈希算法
+  const sortedModifiedTimes = sortedRows.map(item => `${item.id}:${item.modified}`);
+
+
+  if (sortedModifiedTimes.length === 0) return '';
+
+
+  const str = sortedModifiedTimes.join("|");
+
+  // 使用统一的哈希算法确保一致性
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // 转换为32位整数
   }
-  return hash.toString();
+  const result = Math.abs(hash).toString(16); // 统一使用16进制格式
+  
+  
+  return result;
 }
+
 
 /**
  * 获取本地表的数据哈希
+ * 使用modified字段进行哈希计算
  */
+
 async function getLocalDataHash(
   table: string,
   pg: PGliteWithExtensions
 ): Promise<string> {
   try {
-    const result = await pg.query(`SELECT id FROM ${table} ORDER BY id`);
-    const ids = result.rows
-      .map((row) => (row as { id: string }).id)
-      .filter(Boolean);
-    return await calculateDataHash(ids.map((id) => ({ id })));
+    const result = await pg.query(`SELECT id, modified FROM ${table} ORDER BY id`);
+    const rows = result.rows
+      .map((row) => ({
+        id: (row as { id: string }).id,
+        modified: (row as { modified?: string | Date }).modified
+      }))
+      .filter(row => row.id);
+    
+    
+    return await calculateDataHash(rows, table);
   } catch (error) {
     console.warn(`获取本地${table}数据哈希失败:`, error);
     return "";
@@ -363,7 +418,6 @@ async function doFullTableSync({
   
   try {
     // 1. Fetch all rows from the remote server.
-    console.log(`[DEBUG] doFullTableSync - 开始获取 ${table} 表的全量数据`);
     const rows = await getFullShapeRows({
       table,
       columns,
@@ -534,6 +588,8 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         // 目标关联字段
         "goal_id",
         "sort_order_in_goal",
+        // 修改时间字段，用于哈希校验
+        "modified",
       ],
     },
     {
@@ -548,6 +604,7 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         "priority",
         "created_time",
         "is_archived",
+        "modified",
       ],
     },
   ];
@@ -683,10 +740,11 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         getLocalDataHash(shapeName, pg)
       ]);
 
-      const remoteHash = await calculateDataHash(remoteRows);
+      const remoteHash = await calculateDataHash(remoteRows, shapeName);
       const displayRemoteHash = remoteHash || '(空)';
       const displayLocalHash = localHash || '(空)';
       console.log(`📊 ${shapeName} 哈希校验 -> 远程:${displayRemoteHash} 本地:${displayLocalHash}`);
+      
 
       // 哈希不一致时补偿
       if (localHash !== remoteHash) {
@@ -822,16 +880,8 @@ async function processShapeChange(
   } else if (shapeName === "todos") {
     switch (operation) {
       case "insert":
-        // 添加调试日志
-        console.log(`[DEBUG] Todo insert - 原始数据:`, {
-          id: row.id,
-          title: row.title,
-          goal_id_original: row.goal_id,
-          goal_id_type: typeof row.goal_id
-        });
         
         const cleanedGoalId = sanitizeUuidField(row.goal_id);
-        console.log(`[DEBUG] Todo insert - 清理后的goal_id:`, cleanedGoalId);
         
         await pg.query(
           `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, goal_id, sort_order_in_goal, modified)
@@ -862,18 +912,9 @@ async function processShapeChange(
             row.modified ?? null, // 添加 modified 字段
           ]
         );
-        
-        console.log(`[DEBUG] Todo insert - 完成，goal_id:`, cleanedGoalId);
         break;
 
       case "update":
-        // 添加调试日志
-        console.log(`[DEBUG] Todo update - 原始数据:`, {
-          id: row.id,
-          updateFields: Object.keys(row).filter(key => key !== "id"),
-          goal_id_original: row.goal_id,
-          goal_id_type: typeof row.goal_id
-        });
         
         const updateFields = Object.keys(row).filter((key) => key !== "id");
         if (updateFields.length > 0) {
@@ -884,24 +925,12 @@ async function processShapeChange(
           const values = [row.id, ...updateFields.map((key) => {
             if (key === 'list_id' || key === 'recurring_parent_id' || key === 'goal_id') {
               const cleanedValue = sanitizeUuidField(row[key]);
-              if (key === 'goal_id') {
-                console.log(`[DEBUG] Todo update - 清理后的goal_id:`, cleanedValue);
-              }
               return cleanedValue;
             }
             return row[key];
           })];
           
-          console.log(`[DEBUG] Todo update - SQL:`, `UPDATE todos SET ${setClause} WHERE id = $1`);
-          console.log(`[DEBUG] Todo update - 参数:`, values);
-          
           await pg.query(`UPDATE todos SET ${setClause} WHERE id = $1`, values);
-          
-          // 检查更新后的数据
-          const updatedTodo = await pg.query(`SELECT goal_id FROM todos WHERE id = $1`, [row.id]);
-          if (updatedTodo.rows.length > 0) {
-            console.log(`[DEBUG] Todo update - 更新后数据库中的goal_id:`, updatedTodo.rows[0].goal_id);
-          }
         }
         break;
 
@@ -912,23 +941,14 @@ async function processShapeChange(
   } else if (shapeName === "goals") {
     switch (operation) {
       case "insert":
-        // 调试日志：记录原始数据和清理后的数据
-        console.log(`🔍 [DEBUG] Goals insert - 原始数据:`, {
-          id: row.id,
-          name: row.name,
-          list_id_original: row.list_id,
-          list_id_type: typeof row.list_id,
-          list_id_cleaned: sanitizeUuidField(row.list_id)
-        });
-        
         const cleanedListId = sanitizeUuidField(row.list_id);
         
         await pg.query(
-          `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived, modified) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT(id) DO UPDATE SET 
            name = $2, description = $3, list_id = $4, start_date = $5, 
-           due_date = $6, priority = $7, created_time = $8, is_archived = $9`,
+           due_date = $6, priority = $7, created_time = $8, is_archived = $9, modified = $10`,
           [
             row.id ?? null,
             row.name ?? null,
@@ -939,41 +959,28 @@ async function processShapeChange(
             row.priority ?? 0,
             row.created_time ?? null,
             row.is_archived ?? false,
+            row.modified ?? null,
           ]
         );
         
-        console.log(`✅ [DEBUG] Goals insert 成功完成`);
         break;
 
       case "update":
         const updateFields = Object.keys(row).filter((key) => key !== "id");
         if (updateFields.length > 0) {
-          // 调试日志：记录更新操作的详细信息
-          console.log(`🔍 [DEBUG] Goals update - 原始数据:`, {
-            id: row.id,
-            updateFields: updateFields,
-            list_id_in_update: updateFields.includes('list_id'),
-            list_id_original: row.list_id,
-            list_id_type: typeof row.list_id
-          });
-          
           const setClause = updateFields
             .map((key, idx) => `${key} = $${idx + 2}`)
             .join(", ");
           // 清理 UUID 字段
           const values = [row.id, ...updateFields.map((key) => {
             if (key === 'list_id') {
-              return sanitizeUuidField(row[key]);
+              const cleanedValue = sanitizeUuidField(row[key]);
+              return cleanedValue;
             }
             return row[key];
           })];
           
-          console.log(`🔍 [DEBUG] Goals update SQL:`, `UPDATE goals SET ${setClause} WHERE id = $1`);
-          console.log(`🔍 [DEBUG] Goals update 参数:`, values);
-          
           await pg.query(`UPDATE goals SET ${setClause} WHERE id = $1`, values);
-          
-          console.log(`✅ [DEBUG] Goals update 成功完成`);
         }
         break;
 

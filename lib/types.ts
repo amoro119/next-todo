@@ -14,6 +14,7 @@ export interface Todo {
   start_date: string | null;
   list_id: string | null;
   list_name?: string | null; // This will come from a JOIN locally
+  modified?: string | null; // 修改时间字段，用于哈希校验和同步
   
   // 重复任务相关字段
   repeat?: string | null; // RFC 5545 RRULE格式字符串
@@ -63,6 +64,7 @@ export interface Goal {
   priority: number;
   created_time: string;
   is_archived: boolean;
+  modified?: string | null; // 修改时间字段，用于哈希校验和同步
   
   // 计算字段（不存储在数据库中）
   progress?: number;
