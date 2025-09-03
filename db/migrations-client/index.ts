@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS "goals" (
     "priority" INTEGER NOT NULL DEFAULT 0,
     "created_time" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "is_archived" BOOLEAN NOT NULL DEFAULT FALSE,
+    "modified" TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT "goals_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "goals_list_id_fkey" FOREIGN KEY ("list_id") REFERENCES "lists"("id") ON DELETE SET NULL
 );
@@ -146,6 +147,11 @@ SELECT 1; -- No-op query
 async function checkAndFixSchema(db: PGlite) {
   console.log("🔍 检查现有数据库架构...");
   
+  // 声明变量在函数作用域，避免作用域问题
+  let hasGoalId = false;
+  let hasSortOrderInGoal = false;
+  let hasModified = false;
+  
   try {
     // 检查 todos 表是否存在以及其结构
     const tablesResult = await db.query(`
@@ -166,12 +172,11 @@ async function checkAndFixSchema(db: PGlite) {
       `);
       
       const existingColumns = columnsResult.rows.map(row => row.column_name);
-      console.log("现有字段:", existingColumns);
       
       // 检查是否缺少目标相关字段和modified字段
-      const hasGoalId = existingColumns.includes('goal_id');
-      const hasSortOrderInGoal = existingColumns.includes('sort_order_in_goal');
-      const hasModified = existingColumns.includes('modified');
+      hasGoalId = existingColumns.includes('goal_id');
+      hasSortOrderInGoal = existingColumns.includes('sort_order_in_goal');
+      hasModified = existingColumns.includes('modified');
       
       if (!hasGoalId || !hasSortOrderInGoal || !hasModified) {
         console.log("⚠️  检测到缺少字段，开始修复...");
@@ -285,6 +290,37 @@ async function checkAndFixSchema(db: PGlite) {
       } else {
         console.log("✅ 目标相关字段已存在，无需修复");
       }
+      
+      // 检查 goals 表的 modified 字段
+      const goalsTableExists = await db.query(`
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public' AND table_name = 'goals'
+      `);
+      
+      if (goalsTableExists.rows.length > 0) {
+        console.log("📋 检查 goals 表的 modified 字段...");
+        
+        const goalsColumnsResult = await db.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'goals' AND table_schema = 'public'
+        `);
+        
+        const goalsColumns = goalsColumnsResult.rows.map(row => row.column_name);
+        const hasGoalsModified = goalsColumns.includes('modified');
+        
+        if (!hasGoalsModified) {
+          console.log("➕ 为 goals 表添加 modified 字段...");
+          await db.exec(`ALTER TABLE "goals" ADD COLUMN "modified" TIMESTAMPTZ DEFAULT NOW();`);
+          console.log("✅ goals 表 modified 字段添加成功");
+        } else {
+          console.log("✅ goals 表已有 modified 字段");
+        }
+      }
+    } else {
+      console.log("ℹ️  todos 表不存在，将通过正常迁移创建");
+    }
       
       // 清理现有数据中的无效 UUID 值
       console.log("🧹 清理现有数据中的无效 UUID 值...");
@@ -411,11 +447,8 @@ async function checkAndFixSchema(db: PGlite) {
       } catch (error) {
         console.warn("⚠️  数据清理失败:", error.message);
       }
-    } else {
-      console.log("ℹ️  todos 表不存在，将通过正常迁移创建");
-    }
-    
-  } catch (error) {
+    } 
+    catch (error) {
     console.error("❌ 架构检查失败:", error);
     // 不抛出错误，让正常迁移继续进行
     console.log("⚠️  架构检查失败，继续执行正常迁移流程");
