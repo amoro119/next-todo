@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Goal, Todo, List } from '@/lib/types';
 import TodoModal from '@/components/TodoModal';
 import AssociateTaskModal from './AssociateTaskModal';
@@ -44,7 +44,6 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   const [showAddTask, setShowAddTask] = useState(false);
   const [showAssociateTask, setShowAssociateTask] = useState(false);
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
-  const [sortUpdateKey, setSortUpdateKey] = useState(0);
   const [localTodos, setLocalTodos] = useState<Todo[]>([]);
 
   // 同步props到本地状态
@@ -58,15 +57,19 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     if (todosToUse.length === 0) return 0;
     const completedTodos = todosToUse.filter(todo => todo.completed).length;
     return Math.round((completedTodos / todosToUse.length) * 100);
-  }, [todos, localTodos]);
+  }, [localTodos, todos]);
 
   // 按排序权重排序任务
   const sortedTodos = useMemo(() => {
     const todosToSort = localTodos.length > 0 ? localTodos : todos;
-    console.log('重新计算排序:', todosToSort.map(t => `${t.title}(${t.sort_order_in_goal})`));
+    // 只在开发环境打印日志
+    if (process.env.NODE_ENV === 'development') {
+      console.log('重新计算排序:', todosToSort.map(t => `${t.title}(${t.sort_order_in_goal})`));
+    }
     return [...todosToSort].sort((a, b) => {
-      const weightA = a.sort_order_in_goal || a.sort_order || 0;
-      const weightB = b.sort_order_in_goal || b.sort_order || 0;
+      // 优先使用 sort_order_in_goal，如果为 null 则使用 sort_order
+      const weightA = a.sort_order_in_goal !== null ? a.sort_order_in_goal : (a.sort_order || 0);
+      const weightB = b.sort_order_in_goal !== null ? b.sort_order_in_goal : (b.sort_order || 0);
       if (weightA !== weightB) {
         return weightA - weightB;
       }
@@ -75,7 +78,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
       return timeA - timeB;
     });
-  }, [todos, localTodos]);
+  }, [localTodos, todos]);
 
   // 注释掉进度更新逻辑，因为 progress 应该是计算字段，不应该存储在数据库中
   // useEffect(() => {
@@ -106,12 +109,15 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     setDragState(prev => ({ ...prev, dragOverIndex: null }));
   };
 
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+  const handleDrop = useCallback((e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     e.stopPropagation();
     
     const { draggedIndex } = dragState;
-    console.log('拖拽放下:', { draggedIndex, dropIndex });
+    // 只在开发环境打印日志
+    if (process.env.NODE_ENV === 'development') {
+      console.log('拖拽放下:', { draggedIndex, dropIndex });
+    }
     
     if (draggedIndex === null || draggedIndex === dropIndex) {
       setDragState({ draggedIndex: null, dragOverIndex: null });
@@ -132,24 +138,38 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     
     setLocalTodos(updatedTodos);
 
-    // 更新排序权重到数据库
-    reorderedTodos.forEach((todo, index) => {
+    // 批量更新排序权重到数据库
+    Promise.all(reorderedTodos.map((todo, index) => {
       const updatedTodo = { ...todo, sort_order_in_goal: index };
-      console.log('更新任务排序:', todo.title, '新位置:', index);
-      onUpdateTodo(updatedTodo);
+      // 只在开发环境打印日志
+      if (process.env.NODE_ENV === 'development') {
+        console.log('更新任务排序:', todo.title, '新位置:', index);
+      }
+      return onUpdateTodo(updatedTodo);
+    })).then(() => {
+      // 所有更新完成后，重置拖拽状态
+      setDragState({ draggedIndex: null, dragOverIndex: null });
+    }).catch(error => {
+      console.error('更新任务排序失败:', error);
+      // 如果更新失败，恢复本地状态
+      setLocalTodos(todos);
+      setDragState({ draggedIndex: null, dragOverIndex: null });
     });
-
-    // 强制重新渲染
-    setSortUpdateKey(prev => prev + 1);
-    setDragState({ draggedIndex: null, dragOverIndex: null });
-  };
+  }, [dragState, sortedTodos, onUpdateTodo, todos]);
 
   const handleDragEnd = () => {
     setDragState({ draggedIndex: null, dragOverIndex: null });
   };
 
   const handleToggleTodo = (todo: Todo) => {
-    onUpdateTodo({ ...todo, completed: !todo.completed });
+    const updatedTodo = { ...todo, completed: !todo.completed };
+    // 更新本地状态以立即反映更改
+    setLocalTodos(prevTodos => 
+      prevTodos.map(t => 
+        t.id === todo.id ? updatedTodo : t
+      )
+    );
+    onUpdateTodo(updatedTodo);
   };
 
   const handleDeleteTodo = (todoId: string) => {
@@ -432,10 +452,20 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
           initialData={editingTask}
           onClose={() => setEditingTask(null)}
           onSubmit={(updatedTodo) => {
+            // 更新本地状态以立即反映更改
+            setLocalTodos(prevTodos => 
+              prevTodos.map(todo => 
+                todo.id === updatedTodo.id ? updatedTodo : todo
+              )
+            );
             onUpdateTodo(updatedTodo);
             setEditingTask(null);
           }}
           onDelete={(todoId) => {
+            // 从本地状态中移除已删除的任务
+            setLocalTodos(prevTodos => 
+              prevTodos.filter(todo => todo.id !== todoId)
+            );
             onDeleteTodo(todoId);
             setEditingTask(null);
           }}
