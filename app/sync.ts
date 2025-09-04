@@ -273,99 +273,107 @@ export async function getFullShapeRows({
   const rows = await fullShape.rows;
   return rows;
   
-  fullShapeStream.unsubscribeAll();
-  // return fullShape.rows; // 已经在上面返回了
+}
+
+/**
+ * 规范化并截断日期时间字符串至分钟级别。
+ * 如果时间值无效或缺失，则抛出错误。
+ * @param modified - 原始时间值（Date对象、字符串或undefined）
+ * @param tableName - 相关的表名，用于生成清晰的错误信息
+ * @returns 返回格式为 "YYYY-MM-DDTHH:mm" 的字符串
+ * @throws {Error} 当 modified 字段无效或缺失时抛出
+ */
+function normalizeAndTruncateDate(modified: unknown, tableName: string): string {
+  let date: Date;
+
+  if (modified instanceof Date) {
+    // 检查Date对象是否有效
+    if (isNaN(modified.getTime())) {
+      throw new Error(`Invalid Date object encountered in table '${tableName}'.`);
+    }
+    date = modified;
+  } else if (typeof modified === 'string' && modified.length > 0) {
+    try {
+      const parsedDate = new Date(modified);
+      // 检查解析出的日期是否有效
+      if (isNaN(parsedDate.getTime())) {
+        throw new Error(`Invalid date string format in table '${tableName}': "${modified}"`);
+      }
+      date = parsedDate;
+
+      // 同样保留针对 'todos' 表的特殊时区补偿逻辑
+      if (tableName === 'todos') {
+        const timezoneOffsetInHours = 8;
+        date = new Date(date.getTime() + timezoneOffsetInHours * 60 * 60 * 1000);
+      }
+    } catch (error) {
+      // 如果 new Date() 本身就抛出异常，则包装并重新抛出
+      throw new Error(`Error processing date string in table '${tableName}': "${modified}". Original error: ${error.message}`);
+    }
+  } else {
+    // 如果 modified 字段不存在、为null、为空字符串或其他无效类型，直接抛出错误
+    throw new Error(`Missing or invalid 'modified' field in table '${tableName}'. Received: ${modified}`);
+  }
+
+  // 1. 将Date对象转换为UTC时区的ISO字符串
+  // 2. 截断到分钟级别，结果为 "YYYY-MM-DDTHH:mm"
+  return date.toISOString().substring(0, 16);
 }
 
 /**
  * 优化的数据集哈希值计算（用于快速比较）
- * 使用modified字段替代id字段进行哈希计算，能更好地检测数据变更
+ * 使用 'modified' 字段进行哈希计算，能更好地检测数据变更。
+ * 时间精度统一到分钟级别。
+ * @param rows - 数据行数组
+ * @param tableName - 表名，用于日志和特殊处理
+ * @returns 数据集的哈希字符串
+ * @throws {Error} 如果任何一行数据的 'modified' 字段无效，则会中断并抛出错误
  */
-async function calculateDataHash(rows: unknown[], tableName: string = 'unknown'): Promise<string> {
-  if (rows.length === 0) return '';
+function calculateDataHash(rows: unknown[], tableName: string = 'unknown'): string {
+  if (!rows || rows.length === 0) {
+    return '';
+  }
 
-  
-  // 使用modified字段进行哈希计算，按id排序确保一致性
+  // ... (这部分代码与上一版完全相同，无需修改)
   const processedRows = rows
-    .map((row, index) => {
-      const r = row as { id: string; modified?: string | Date };
+    .map((row) => {
+      const r = row as { id?: string; modified?: string | Date };
+      console.log(r)
       
-      // 统一时间格式处理，确保本地和远程数据格式一致
-      let modifiedStr: string;
-      if (r.modified instanceof Date) {
-        // 对于todos表，统一转换为UTC0时区；对于goals和lists表，保持现有逻辑
-        if (tableName === 'todos') {
-          // todos表：Date对象直接转换为UTC时间字符串
-          modifiedStr = r.modified.toISOString();
-        } else {
-          // goals和lists表：保持原有逻辑
-          modifiedStr = r.modified.toISOString();
-        }
-      } else if (typeof r.modified === 'string') {
-        modifiedStr = r.modified;
-        // 对于字符串时间，需要正确处理时区
-        try {
-          let date: Date;
-            date = new Date(modifiedStr);
-            if (tableName === 'todos') {
-              // todos表：本地数据库中的时间被当成了UTC时间，需要转换回正确的UTC时间
-              // 本地时间 = UTC时间 + 8小时（北京时间）
-              const correctUtcDate = new Date(date.getTime() + 8 * 60 * 60 * 1000);
-              modifiedStr = correctUtcDate.toISOString();
-            } else {
-            // 有时区信息，转换为UTC时间
-            date = new Date(modifiedStr);
-            modifiedStr = date.toISOString();
-          }
-        } catch {
-          modifiedStr = new Date().toISOString();
-        }
-      } else {
-        modifiedStr = new Date().toISOString();
+      if (!r.id || typeof r.id !== 'string' || r.id.length === 0) {
+        return null;
       }
       
-      // 统一时间精度：截断到秒级别，避免毫秒/微秒差异导致哈希不一致
-      // 处理各种时间格式：.xxxZ, .xxxxxxZ, .xxx+00, .xxxxxx+00, .xxx+00:00 等
-      modifiedStr = modifiedStr.replace(/\.\d+([Z]|[+-]\d{2}:?\d{2}|[+-]\d{2})$/, '.000$1');
-      
-      
+      // 调用可能会抛出错误的辅助函数
       return {
         id: r.id,
-        modified: modifiedStr
+        modified: normalizeAndTruncateDate(r.modified, tableName)
       };
     })
-    .filter(item => item.id && typeof item.id === 'string' && item.id.length > 0);
+    .filter((item): item is { id: string; modified: string } => item !== null);
+
+  if (processedRows.length === 0) {
+    return '';
+  }
     
-  // 确保排序的一致性，使用更严格的排序规则
   const sortedRows = processedRows.sort((a, b) => {
-    // 首先按ID排序
     const idComparison = a.id.localeCompare(b.id);
     if (idComparison !== 0) {
       return idComparison;
     }
-    // 如果ID相同，再按modified时间排序
     return a.modified.localeCompare(b.modified);
   });
 
-  const sortedModifiedTimes = sortedRows.map(item => `${item.id}:${item.modified}`);
+  const finalString = sortedRows.map(item => `${item.id}:${item.modified}`).join("|");
 
-
-  if (sortedModifiedTimes.length === 0) return '';
-
-
-  const str = sortedModifiedTimes.join("|");
-
-  // 使用统一的哈希算法确保一致性
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
+  for (let i = 0; i < finalString.length; i++) {
+    const char = finalString.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // 转换为32位整数
+    hash = hash & hash;
   }
-  const result = Math.abs(hash).toString(16); // 统一使用16进制格式
   
-  
-  return result;
+  return Math.abs(hash).toString(16);
 }
 
 
