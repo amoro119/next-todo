@@ -1859,15 +1859,18 @@ export default function TodoListPage() {
               onClose={() => setIsTodoModalOpen(false)}
               onSubmit={(todoData) => {
                 // 确保创建的待办事项包含列表信息
-                let listId = null;
-                if (
-                  currentView !== "list" &&
-                  currentView !== "inbox" &&
-                  currentView !== "calendar" &&
-                  currentView !== "recycle"
-                ) {
-                  const list = lists.find((l: List) => l.name === currentView);
-                  if (list) listId = list.id;
+                // 优先使用用户在TodoModal中选择的清单，如果没有选择则使用当前视图的默认清单
+                let listId = todoData.list_id || null;
+                if (!listId) {
+                  if (
+                    currentView !== "list" &&
+                    currentView !== "inbox" &&
+                    currentView !== "calendar" &&
+                    currentView !== "recycle"
+                  ) {
+                    const list = lists.find((l: List) => l.name === currentView);
+                    if (list) listId = list.id;
+                  }
                 }
                 
                 // 修复: 在 today 视图下，dueDateString 应为 todayStrInUTC8
