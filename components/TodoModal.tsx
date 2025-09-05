@@ -135,7 +135,7 @@ export default function TodoModal({
     start_date: initialData?.start_date || null,
     list_id: initialData?.list_id || null,
     list_name: initialData?.list_name || null,
-    goal_id: goalId ?? initialData?.goal_id ?? null, // 添加 goal_id 字段
+    goal_id: initialData?.goal_id ?? goalId ?? null, // 添加 goal_id 字段
     // 重复任务相关字段
     repeat: initialData?.repeat || null,
     reminder: initialData?.reminder || null,
@@ -388,7 +388,7 @@ export default function TodoModal({
                     name="goal_id"
                     value={editableTodo.goal_id ?? goalId ?? ''}
                     onChange={handleInputChange}
-                    disabled={!!goalId || isRecycled}
+                    disabled={isRecycled}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                     <option value="">无目标</option>
