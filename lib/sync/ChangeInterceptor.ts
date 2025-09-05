@@ -418,9 +418,11 @@ export class DatabaseWrapper {
         // 重复任务相关字段
         'repeat', 'reminder', 'is_recurring', 'recurring_parent_id', 'instance_number', 'next_due_date',
         // 目标关联字段
-        'goal_id', 'sort_order_in_goal'
+        'goal_id', 'sort_order_in_goal',
+        // 修改时间字段
+        'modified'
       ]
-      const values = columns.map(col => data[col] ?? null)
+      const values = columns.map(col => col === 'modified' ? new Date().toISOString() : (data[col] ?? null))
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
       return this.db.query(
         `INSERT INTO todos (${columns.join(', ')}) VALUES (${placeholders})`,
@@ -437,9 +439,11 @@ export class DatabaseWrapper {
     } else if (table === 'goals') {
       const columns = [
         'id', 'name', 'description', 'list_id', 'start_date', 'due_date', 
-        'priority', 'created_time', 'is_archived'
+        'priority', 'created_time', 'is_archived',
+        // 修改时间字段
+        'modified'
       ]
-      const values = columns.map(col => data[col] ?? null)
+      const values = columns.map(col => col === 'modified' ? new Date().toISOString() : (data[col] ?? null))
       const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ')
       return this.db.query(
         `INSERT INTO goals (${columns.join(', ')}) VALUES (${placeholders})`,
@@ -452,7 +456,7 @@ export class DatabaseWrapper {
     const entries = Object.entries(data).filter(([key]) => key !== 'id')
     if (entries.length === 0) return
 
-    if (table === 'lists') {
+    if (table === 'lists' || table === 'todos' || table === 'goals') {
       entries.push(['modified', new Date().toISOString()])
     }
 

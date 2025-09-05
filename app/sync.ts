@@ -334,11 +334,9 @@ function calculateDataHash(rows: unknown[], tableName: string = 'unknown'): stri
     return '';
   }
 
-  // ... (这部分代码与上一版完全相同，无需修改)
   const processedRows = rows
     .map((row) => {
       const r = row as { id?: string; modified?: string | Date };
-      console.log(r)
       
       if (!r.id || typeof r.id !== 'string' || r.id.length === 0) {
         return null;
