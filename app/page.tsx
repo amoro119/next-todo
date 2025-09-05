@@ -1100,44 +1100,46 @@ export default function TodoListPage() {
           console.log("目标插入成功，ID:", goalId);
         }
 
-        // 处理关联的待办事项
-        const associatedTodos = goalData.associatedTodos || {
-          existing: [],
-          new: [],
-        };
+        // 只有在创建新目标或明确需要更新关联任务时才处理关联的待办事项
+        if (!isUpdate) {
+          const associatedTodos = goalData.associatedTodos || {
+            existing: [],
+            new: [],
+          };
 
-        // 关联现有待办事项
-        if (associatedTodos.existing && associatedTodos.existing.length > 0) {
-          console.log("关联现有待办事项:", associatedTodos.existing);
-          for (let i = 0; i < associatedTodos.existing.length; i++) {
-            const todoId = associatedTodos.existing[i];
-            await db.update("todos", todoId, {
-              goal_id: goalId,
-              sort_order_in_goal: i + 1,
-            });
-          }
-        }
-
-        // 创建新的待办事项
-        if (associatedTodos.new && associatedTodos.new.length > 0) {
-          console.log("创建新待办事项:", associatedTodos.new);
-          const existingCount = associatedTodos.existing?.length || 0;
-          for (let i = 0; i < associatedTodos.new.length; i++) {
-            const todoTitle = associatedTodos.new[i];
-            if (todoTitle.trim()) {
-              const todoId = uuid();
-              const newTodo = {
-                id: todoId,
-                title: todoTitle.trim(),
-                completed: false,
-                deleted: false,
-                sort_order: 0,
-                list_id: goalData.listId || null,
+          // 关联现有待办事项
+          if (associatedTodos.existing && associatedTodos.existing.length > 0) {
+            console.log("关联现有待办事项:", associatedTodos.existing);
+            for (let i = 0; i < associatedTodos.existing.length; i++) {
+              const todoId = associatedTodos.existing[i];
+              await db.update("todos", todoId, {
                 goal_id: goalId,
-                sort_order_in_goal: existingCount + i + 1,
-                created_time: new Date().toISOString(),
-              };
-              await db.insert("todos", newTodo);
+                sort_order_in_goal: i + 1,
+              });
+            }
+          }
+
+          // 创建新的待办事项
+          if (associatedTodos.new && associatedTodos.new.length > 0) {
+            console.log("创建新待办事项:", associatedTodos.new);
+            const existingCount = associatedTodos.existing?.length || 0;
+            for (let i = 0; i < associatedTodos.new.length; i++) {
+              const todoTitle = associatedTodos.new[i];
+              if (todoTitle.trim()) {
+                const todoId = uuid();
+                const newTodo = {
+                  id: todoId,
+                  title: todoTitle.trim(),
+                  completed: false,
+                  deleted: false,
+                  sort_order: 0,
+                  list_id: goalData.listId || null,
+                  goal_id: goalId,
+                  sort_order_in_goal: existingCount + i + 1,
+                  created_time: new Date().toISOString(),
+                };
+                await db.insert("todos", newTodo);
+              }
             }
           }
         }

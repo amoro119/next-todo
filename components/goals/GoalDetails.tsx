@@ -47,14 +47,18 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
   const [localTodos, setLocalTodos] = useState<Todo[]>([]);
 
-  // 使用防抖优化排序计算
-  const debouncedLocalTodos = useDebounce(localTodos, 100);
-  const debouncedTodos = useDebounce(todos, 100);
+  // 使用更长的防抖延迟时间减少频繁重新计算
+  const debouncedLocalTodos = useDebounce(localTodos, 500);
+  const debouncedTodos = useDebounce(todos, 500);
 
-  // 同步props到本地状态
+  // 同步props到本地状态，只在todos数组内容发生变化时更新
   useEffect(() => {
-    setLocalTodos(todos);
-  }, [todos]);
+    // 只有在任务数量发生变化或任务内容真正改变时才更新本地状态
+    if (localTodos.length !== todos.length || 
+        JSON.stringify(localTodos.map(t => t.id).sort()) !== JSON.stringify(todos.map(t => t.id).sort())) {
+      setLocalTodos(todos);
+    }
+  }, [todos, localTodos]);
 
   // 计算目标进度
   const progress = useMemo(() => {
@@ -83,7 +87,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
       return timeA - timeB;
     });
-  }, [debouncedLocalTodos, debouncedTodos]);
+  }, [debouncedLocalTodos.length, debouncedTodos.length]); // 只在任务数量变化时重新计算
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDragState({ draggedIndex: index, dragOverIndex: null });
@@ -132,7 +136,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
     // 批量更新排序权重到数据库
     Promise.all(reorderedTodos.map((todo, index) => {
-      const updatedTodo = { ...todo, sort_order_in_goal: index };
+      const updatedTodo = { 
+        ...todo, 
+        sort_order_in_goal: index,
+        modified: new Date().toISOString() // 添加modified字段更新
+      };
       return onUpdateTodo(updatedTodo);
     })).then(() => {
       // 所有更新完成后，重置拖拽状态
@@ -441,6 +449,8 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
         <TodoModal
           mode="edit"
           lists={lists}
+          goals={goals} // 传入所有目标
+          goalId={goal.id} // 传入当前目标ID
           initialData={editingTask}
           onClose={() => setEditingTask(null)}
           onSubmit={(updatedTodo) => {
