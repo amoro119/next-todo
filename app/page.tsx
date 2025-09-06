@@ -94,7 +94,7 @@ function getDatabaseAPI(): DatabaseAPI {
         insert: (table, data) => {
           const keys = Object.keys(data);
           const values = Object.values(data);
-          const placeholders = keys.map((_, i) => `$${i + 1}`).join(", ");
+          const placeholders = keys.map((_, i) => `${i + 1}`).join(", ");
           return pg.query(
             `INSERT INTO ${table} (${keys.join(
               ", "
@@ -106,7 +106,7 @@ function getDatabaseAPI(): DatabaseAPI {
           const keys = Object.keys(data);
           const values = Object.values(data);
           const setClause = keys
-            .map((key, i) => `${key} = $${i + 2}`)
+            .map((key, i) => `${key} = ${i + 2}`)
             .join(", ");
           return pg.query(`UPDATE ${table} SET ${setClause} WHERE id = $1`, [
             id,
@@ -1672,7 +1672,7 @@ export default function TodoListPage() {
                       goals={goals}
                       lists={lists}
                       onUpdateGoal={handleUpdateGoal}
-                      onUpdateTodo={handleToggleComplete}
+                      onUpdateTodo={handleUpdateTodo}
                       onDeleteTodo={handleDeleteTodo}
                       onCreateTodo={handleCreateTodoForGoal}
                       onAssociateTasks={handleAssociateTasks}

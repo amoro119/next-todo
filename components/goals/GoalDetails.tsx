@@ -13,7 +13,7 @@ interface GoalDetailsProps {
   goals: Goal[];
   lists: List[];
   onUpdateGoal: (goal: Goal) => void;
-  onUpdateTodo: (todo: Todo) => void;
+  onUpdateTodo: (todoId: string, updates: Partial<Todo>) => void;
   onDeleteTodo: (todoId: string) => void;
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
   onAssociateTasks: (taskIds: string[], goalId: string) => void;
@@ -47,10 +47,6 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
   const [localTodos, setLocalTodos] = useState<Todo[]>([]);
 
-  // 使用更长的防抖延迟时间减少频繁重新计算
-  const debouncedLocalTodos = useDebounce(localTodos, 500);
-  const debouncedTodos = useDebounce(todos, 500);
-
   // 同步props到本地状态，只在todos数组内容发生变化时更新
   useEffect(() => {
     // 只有在任务数量发生变化或任务内容真正改变时才更新本地状态
@@ -70,7 +66,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
   // 按排序权重排序任务
   const sortedTodos = useMemo(() => {
-    const todosToSort = debouncedLocalTodos.length > 0 ? debouncedLocalTodos : debouncedTodos;
+    const todosToSort = localTodos.length > 0 ? localTodos : todos;
     // 只在开发环境打印日志
     if (process.env.NODE_ENV === 'development') {
         console.log('重新计算排序:', todosToSort.map(t => `${t.title}(${t.sort_order_in_goal})`));
@@ -87,7 +83,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
       return timeA - timeB;
     });
-  }, [debouncedLocalTodos.length, debouncedTodos.length]); // 只在任务数量变化时重新计算
+  }, [localTodos, todos]);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDragState({ draggedIndex: index, dragOverIndex: null });
@@ -136,12 +132,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
     // 批量更新排序权重到数据库
     Promise.all(reorderedTodos.map((todo, index) => {
-      const updatedTodo = { 
-        ...todo, 
+      const updates = { 
         sort_order_in_goal: index,
-        modified: new Date().toISOString() // 添加modified字段更新
+        modified: new Date().toISOString()
       };
-      return onUpdateTodo(updatedTodo);
+      return onUpdateTodo(todo.id, updates);
     })).then(() => {
       // 所有更新完成后，重置拖拽状态
       setDragState({ draggedIndex: null, dragOverIndex: null });
@@ -158,14 +153,20 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   };
 
   const handleToggleTodo = (todo: Todo) => {
-    const updatedTodo = { ...todo, completed: !todo.completed };
-    // 更新本地状态以立即反映更改
-    setLocalTodos(prevTodos => 
-      prevTodos.map(t => 
-        t.id === todo.id ? updatedTodo : t
+    const newCompletedTime = todo.completed ? null : new Date().toISOString();
+    const updates = {
+      completed: !todo.completed,
+      completed_time: newCompletedTime,
+    };
+
+    // Optimistically update local state
+    setLocalTodos(prevTodos =>
+      prevTodos.map(t =>
+        t.id === todo.id ? { ...t, ...updates } : t
       )
     );
-    onUpdateTodo(updatedTodo);
+
+    onUpdateTodo(todo.id, updates);
   };
 
   const handleDeleteTodo = (todoId: string) => {
@@ -460,13 +461,21 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
             
             // 只有当任务真正发生变化时才更新本地状态
             if (hasChanged) {
+              const locallyUpdatableTodo = {
+                ...updatedTodo,
+                due_date: updatedTodo.due_date ? updatedTodo.due_date.replace(' 160000', 'T16:00:00.000Z') : null,
+                start_date: updatedTodo.start_date ? updatedTodo.start_date.replace(' 160000', 'T16:00:00.000Z') : null,
+              };
+
               setLocalTodos(prevTodos => 
                 prevTodos.map(todo => 
-                  todo.id === updatedTodo.id ? updatedTodo : todo
+                  todo.id === updatedTodo.id ? locallyUpdatableTodo : todo
                 )
               );
             }
-            onUpdateTodo(updatedTodo);
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { id, list_name, goal_name, ...updates } = updatedTodo;
+            onUpdateTodo(id, updates);
             setEditingTask(null);
           }}
           onDelete={(todoId) => {
