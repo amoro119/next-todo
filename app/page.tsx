@@ -764,6 +764,11 @@ export default function TodoListPage() {
       // 检查 updates 是否为 null 或 undefined
       if (!updates || Object.keys(updates).length === 0) return;
       await db.update("todos", todoId, updates);
+      
+      // 处理重复任务生成
+      if (updates.completed === true) {
+        await RecurringTaskIntegration.handleTaskUpdate(todoId, updates, db);
+      }
     },
     [db]
   );
