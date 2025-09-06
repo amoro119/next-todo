@@ -45,45 +45,26 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   const [showAddTask, setShowAddTask] = useState(false);
   const [showAssociateTask, setShowAssociateTask] = useState(false);
   const [editingTask, setEditingTask] = useState<Todo | null>(null);
-  const [localTodos, setLocalTodos] = useState<Todo[]>([]);
+  const [localTodos, setLocalTodos] = useState(todos || [])
 
-  // 同步props到本地状态，只在todos数组内容发生变化时更新
   useEffect(() => {
-    // 只有在任务数量发生变化或任务内容真正改变时才更新本地状态
-    if (localTodos.length !== todos.length || 
-        JSON.stringify(localTodos.map(t => t.id).sort()) !== JSON.stringify(todos.map(t => t.id).sort())) {
-      setLocalTodos(todos);
-    }
-  }, [todos, localTodos]);
+    setLocalTodos(todos || [])
+  }, [todos])
 
-  // 计算目标进度
-  const progress = useMemo(() => {
-    const todosToUse = localTodos.length > 0 ? localTodos : todos;
-    if (todosToUse.length === 0) return 0;
-    const completedTodos = todosToUse.filter(todo => todo.completed).length;
-    return Math.round((completedTodos / todosToUse.length) * 100);
-  }, [localTodos, todos]);
-
-  // 按排序权重排序任务
   const sortedTodos = useMemo(() => {
-    const todosToSort = localTodos.length > 0 ? localTodos : todos;
-    // 只在开发环境打印日志
-    if (process.env.NODE_ENV === 'development') {
-        console.log('重新计算排序:', todosToSort.map(t => `${t.title}(${t.sort_order_in_goal})`));
-    }
-    return [...todosToSort].sort((a, b) => {
-      // 优先使用 sort_order_in_goal，如果为 null 则使用 sort_order
-      const weightA = a.sort_order_in_goal !== null ? a.sort_order_in_goal : (a.sort_order || 0);
-      const weightB = b.sort_order_in_goal !== null ? b.sort_order_in_goal : (b.sort_order || 0);
-      if (weightA !== weightB) {
-        return weightA - weightB;
+    return [...localTodos].sort((a, b) => {
+      if (a.completed_at && !b.completed_at) {
+        return 1
       }
-      // 如果权重相同，按创建时间排序
-      const timeA = a.created_time ? new Date(a.created_time).getTime() : 0;
-      const timeB = b.created_time ? new Date(b.created_time).getTime() : 0;
-      return timeA - timeB;
-    });
-  }, [localTodos, todos]);
+      if (!a.completed_at && b.completed_at) {
+        return -1
+      }
+      if (a.completed_at && b.completed_at) {
+        return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
+      }
+      return (a.sort_order || 0) - (b.sort_order || 0)
+    })
+  }, [localTodos])
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDragState({ draggedIndex: index, dragOverIndex: null });
@@ -232,6 +213,10 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     );
   }
 
+  const completedCount = sortedTodos.filter(todo => todo.completed).length;
+  const totalCount = sortedTodos.length;
+  const progress = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
   const dueDateStatus = getDueDateStatus(goal.due_date);
 
   return (
@@ -262,7 +247,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                 />
               </div>
               <div className="flex justify-between items-center mt-2 text-sm text-gray-600">
-                <span>{todos.filter(todo => todo.completed).length} / {todos.length} 任务已完成</span>
+                <span>{completedCount} / {totalCount} 任务已完成</span>
                 {progress === 100 && (
                   <span className="text-green-600 font-medium">🎉 目标已完成！</span>
                 )}
