@@ -59,12 +59,12 @@ const GoalHeader: React.FC<GoalHeaderProps> = ({
         </div>
         <div className="flex items-center gap-2">
           {selectedGoal.priority > 0 && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap mr-5">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap mr-1">
               优先级 {selectedGoal.priority}
             </span>
           )}
           {dueDateStatus && (
-            <span className={`text-xs font-medium ${dueDateStatus.color}`}>
+            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 whitespace-nowrap mr-5 ${dueDateStatus.color}`}>
               {dueDateStatus.text}
             </span>
           )}

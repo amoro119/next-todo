@@ -1055,9 +1055,9 @@ export default function TodoListPage() {
           const updateData = {
             name: goalData.name,
             description: goalData.description || null,
-            list_id: sanitizeUuidField(goalData.listId), // 使用 UUID 清理
-            start_date: goalData.startDate || null,
-            due_date: goalData.dueDate || null,
+            list_id: sanitizeUuidField(goalData.list_id), // 使用 UUID 清理
+            start_date: goalData.start_date || null,
+            due_date: goalData.due_date || null,
             priority: goalData.priority || 0,
           };
 
@@ -1092,9 +1092,9 @@ export default function TodoListPage() {
             id: goalId,
             name: goalData.name,
             description: goalData.description || null,
-            list_id: sanitizeUuidField(goalData.listId), // 使用 UUID 清理
-            start_date: goalData.startDate || null,
-            due_date: goalData.dueDate || null,
+            list_id: sanitizeUuidField(goalData.list_id), // 使用 UUID 清理
+            start_date: goalData.start_date || null,
+            due_date: goalData.due_date || null,
             priority: goalData.priority || 0,
             created_time: new Date().toISOString(),
             is_archived: false,
@@ -1138,7 +1138,7 @@ export default function TodoListPage() {
                   completed: false,
                   deleted: false,
                   sort_order: 0,
-                  list_id: goalData.listId || null,
+                  list_id: goalData.list_id || null,
                   goal_id: goalId,
                   sort_order_in_goal: existingCount + i + 1,
                   created_time: new Date().toISOString(),
