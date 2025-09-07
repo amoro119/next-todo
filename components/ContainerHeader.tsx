@@ -61,7 +61,7 @@ const ContainerHeader: React.FC<ContainerHeaderProps> = ({
     <div className="container header">
       <div className="todo-input">
         <h1 className="title">
-          <img src="/img/todo.svg" alt="Todo" width={180} height={52} draggable={false} />
+          {mode === 'goals' ? <img src="/img/goal.png" alt="Todo" width={200} height={60} draggable={false} /> : <img src="/img/todo.svg" alt="Todo" width={180} height={52} draggable={false} />}
         </h1>
         <div className="add-content-wrapper">
           <input
