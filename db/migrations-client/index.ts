@@ -413,15 +413,12 @@ async function checkAndFixSchema(db: PGlite) {
             console.log(`   ${type}: ${count} 条记录`);
           });
           
-          // 使用更强的清理逻辑，包括类型检查
+          // 修正：仅基于正则校验文本形式的 UUID，有效的 uuid 类型不会被误判
           const invalidGoalsListIds = await db.query(`
             SELECT id, list_id 
             FROM goals 
             WHERE list_id IS NOT NULL 
-            AND (
-              pg_typeof(list_id) != 'text'::regtype 
-              OR list_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-            )
+              AND list_id::text !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
           `);
           
           if (invalidGoalsListIds.rows.length > 0) {
