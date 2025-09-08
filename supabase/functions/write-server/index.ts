@@ -129,12 +129,8 @@ app.post('*', async (c) => {
       return c.json({ error: 'Invalid token' }, 401);
     }
 
-    console.log('Token verified successfully', claims);
-
     const content = await c.req.json();
     const parsedChanges = changeSetSchema.parse(content);
-
-    console.log('Parsed changes:', JSON.stringify(parsedChanges, null, 2));
 
     // 使用 Supabase 客户端，但不依赖 JWT 验证
     const supabaseClient = createClient(
@@ -180,10 +176,10 @@ async function applyTableChange(
   // 过滤掉远程数据库不存在的列和undefined值
   const { new: _new, modified_columns: _mc, ...rawData } = data as Record<string, unknown>;
   
-  // 只保留有定义值的字段
+  // 只保留有定义值的字段，但保留null值以允许清空字段
   const cleanData: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(rawData)) {
-    if (value !== undefined && value !== null) {
+    if (value !== undefined) {
       cleanData[key] = value;
     }
   }
