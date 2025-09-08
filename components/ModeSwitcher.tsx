@@ -286,6 +286,28 @@ export default function ShortcutSwitch({
                                 upsertSql: `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
                                   ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
                               });
+                              // goals表（在todos之前，保持依赖顺序 lists -> goals -> todos）
+                              await mod.forceFullTableSync({
+                                table: "goals",
+                                columns: [
+                                  "id",
+                                  "name",
+                                  "description",
+                                  "list_id",
+                                  "start_date",
+                                  "due_date",
+                                  "priority",
+                                  "created_time",
+                                  "is_archived",
+                                  "modified",
+                                ],
+                                electricProxyUrl,
+                                token,
+                                pg,
+                                upsertSql: `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived, modified)
+                                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                                  ON CONFLICT(id) DO UPDATE SET name=$2, description=$3, list_id=$4, start_date=$5, due_date=$6, priority=$7, created_time=$8, is_archived=$9, modified=$10`,
+                              });
                               // todos表
                               await mod.forceFullTableSync({
                                 table: "todos",
@@ -312,6 +334,8 @@ export default function ShortcutSwitch({
                                   // 目标关联字段
                                   "goal_id",
                                   "sort_order_in_goal",
+                                  // 修改时间字段，保持与运行时shape一致
+                                  "modified",
                                 ],
                                 electricProxyUrl,
                                 token,
