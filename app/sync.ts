@@ -808,20 +808,21 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
         continue;
       }
 
-      // 处理LSN
-      const msgLsn = msg.headers.global_last_seen_lsn;
+      // 处理LSN：仅当该消息的变更LSN早于或等于我们已应用的LSN时跳过。
+      // 注意：对比应基于“已应用的最后LSN”(lastSeenLsn)，而不是当前消息的 global_last_seen_lsn。
       const lastSeenLsn = getGlobalLastSeenLsn(shapeName);
-      if (lastSeenLsn !== msg.headers.global_last_seen_lsn) {
-        if (typeof msgLsn === "string") {
-          setGlobalLastSeenLsn(shapeName, msgLsn);
-        }
-      }
 
       if (!("value" in msg && "lsn" in msg.headers)) continue;
 
-      const rowLsn = msg.headers.lsn;
-      if (rowLsn && compareLsn(String(rowLsn), String(msgLsn)) >= 0)
+      const rowLsn = msg.headers.lsn as unknown as string | undefined;
+      if (
+        typeof rowLsn === "string" &&
+        typeof lastSeenLsn === "string" &&
+        compareLsn(String(rowLsn), String(lastSeenLsn)) <= 0
+      ) {
+        // 已处理过或更旧的消息，跳过
         continue;
+      }
 
       const row = msg.value;
       const operation = msg.headers?.operation;
@@ -829,6 +830,11 @@ async function startBidirectionalSync(pg: PGliteWithExtensions) {
       
       // 处理数据变更
       await processShapeChange(shapeName, operation, row, pg);
+
+      // 成功应用后，记录最新已应用的LSN
+      if (typeof rowLsn === "string") {
+        setGlobalLastSeenLsn(shapeName, rowLsn);
+      }
     }
     
     console.log(`🔄 ${shapeName} 实时变更已同步`);
