@@ -171,7 +171,7 @@ async function checkAndFixSchema(db: PGlite) {
         ORDER BY ordinal_position
       `);
       
-      const existingColumns = columnsResult.rows.map(row => row.column_name);
+      const existingColumns = columnsResult.rows.map((row: any) => row.column_name);
       
       // 检查是否缺少目标相关字段和modified字段
       hasGoalId = existingColumns.includes('goal_id');
@@ -243,7 +243,7 @@ async function checkAndFixSchema(db: PGlite) {
           } else {
             console.log("ℹ️  目标外键约束已存在");
           }
-        } catch (error) {
+        } catch (error: any) {
           console.warn("⚠️  目标外键约束添加失败:", error.message);
         }
         
@@ -265,7 +265,7 @@ async function checkAndFixSchema(db: PGlite) {
             `);
             console.log("✅ 目标列表外键约束添加成功");
           }
-        } catch (error) {
+        } catch (error: any) {
           console.warn("⚠️  目标列表外键约束添加失败:", error.message);
         }
         
@@ -282,7 +282,7 @@ async function checkAndFixSchema(db: PGlite) {
             CREATE INDEX IF NOT EXISTS "idx_goals_created_time" ON "goals" ("created_time");
           `);
           console.log("✅ 目标相关索引创建成功");
-        } catch (error) {
+        } catch (error: any) {
           console.warn("⚠️  索引创建失败:", error.message);
         }
         
@@ -307,7 +307,7 @@ async function checkAndFixSchema(db: PGlite) {
           WHERE table_name = 'goals' AND table_schema = 'public'
         `);
         
-        const goalsColumns = goalsColumnsResult.rows.map(row => row.column_name);
+        const goalsColumns = goalsColumnsResult.rows.map((row: any) => row.column_name);
         const hasGoalsModified = goalsColumns.includes('modified');
         
         if (!hasGoalsModified) {
@@ -400,8 +400,8 @@ async function checkAndFixSchema(db: PGlite) {
           `);
           
           console.log(`📊 goals 表中的 list_id 数据类型分析:`);
-          const typeCount = {};
-          allGoalsData.rows.forEach(row => {
+          const typeCount: Record<string, number> = {};
+          allGoalsData.rows.forEach((row: any) => {
             const type = typeof row.list_id;
             typeCount[type] = (typeCount[type] || 0) + 1;
             if (type !== 'string' || !row.list_id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) {
@@ -425,11 +425,11 @@ async function checkAndFixSchema(db: PGlite) {
             console.log(`⚠️  发现 ${invalidGoalsListIds.rows.length} 条无效的 goals.list_id 数据，正在清理...`);
             
             // 逐条清理，以便更好地处理类型转换问题
-            for (const row of invalidGoalsListIds.rows) {
+            for (const row of invalidGoalsListIds.rows as any[]) {
               try {
                 await db.exec(`UPDATE goals SET list_id = NULL WHERE id = '${row.id}'`);
                 console.log(`   ✅ 清理了 goal ${row.id} 的无效 list_id: ${row.list_id}`);
-              } catch (error) {
+              } catch (error: any) {
                 console.warn(`   ⚠️  清理 goal ${row.id} 失败:`, error.message);
               }
             }
@@ -441,7 +441,7 @@ async function checkAndFixSchema(db: PGlite) {
         }
         
         console.log("✅ 数据清理完成");
-      } catch (error) {
+      } catch (error: any) {
         console.warn("⚠️  数据清理失败:", error.message);
       }
     } 
