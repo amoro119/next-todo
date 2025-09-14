@@ -52,7 +52,10 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   }, [todos])
 
   const sortedTodos = useMemo(() => {
-    return [...localTodos].sort((a, b) => {
+    // 过滤掉已删除的任务
+    const activeTodos = localTodos.filter(todo => !todo.deleted);
+    
+    return [...activeTodos].sort((a, b) => {
       if (a.completed_at && !b.completed_at) {
         return 1
       }

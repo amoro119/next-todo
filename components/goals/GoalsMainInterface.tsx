@@ -103,7 +103,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
             <div className="view-transition">
               <GoalDetails
                 goal={selectedGoal}
-                todos={todos.filter(todo => todo.goal_id === selectedGoal.id)}
+                todos={todos.filter(todo => todo.goal_id === selectedGoal.id && !todo.deleted)}
                 goals={goals}
                 lists={lists}
                 onUpdateGoal={onUpdateGoal}
