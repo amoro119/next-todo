@@ -90,7 +90,13 @@ export class RRuleEngine {
 
         case 'UNTIL':
           try {
-            parsed.until = new Date(value);
+            // UNTIL格式通常是 YYYYMMDDTHHMMSSZ
+            let dateStr = value;
+            if (value.match(/^\d{8}T\d{6}Z$/)) {
+              // 转换为ISO格式
+              dateStr = `${value.substring(0, 4)}-${value.substring(4, 6)}-${value.substring(6, 8)}T${value.substring(9, 11)}:${value.substring(11, 13)}:${value.substring(13, 15)}Z`;
+            }
+            parsed.until = new Date(dateStr);
             if (isNaN(parsed.until.getTime())) {
               throw new Error(`Invalid UNTIL date: ${value}`);
             }
@@ -132,104 +138,142 @@ export class RRuleEngine {
   /**
    * 计算下一个到期日期
    * @param rrule RRULE字符串
-   * @param currentDate 当前日期
-   * @param startDate 开始日期（可选，默认使用currentDate）
+   * @param originalDueDate 原任务的到期日期（作为计算基准）
+   * @param maxIterations 最大迭代次数，防止无限循环
    * @returns 下一个到期日期，如果重复已结束则返回null
    */
   static calculateNextDueDate(
     rrule: string,
-    currentDate: Date,
-    startDate?: Date,
-    maxIterations = 100 // 限制最大递归深度
+    originalDueDate: Date,
+    maxIterations = 100
   ): Date | null {
-    const parsed = this.parseRRule(rrule);
-    const baseDate = startDate || currentDate;
-    const interval = parsed.interval || 1;
-
-    if (parsed.until && currentDate >= parsed.until) {
-      return null;
-    }
-
-    let nextDate = new Date(baseDate);
-    let iterations = 0;
-
-    // 对于月度重复任务，确保从正确的基准日期开始计算
-    if (parsed.freq === 'MONTHLY' && parsed.bymonthday?.length) {
-      const targetDay = parsed.bymonthday[0];
+    try {
+      const parsed = this.parseRRule(rrule);
+      const interval = parsed.interval || 1;
       
-      // 如果当前日期已经过了本月的目标日期，从下个月开始计算
-      if (nextDate.getDate() > targetDay) {
-        nextDate.setMonth(nextDate.getMonth() + 1);
-      }
-      nextDate.setDate(targetDay);
-      
-      // 如果设置日期失败（比如2月30日），回退到该月最后一天
-      if (nextDate.getDate() !== targetDay) {
-        nextDate.setDate(0); // 回退到上个月最后一天
-        nextDate.setMonth(nextDate.getMonth() + 1); // 然后到下个月
+      // 使用原任务到期日期作为基准
+      const nextDate = new Date(originalDueDate);
+      let iterations = 0;
+
+      console.log(`[RRuleEngine] 计算下一个到期日期 - RRULE: ${rrule}, 原到期日期: ${originalDueDate.toISOString()}`);
+
+      // 检查UNTIL条件 - 只有当原日期已经超过UNTIL时才直接返回null
+      // 否则继续计算，在结果中检查UNTIL条件
+
+      // 对于月度重复任务的特殊处理
+      if (parsed.freq === 'MONTHLY' && parsed.bymonthday?.length) {
+        const targetDay = parsed.bymonthday[0];
+        
+        console.log(`[RRuleEngine] 处理月度重复任务 - 目标日期: ${targetDay}号`);
+        
+        // 保存原始时间信息
+        const originalHours = nextDate.getHours();
+        const originalMinutes = nextDate.getMinutes();
+        const originalSeconds = nextDate.getSeconds();
+        const originalMs = nextDate.getMilliseconds();
+        
+        // 计算下个月的目标日期
+        const currentYear = nextDate.getFullYear();
+        const currentMonth = nextDate.getMonth();
+        const targetMonth = currentMonth + interval;
+        
+        // 先设置到目标月份的1号，避免日期溢出
+        nextDate.setFullYear(currentYear, targetMonth, 1);
+        
+        // 然后尝试设置目标日期
+        const actualTargetMonth = nextDate.getMonth();
         nextDate.setDate(targetDay);
-        if (nextDate.getDate() !== targetDay) {
-          nextDate.setDate(0); // 如果还是失败，使用该月最后一天
+        
+        // 如果设置日期后月份发生变化，说明该月没有这个日期
+        if (nextDate.getMonth() !== actualTargetMonth) {
+          // 回退到该月最后一天
+          nextDate.setMonth(actualTargetMonth + 1, 0);
+          console.log(`[RRuleEngine] 月末日期调整 - 目标日期${targetDay}号不存在，使用月末: ${nextDate.getDate()}号`);
         }
-      }
-      
-      // 如果计算出的日期已经过期，继续计算下一个周期
-      while (nextDate <= currentDate && iterations < maxIterations) {
-        iterations++;
-        nextDate.setMonth(nextDate.getMonth() + interval);
-        nextDate.setDate(targetDay);
-        if (nextDate.getDate() !== targetDay) {
-          nextDate.setDate(0);
-        }
-      }
-      
-      if (parsed.until && nextDate > parsed.until) {
-        return null;
-      }
-      
-      return nextDate > currentDate ? nextDate : null;
-    }
-
-    // 其他频率的处理逻辑
-    while (iterations < maxIterations) {
-      iterations++;
-
-      switch (parsed.freq) {
-        case 'DAILY':
-          nextDate.setDate(nextDate.getDate() + interval);
-          break;
-        case 'WEEKLY':
-          nextDate.setDate(nextDate.getDate() + 7 * interval);
-          break;
-        case 'MONTHLY':
-          // 非特定日期的月度重复
-          nextDate.setMonth(nextDate.getMonth() + interval);
-          break;
-        case 'YEARLY':
-          if (parsed.bymonth?.length && parsed.bymonthday?.length) {
-            const targetMonth = parsed.bymonth[0] - 1;
-            const targetDay = parsed.bymonthday[0];
-            nextDate.setFullYear(nextDate.getFullYear() + interval);
-            nextDate.setMonth(targetMonth);
-            nextDate.setDate(targetDay);
-          } else {
-            nextDate.setFullYear(nextDate.getFullYear() + interval);
-          }
-          break;
-        default:
-          throw new Error(`Unsupported frequency: ${parsed.freq}`);
-      }
-
-      if (nextDate > currentDate) {
+        
+        // 恢复原始时间信息
+        nextDate.setHours(originalHours, originalMinutes, originalSeconds, originalMs);
+        
+        console.log(`[RRuleEngine] 月度重复计算完成 - 下次到期: ${nextDate.toISOString()}`);
+        
+        // 检查UNTIL条件
         if (parsed.until && nextDate > parsed.until) {
+          console.log(`[RRuleEngine] 重复已结束 - 计算日期超过UNTIL限制`);
           return null;
         }
+        
         return nextDate;
       }
-    }
 
-    console.warn('Max iterations reached in calculateNextDueDate');
-    return null;
+      // 其他频率的处理逻辑
+      while (iterations < maxIterations) {
+        iterations++;
+
+        switch (parsed.freq) {
+          case 'DAILY':
+            nextDate.setDate(nextDate.getDate() + interval);
+            break;
+            
+          case 'WEEKLY':
+            nextDate.setDate(nextDate.getDate() + 7 * interval);
+            break;
+            
+          case 'MONTHLY':
+            // 非特定日期的月度重复
+            const currentDay = nextDate.getDate();
+            nextDate.setMonth(nextDate.getMonth() + interval);
+            
+            // 处理月末日期问题
+            if (nextDate.getDate() !== currentDay) {
+              // 如果日期发生变化，说明目标月份没有这个日期，使用月末
+              nextDate.setDate(0);
+              console.log(`[RRuleEngine] 月度重复日期调整 - 使用月末日期`);
+            }
+            break;
+            
+          case 'YEARLY':
+            if (parsed.bymonth?.length && parsed.bymonthday?.length) {
+              const targetMonth = parsed.bymonth[0] - 1; // 月份从0开始
+              const targetDay = parsed.bymonthday[0];
+              
+              nextDate.setFullYear(nextDate.getFullYear() + interval);
+              nextDate.setMonth(targetMonth);
+              nextDate.setDate(targetDay);
+              
+              // 处理闰年问题（如2月29日）
+              if (nextDate.getMonth() !== targetMonth) {
+                nextDate.setMonth(targetMonth + 1, 0); // 使用该月最后一天
+                console.log(`[RRuleEngine] 年度重复日期调整 - 处理闰年问题`);
+              }
+            } else {
+              nextDate.setFullYear(nextDate.getFullYear() + interval);
+            }
+            break;
+            
+          default:
+            throw new Error(`不支持的重复频率: ${parsed.freq}`);
+        }
+
+        // 确保新日期在原日期之后
+        if (nextDate > originalDueDate) {
+          // 检查UNTIL条件
+          if (parsed.until && nextDate > parsed.until) {
+            console.log(`[RRuleEngine] 重复已结束 - 计算日期超过UNTIL限制`);
+            return null;
+          }
+          
+          console.log(`[RRuleEngine] 计算完成 - 下次到期: ${nextDate.toISOString()}`);
+          return nextDate;
+        }
+      }
+
+      console.warn(`[RRuleEngine] 达到最大迭代次数 (${maxIterations})，停止计算`);
+      return null;
+      
+    } catch (error) {
+      console.error(`[RRuleEngine] 日期计算失败:`, error);
+      return null;
+    }
   }
 
   /**
@@ -245,14 +289,19 @@ export class RRuleEngine {
     let currentDate = new Date(startDate);
     let count = 0;
 
-    while (currentDate <= endDate && count < maxCount) {
-      const nextDate = this.calculateNextDueDate(rrule, currentDate, startDate);
+    // 添加起始日期
+    if (currentDate >= startDate && currentDate <= endDate) {
+      dates.push(new Date(currentDate));
+      count++;
+    }
+
+    while (count < maxCount) {
+      const nextDate = this.calculateNextDueDate(rrule, currentDate);
       if (!nextDate || nextDate > endDate) {
         break;
       }
       dates.push(new Date(nextDate));
       currentDate = new Date(nextDate);
-      currentDate.setDate(currentDate.getDate() + 1); // 避免无限循环
       count++;
     }
 
@@ -267,19 +316,67 @@ export class RRuleEngine {
     currentDate: Date,
     instanceCount: number
   ): boolean {
-    const parsed = this.parseRRule(rrule);
+    try {
+      const parsed = this.parseRRule(rrule);
 
-    // 检查UNTIL条件
-    if (parsed.until && currentDate >= parsed.until) {
-      return true;
+      // 检查UNTIL条件
+      if (parsed.until && currentDate >= parsed.until) {
+        console.log(`[RRuleEngine] 重复已结束 - 达到UNTIL限制: ${parsed.until.toISOString()}`);
+        return true;
+      }
+
+      // 检查COUNT条件
+      if (parsed.count && instanceCount >= parsed.count) {
+        console.log(`[RRuleEngine] 重复已结束 - 达到COUNT限制: ${parsed.count}`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error(`[RRuleEngine] 检查重复结束状态失败:`, error);
+      return true; // 出错时认为重复已结束，避免无限生成
     }
+  }
 
-    // 检查COUNT条件
-    if (parsed.count && instanceCount >= parsed.count) {
-      return true;
+  /**
+   * 验证日期是否有效
+   */
+  static isValidDate(date: Date): boolean {
+    return date instanceof Date && !isNaN(date.getTime());
+  }
+
+  /**
+   * 安全地处理月末日期
+   * @param year 年份
+   * @param month 月份 (0-11)
+   * @param day 日期
+   * @returns 调整后的有效日期
+   */
+  static getValidMonthDate(year: number, month: number, day: number): Date {
+    const date = new Date(year, month, day);
+    
+    // 如果设置的日期导致月份发生变化，说明该月没有这个日期
+    if (date.getMonth() !== month) {
+      // 返回该月的最后一天
+      return new Date(year, month + 1, 0);
     }
+    
+    return date;
+  }
 
-    return false;
+  /**
+   * 处理闰年和月末日期的边界情况
+   * @param baseDate 基准日期
+   * @param targetMonth 目标月份 (0-11)
+   * @param targetDay 目标日期
+   * @returns 调整后的有效日期
+   */
+  static handleDateBoundaries(baseDate: Date, targetMonth?: number, targetDay?: number): Date {
+    const year = baseDate.getFullYear();
+    const month = targetMonth !== undefined ? targetMonth : baseDate.getMonth();
+    const day = targetDay !== undefined ? targetDay : baseDate.getDate();
+    
+    return this.getValidMonthDate(year, month, day);
   }
 
   /**
