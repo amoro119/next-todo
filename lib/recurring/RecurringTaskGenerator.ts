@@ -32,10 +32,10 @@ export class RecurringTaskGenerator {
       startDate = newStartDate.toISOString();
     }
 
-    // 计算下次到期日期
+    // 计算下次到期日期 - 基于新任务的到期日期计算再下一次的到期日期
     let nextDueDate: string | null = null;
     try {
-      const nextDate = RRuleEngine.calculateNextDueDate(originalTask.repeat, dueDate, dueDate);
+      const nextDate = RRuleEngine.calculateNextDueDate(originalTask.repeat, dueDate);
       if (nextDate) {
         nextDueDate = nextDate.toISOString();
       }
@@ -96,7 +96,7 @@ export class RecurringTaskGenerator {
       // 如果没有下次到期日期，或者已经过期，需要计算新的实例
       if (!nextDueDate || nextDueDate <= currentDate) {
         const baseDate = nextDueDate || new Date(task.due_date || task.created_time || currentDate);
-        const newDueDate = RRuleEngine.calculateNextDueDate(task.repeat, currentDate, baseDate);
+        const newDueDate = RRuleEngine.calculateNextDueDate(task.repeat, baseDate);
         
         if (newDueDate) {
           return [newDueDate];
@@ -309,12 +309,12 @@ export class RecurringTaskGenerator {
   /**
    * 处理重复任务完成事件
    * @param completedTask 已完成的重复任务
-   * @param currentDate 当前日期
+   * @param baseDate 用于计算下次到期日期的基准日期（通常是原任务的到期日期）
    * @returns 生成结果
    */
   static handleRecurringTaskCompletion(
     completedTask: Todo,
-    currentDate: Date = new Date()
+    baseDate: Date = new Date()
   ): {
     shouldGenerateNext: boolean;
     newRecurringTask?: Omit<Todo, 'id'>;
@@ -325,13 +325,12 @@ export class RecurringTaskGenerator {
 
     try {
       // 检查重复是否已结束
-      if (RRuleEngine.isRecurrenceEnded(completedTask.repeat, currentDate, 0)) {
+      if (RRuleEngine.isRecurrenceEnded(completedTask.repeat, baseDate, 0)) {
         return { shouldGenerateNext: false };
       }
 
-      // 计算下一个到期日期
-      const baseDate = new Date(completedTask.due_date || completedTask.created_time || currentDate);
-      const nextDueDate = RRuleEngine.calculateNextDueDate(completedTask.repeat, currentDate, baseDate);
+      // 计算下一个到期日期 - 使用传入的基准日期
+      const nextDueDate = RRuleEngine.calculateNextDueDate(completedTask.repeat, baseDate);
 
       if (!nextDueDate) {
         return { shouldGenerateNext: false };
@@ -380,9 +379,9 @@ export class RecurringTaskGenerator {
         return { shouldGenerateNext: false };
       }
 
-      // 基于实例的完成时间计算下一个到期日期
+      // 基于实例的到期日期计算下一个到期日期
       const baseDate = new Date(instanceTask.due_date || instanceTask.created_time || currentDate);
-      const nextDueDate = RRuleEngine.calculateNextDueDate(originalTask.repeat!, currentDate, baseDate);
+      const nextDueDate = RRuleEngine.calculateNextDueDate(originalTask.repeat!, baseDate);
 
       if (!nextDueDate) {
         return { shouldGenerateNext: false };

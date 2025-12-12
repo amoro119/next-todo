@@ -119,7 +119,6 @@ export const startupOptimizer = new StartupOptimizer();
 
 // 防止重复初始化的标志
 let isStartupOptimizationInitialized = false;
-let visibilityChangeHandler: (() => void) | null = null;
 
 /**
  * 启动时预加载关键资源（防重复调用）
@@ -129,27 +128,12 @@ export function initializeStartupOptimization() {
     console.log('🔄 启动优化已初始化，跳过重复调用');
     return;
   }
-  
+
   isStartupOptimizationInitialized = true;
   console.log('🚀 初始化启动优化...');
-  
+
   // 在应用启动时立即开始预加载
   startupOptimizer.preloadCriticalModules();
-  
-  // 监听页面可见性变化，优化后台性能（防重复添加）
-  if (typeof document !== 'undefined' && !visibilityChangeHandler) {
-    visibilityChangeHandler = () => {
-      if (document.hidden) {
-        // 页面隐藏时可以暂停一些非关键操作
-        console.log('📱 应用进入后台，优化性能');
-      } else {
-        // 页面显示时恢复操作
-        console.log('📱 应用回到前台');
-      }
-    };
-    
-    document.addEventListener('visibilitychange', visibilityChangeHandler);
-  }
 }
 
 /**

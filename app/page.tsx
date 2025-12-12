@@ -763,11 +763,18 @@ export default function TodoListPage() {
     ) => {
       // 检查 updates 是否为 null 或 undefined
       if (!updates || Object.keys(updates).length === 0) return;
+      
+      // 先更新任务
       await db.update("todos", todoId, updates);
       
-      // 处理重复任务生成
+      // 如果是完成操作，处理周期任务
       if (updates.completed === true) {
-        await RecurringTaskIntegration.handleTaskUpdate(todoId, updates, db);
+        try {
+          await RecurringTaskIntegration.handleTaskUpdate(todoId, updates, db);
+        } catch (error) {
+          console.error('Failed to handle recurring task:', error);
+          // 不影响原任务的完成状态
+        }
       }
     },
     [db]
@@ -775,6 +782,7 @@ export default function TodoListPage() {
 
   const handleToggleComplete = useCallback(
     async (todo: Todo) => {
+      // 只负责状态管理，不直接处理周期任务
       setLastAction({
         type: "toggle-complete",
         data: {
@@ -783,26 +791,18 @@ export default function TodoListPage() {
           previousCompleted: !!todo.completed,
         },
       });
-      const newCompletedTime = todo.completed_time
-        ? null
-        : new Date().toISOString();
-      const newCompletedFlag = !todo.completed;
+      
       const updates = {
-        completed_time: newCompletedTime,
-        completed: newCompletedFlag,
+        completed_time: todo.completed ? null : new Date().toISOString(),
+        completed: !todo.completed,
       };
 
+      // 统一通过 handleUpdateTodo 处理
       await handleUpdateTodo(todo.id, updates);
-
-      // 处理重复任务生成
-      if (newCompletedFlag) {
-        await RecurringTaskIntegration.handleTaskUpdate(todo.id, updates, db);
-      }
-
-      // 触发搜索结果刷新
+      
       setSearchRefreshTrigger((prev) => prev + 1);
     },
-    [handleUpdateTodo, db]
+    [handleUpdateTodo]
   );
 
   const handleDeleteTodo = useCallback(
@@ -1282,9 +1282,9 @@ export default function TodoListPage() {
           break;
         case "batch-complete": {
           const lastActionData = lastAction.data;
-          // 使用包装器方法来确保同步拦截器能够捕获操作
+          // 使用 handleUpdateTodo 确保一致性
           for (const d of lastActionData) {
-            await db.update("todos", d.id, {
+            await handleUpdateTodo(d.id, {
               completed_time: d.previousCompletedTime,
               completed: d.previousCompleted,
             });
@@ -1307,7 +1307,7 @@ export default function TodoListPage() {
       `确认将当前视图的 ${todosToUpdate.length} 项全部标记为完成吗？`
     );
     if (!confirmed) return;
-    const idsToUpdate = todosToUpdate.map((t: Todo) => t.id);
+    
     const newCompletedTime = new Date().toISOString();
     setLastAction({
       type: "batch-complete",
@@ -1317,12 +1317,18 @@ export default function TodoListPage() {
         previousCompleted: !!t.completed,
       })),
     });
-    // This operation is not intercepted for offline sync as it's a raw write.
-    await db.rawWrite(
-      `UPDATE todos SET completed = TRUE, completed_time = $1 WHERE id = ANY($2::text[])`,
-      [newCompletedTime, idsToUpdate]
-    );
-  }, [displayTodos, db]);
+    
+    // 使用 handleUpdateTodo 确保周期任务处理逻辑被正确触发
+    const updates = {
+      completed: true,
+      completed_time: newCompletedTime,
+    };
+    
+    // 逐个处理以确保周期任务生成
+    for (const todo of todosToUpdate) {
+      await handleUpdateTodo(todo.id, updates);
+    }
+  }, [displayTodos, handleUpdateTodo]);
 
   const handleImport = useCallback(
     async (file: File) => {
