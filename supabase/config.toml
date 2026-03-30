@@ -32,3 +32,11 @@ import_map = "./functions/import_map.json"
 [functions.token-issuer]
 verify_jwt = false # 重要：代理自己进行JWT验证
 import_map = "./functions/import_map.json"
+
+[functions.openclaw-ingest]
+verify_jwt = false
+import_map = "./functions/import_map.json"
+
+[functions.daily-digest]
+verify_jwt = false
+import_map = "./functions/import_map.json"
