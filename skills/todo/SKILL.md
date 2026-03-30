@@ -45,7 +45,7 @@ This skill supports multiple actions via the `action` field:
 event_id="evt_openclaw_$(date +%s%N)"
 
 # Create task
-curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
@@ -77,7 +77,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
 ### Execution
 
 ```bash
-curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
@@ -110,7 +110,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
 
 ```bash
 # Query all tasks
-curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
@@ -120,7 +120,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
   }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.title)"'
 
 # Query specific task
-curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
@@ -142,7 +142,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/openclaw-ingest" \
 ### Execution
 
 ```bash
-exec curl -s -X POST "${NEXT_TODO_API_URL}/functions/v1/daily-digest" \
+exec curl -s -X POST "${NEXT_TODO_API_URL}/daily-digest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
