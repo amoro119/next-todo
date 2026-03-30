@@ -1,26 +1,12 @@
 // lib/csvParser.ts
 import { Todo } from './types';
 import { RRuleEngine } from './recurring/RRuleEngine';
+import { localDateToDbUTC } from './utils/dateUtils';
 
 interface ParsedCsvResult {
   todos: Partial<Todo>[];
   removedTodos: Partial<Todo>[];
 }
-
-/**
- * (For Storage - Fallback) Converts a local date string (e.g., '2025-06-30') from the user's
- * selection into a full UTC ISO string representing the end of that day in Beijing Time (UTC+8).
- */
-const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | null => {
-  if (!localDate || !/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return null;
-  try {
-    const dateInUTC8 = new Date(`${localDate}T23:59:59.999+08:00`);
-    return dateInUTC8.toISOString();
-  } catch (e) {
-    console.error("Error converting local date to UTC:", localDate, e);
-    return null;
-  }
-};
 
 /**
  * Parses a full timestamp string (like '2025-06-30T16:00:00+0000') into a standard UTC ISO string.
@@ -116,15 +102,15 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
             // Priority 1: If it's a full timestamp, parse it directly to preserve the exact time.
             dueDate = parseDateTime(rawDueDateStr);
         } else {
-            // Priority 2: If it's just a date, use the fallback to calculate the end of that day.
-            dueDate = localDateToEndOfDayUTC(rawDueDateStr);
+            // Priority 2: If it's just a date, use the zero-point alignment for UTC+8
+            dueDate = localDateToDbUTC(rawDueDateStr);
         }
 
         let startDate: string | null = null;
         if (rawStartDateStr && rawStartDateStr.includes('T')) {
             startDate = parseDateTime(rawStartDateStr);
         } else {
-            startDate = localDateToEndOfDayUTC(rawStartDateStr);
+            startDate = localDateToDbUTC(rawStartDateStr);
         }
         // --- END OF CORRECTION ---
 
