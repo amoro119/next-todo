@@ -18,6 +18,7 @@ import {
   addMonths,
   subMonths
 } from 'date-fns';
+import { localDateToDbUTC } from '../lib/utils/dateUtils';
 
 interface CalendarViewProps {
   todos: Todo[];
@@ -202,22 +203,19 @@ const utcToLocalDateString = (utcDate: string | null | undefined): string => {
   }
 };
 
-const localDateToEndOfDayUTC = (localDate: string | null | undefined): string | null => {
+const localDateToUTCZeroPoint = (localDate: string | null | undefined): string | null => {
   if (!localDate || !/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return null;
   
   // 检查缓存
   const cached = calendarCache.getUtcDateCache(localDate);
   if (cached !== undefined) return cached;
   
-  try {
-    const dateInUTC8 = new Date(`${localDate}T23:59:59.999+08:00`);
-    const result = dateInUTC8.toISOString();
+  // 使用统一的零点对齐转换
+  const result = localDateToDbUTC(localDate);
+  if (result) {
     calendarCache.setUtcDateCache(localDate, result);
-    return result;
-  } catch (e) {
-    console.error("Error converting date to UTC:", localDate, e);
-    return null;
   }
+  return result;
 };
 
 // 优化的待办事项组件
@@ -528,7 +526,7 @@ export default function CalendarView({
       const todoToUpdate = todos.find(t => t.id === todoId);
       if (!todoToUpdate) return;
       
-      const dropDateUTC = localDateToEndOfDayUTC(dropDateStr);
+      const dropDateUTC = localDateToUTCZeroPoint(dropDateStr);
       if (!dropDateUTC) return;
 
       const isSingleDay = !todoToUpdate.start_date || !todoToUpdate.due_date || 
