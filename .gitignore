@@ -46,3 +46,9 @@ pnpm-debug.log*
 
 pgdata/
 dist-*
+
+.claude/
+.kiro/
+.next/
+.sisyphus/
+.vscode/
