@@ -53,10 +53,12 @@ export class ChangeInterceptorImpl implements ChangeInterceptor {
         console.log(
           `Added change to sync queue: ${operation.operation} on ${operation.table}:${operation.id}`
         )
-        // 立刻触发同步
+        // 立刻触发同步（不等待完成，避免阻塞用户操作）
         const scheduler = getSyncScheduler()
         if (scheduler) {
-          await scheduler.triggerSync()
+          scheduler.triggerSync().catch(err => {
+            console.error('Background sync failed:', err)
+          })
         } else {
           console.warn('SyncScheduler 未初始化，无法立即同步')
         }
