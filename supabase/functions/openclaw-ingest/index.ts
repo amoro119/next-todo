@@ -31,6 +31,18 @@ const createTaskSchema = z.object({
   source: z.string().optional(),
 });
 
+// Schema for update action
+const updateTaskSchema = z.object({
+  action: z.literal('update'),
+  task_id: z.string().uuid(),
+  title: z.string().min(1).optional(),
+  content: z.string().optional(),
+  due_date: z.string().datetime().optional(),
+  start_date: z.string().datetime().optional(),
+  priority: z.number().int().min(0).max(3).optional(),
+  tags: z.string().optional(),
+});
+
 // Schema for complete action
 const completeTaskSchema = z.object({
   action: z.literal('complete'),
@@ -46,9 +58,10 @@ const queryTaskSchema = z.object({
 });
 
 // Union schema for all actions
-const requestSchema = z.union([createTaskSchema, completeTaskSchema, queryTaskSchema]);
+const requestSchema = z.union([createTaskSchema, updateTaskSchema, completeTaskSchema, queryTaskSchema]);
 
 type CreateTaskRequest = z.infer<typeof createTaskSchema>;
+type UpdateTaskRequest = z.infer<typeof updateTaskSchema>;
 type CompleteTaskRequest = z.infer<typeof completeTaskSchema>;
 type QueryTaskRequest = z.infer<typeof queryTaskSchema>;
 
@@ -71,7 +84,7 @@ app.options('/*', (c) => {
   });
 });
 
-app.get('*', (c) => c.text('OpenClaw ingest is operational. Use POST with action field: "create" or "complete"'));
+  app.get('*', (c) => c.text('OpenClaw ingest is operational. Use POST with action field: "create", "update", "complete", or "query"'));
 
 app.post('*', async (c) => {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -102,27 +115,122 @@ app.post('*', async (c) => {
 
   const actionCheck = z.object({ action: z.string() }).safeParse(body);
   if (!actionCheck.success) {
-    return c.json({ error: 'Missing or invalid "action" field. Use "create", "complete", or "query".' }, 400);
+    return c.json({ error: 'Missing or invalid "action" field. Use "create", "update", "complete", or "query".' }, 400);
   }
 
   const { action } = actionCheck.data;
 
   if (action === 'create') {
     return handleCreateTask(c, body as CreateTaskRequest, supabase);
+  } else if (action === 'update') {
+    return handleUpdateTask(c, body as UpdateTaskRequest, supabase);
   } else if (action === 'complete') {
     return handleCompleteTask(c, body as CompleteTaskRequest, supabase);
   } else if (action === 'query') {
     return handleQueryTask(c, body as QueryTaskRequest, supabase);
   } else {
-    return c.json({ error: `Unknown action: "${action}". Use "create", "complete", or "query".` }, 400);
+    return c.json({ error: `Unknown action: "${action}". Use "create", "update", "complete", or "query".` }, 400);
   }
 });
+
+function convertToUTC0(dateTimeStr: string | undefined): string | null {
+  if (!dateTimeStr) return null;
+
+  try {
+    // 处理纯日期格式 "2026-03-31"（东八区日期）
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateTimeStr)) {
+      const [year, month, day] = dateTimeStr.split('-').map(Number);
+      // 东八区当天零点 = UTC 前一天 16:00
+      const d = new Date(Date.UTC(year, month - 1, day, 16, 0));
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString();
+    }
+
+    // 处理带时区的日期时间格式
+    const normalizedStr = dateTimeStr.replace(' ', 'T');
+    const d = new Date(normalizedStr);
+    if (isNaN(d.getTime())) return null;
+
+    // 如果输入没有时区信息，假定为东八区时间，减去 8 小时转 UTC
+    const utcTimestamp = d.getTime() - (8 * 60 * 60 * 1000);
+    return new Date(utcTimestamp).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+async function handleUpdateTask(c: any, body: unknown, supabase: any) {
+  const parsed = updateTaskSchema.safeParse(body);
+  if (!parsed.success) {
+    const errorMsg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    return c.json({ error: errorMsg }, 400);
+  }
+
+  const { task_id, title, content, due_date, start_date, priority, tags } = parsed.data;
+
+  // Check if task exists and is not deleted
+  const { data: task, error: fetchError } = await supabase
+    .from('todos')
+    .select('id, deleted')
+    .eq('id', task_id)
+    .maybeSingle();
+
+  if (fetchError) {
+    return c.json({ error: fetchError.message }, 500);
+  }
+
+  if (!task || task.deleted) {
+    return c.json({ error: 'Task not found' }, 404);
+  }
+
+  // Build update data with only provided fields
+  const updateData: any = {
+    modified: new Date().toISOString(),
+  };
+
+  if (title !== undefined) updateData.title = title;
+  if (content !== undefined) updateData.content = content;
+  if (due_date !== undefined) updateData.due_date = convertToUTC0(due_date);
+  if (start_date !== undefined) updateData.start_date = convertToUTC0(start_date);
+  if (priority !== undefined) updateData.priority = priority;
+  if (tags !== undefined) updateData.tags = tags;
+
+  const { error: updateError } = await supabase
+    .from('todos')
+    .update(updateData)
+    .eq('id', task_id);
+
+  if (updateError) {
+    return c.json({ error: updateError.message }, 500);
+  }
+
+  return c.json({
+    success: true,
+    task_id,
+    status: 'updated',
+  });
+}
 
 async function handleCreateTask(c: any, body: unknown, supabase: any) {
   const parsed = createTaskSchema.safeParse(body);
   if (!parsed.success) {
     const errorMsg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
     return c.json({ error: errorMsg }, 400);
+  }
+
+  const requestData = parsed.data;
+
+  // 如果未提供 start_date 或 due_date，默认设置为当天（东八区），并通过 convertToUTC0 转换
+  if (!requestData.start_date || !requestData.due_date) {
+    const now = new Date();
+    const todayUTC8 = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    
+    if (!requestData.start_date) {
+      requestData.start_date = convertToUTC0(`${todayUTC8}T00:00:00`)!;
+    }
+    if (!requestData.due_date) {
+      requestData.due_date = convertToUTC0(`${todayUTC8}T23:59:59`)!;
+    }
   }
 
   // Check for existing event
@@ -157,8 +265,8 @@ async function handleCreateTask(c: any, body: unknown, supabase: any) {
     created_time: now,
     list_id: requestData.list_id ?? null,
     content: requestData.content ?? null,
-    due_date: requestData.due_date ?? null,
-    start_date: requestData.start_date ?? null,
+    due_date: convertToUTC0(requestData.due_date),
+    start_date: convertToUTC0(requestData.start_date),
     tags: requestData.tags ?? null,
   };
 
@@ -248,6 +356,29 @@ async function handleCompleteTask(c: any, body: unknown, supabase: any) {
   });
 }
 
+// Convert UTC datetime string to Asia/Shanghai (UTC+8) format
+function convertToUTC8(utcDateStr: string | null | undefined): string | null {
+  if (!utcDateStr) return null;
+  try {
+    const d = new Date(utcDateStr);
+    if (isNaN(d.getTime())) return null;
+    // Add 8 hours to convert UTC+0 to UTC+8
+    const utc8Timestamp = d.getTime() + (8 * 60 * 60 * 1000);
+    return new Date(utc8Timestamp).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+// Transform task dates from UTC+0 to UTC+8 (only due_date and start_date)
+function transformTaskToUTC8(task: any): any {
+  return {
+    ...task,
+    due_date: convertToUTC8(task.due_date),
+    start_date: convertToUTC8(task.start_date),
+  };
+}
+
 async function handleQueryTask(c: any, body: unknown, supabase: any) {
   const parsed = queryTaskSchema.safeParse(body);
   if (!parsed.success) {
@@ -260,7 +391,7 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
   if (task_id) {
     const { data: task, error: fetchError } = await supabase
       .from('todos')
-      .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time')
+      .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date')
       .eq('id', task_id)
       .maybeSingle();
 
@@ -274,14 +405,14 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
 
     return c.json({
       success: true,
-      task,
+      task: transformTaskToUTC8(task),
     });
   }
 
   // Query multiple tasks based on status
   let query = supabase
     .from('todos')
-    .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time')
+    .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date')
     .eq('deleted', false)
     .order('created_time', { ascending: false })
     .limit(limit);
@@ -298,10 +429,13 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: queryError.message }, 500);
   }
 
+  // Transform all tasks to UTC+8
+  const transformedTasks = (tasks || []).map(transformTaskToUTC8);
+
   return c.json({
     success: true,
-    tasks: tasks || [],
-    count: tasks?.length || 0,
+    tasks: transformedTasks,
+    count: transformedTasks.length,
     status: status,
   });
 }

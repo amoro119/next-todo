@@ -144,16 +144,13 @@ function getDateInTimezone(timezone: string): string {
 }
 
 function getTimeBoundaries(dateStr: string, timezone: string): { start: Date; end: Date } {
-  // Parse date string (YYYY-MM-DD)
   const [year, month, day] = dateStr.split('-').map(Number);
+  // UTC+8 offset for Asia/Shanghai (hours)
+  const tzOffset = timezone === 'Asia/Shanghai' ? 8 : 0;
 
-  // Create boundaries in the specified timezone
-  // For Asia/Shanghai (UTC+8), we need to adjust
-  const tzOffset = timezone === 'Asia/Shanghai' ? 8 : 0; // UTC+8 for Shanghai
-
-  // Start of day (00:00:00 local time)
+  // Convert local day boundaries (00:00:00 local) to UTC
+  // Asia/Shanghai 00:00:00 = UTC 16:00:00 (previous day)
   const start = new Date(Date.UTC(year, month - 1, day, -tzOffset, 0, 0, 0));
-  // End of day (23:59:59.999 local time = start of next day)
   const end = new Date(Date.UTC(year, month - 1, day + 1, -tzOffset, 0, 0, 0));
 
   return { start, end };
