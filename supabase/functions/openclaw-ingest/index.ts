@@ -433,7 +433,6 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
       list_name: task.lists?.name ?? null,
     };
     delete (taskWithListName as any).lists;
-    delete (taskWithListName as any).list_id;
 
     return c.json({
       success: true,
@@ -473,7 +472,6 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
       list_name: task.lists?.name ?? null,
     };
     delete (transformed as any).lists;
-    delete (transformed as any).list_id;
     return transformed;
   });
 
