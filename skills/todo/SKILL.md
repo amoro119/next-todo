@@ -1,6 +1,6 @@
 ---
 name: todo
-description: Next-todo task management skill. Create, complete, query tasks, and generate daily digests via the openclaw-ingest and daily-digest APIs.
+description: Next-todo task management skill. Create, complete, query tasks, and generate daily digests via the openclaw-ingest API.
 metadata: {"openclaw":{"requires":{"env":["NEXT_TODO_API_URL","NEXT_TODO_JWT"],"bins":["curl","jq"]}}}
 ---
 
@@ -145,19 +145,28 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 |-------|----------|-------------|
 | `task_id` | No | Query specific task by UUID |
 | `status` | No | `all`, `pending`, or `completed` (default: `all`) |
-| `limit` | No | Max results 1-50 (default: 10) |
+| `limit` | No | Max results to return (default: no limit, return all) |
 
 ### Execution
 
 ```bash
-# Query all tasks
+# Query all tasks (no limit, returns all)
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
+  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"action\": \"query\",
+    \"status\": \"${status:-all}\"
+  }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.title)"'
+
+# Query with limit
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"query\",
     \"status\": \"${status:-all}\",
-    \"limit\": ${limit:-10}
+    \"limit\": $limit
   }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.title)"'
 
 # Query specific task
@@ -174,6 +183,8 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 ## Action: Digest
 
+查询待完成任务并生成每日摘要。
+
 ### Trigger
 
 - "今天有什么待办"
@@ -182,52 +193,98 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 ### Execution
 
-从 openclaw-ingest 获取任务数据并生成每日摘要：
+**方案 A（推荐）：** 直接调用服务端 digest 接口生成摘要（不传 limit 返回全部任务）：
 
 ```bash
-# 获取任务数据
-response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d '{
-    "action": "query",
-    "status": "all",
-    "limit": 50
-  }')
+    "action": "digest"
+  }' | jq -r '.digest.summary'
+```
 
-# 解析统计数据
-total=$(echo "$response" | jq '[.tasks[]] | length')
-pending=$(echo "$response" | jq '[.tasks[] | select(.completed == false)] | length')
-completed=$(echo "$response" | jq '[.tasks[] | select(.completed == true)] | length')
-high_priority=$(echo "$response" | jq '[.tasks[] | select(.completed == false and .priority == 3)] | length')
+**兜底方案（客户端处理）：** 如果服务端不支持 digest action，则回退到本地生成：
 
-# 获取今日和过期任务
-today=$(date +%Y-%m-%d)
-due_today=$(echo "$response" | jq --arg today "$today" '[.tasks[] | select(.completed == false and .due_date == $today)] | length')
-overdue=$(echo "$response" | jq --arg today "$today" '[.tasks[] | select(.completed == false and .due_date < $today)] | length')
+```bash
+# 先尝试服务端 digest
+response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
+  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "digest"}')
 
-# 生成摘要输出
-echo "📋 今日任务摘要"
-echo "==============="
-echo ""
-echo "📊 统计：共 ${total} 个任务 | 待完成 ${pending} | 已完成 ${completed}"
-echo ""
+# 检查服务端是否支持 digest
+if echo "$response" | jq -e '.digest' > /dev/null 2>&1; then
+  # 服务端支持，直接输出摘要
+  echo "$response" | jq -r '.digest.summary'
+else
+  # 兜底：本地生成摘要（只查询待完成任务）
+  response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
+    -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"action": "query", "status": "pending"}')
 
-if [ "$high_priority" -gt 0 ]; then
-  echo "🔴 高优先级待办：${high_priority} 个"
+  today=$(date +%Y-%m-%d)
+  
+  # 分类任务
+  overdue=$(echo "$response" | jq --arg today "$today" '[.tasks[] | select(.due_date and .due_date < $today)]')
+  due_today=$(echo "$response" | jq --arg today "$today" '[.tasks[] | select((.due_date // "") | startswith($today))]')
+  upcoming=$(echo "$response" | jq --arg today "$today" '[.tasks[] | select(.due_date == null or .due_date > $today)]')
+
+  echo "📋 今日任务摘要"
+  echo "==============="
+
+  # 已过期
+  overdue_count=$(echo "$overdue" | jq 'length')
+  if [ "$overdue_count" -gt 0 ]; then
+    echo ""
+    echo "⚠️ 已过期 ${overdue_count} 个"
+    echo "$overdue" | jq -r '.[] | "  ○ \(.title) [截止: \(.due_date[5:10])]"'
+  fi
+
+  # 今日截止
+  due_today_count=$(echo "$due_today" | jq 'length')
+  if [ "$due_today_count" -gt 0 ]; then
+    echo ""
+    echo "📅 今日截止 ${due_today_count} 个"
+    echo "$due_today" | jq -r '.[] | "  ○ \(.title)"'
+  fi
+
+  # 近期待办
+  upcoming_count=$(echo "$upcoming" | jq 'length')
+  if [ "$upcoming_count" -gt 0 ]; then
+    echo ""
+    echo "📝 近期待办"
+    echo "$upcoming" | jq -r '.[] | "  ○ \(.title)\(if .due_date then " [截止: \(.due_date[5:10])]" else "（无截止日）" end)"' | head -10
+  fi
+
+  # 没有任务
+  if [ "$overdue_count" -eq 0 ] && [ "$due_today_count" -eq 0 ] && [ "$upcoming_count" -eq 0 ]; then
+    echo ""
+    echo "🎉 没有待办任务，享受你的自由时间！"
+  fi
 fi
+```
 
-if [ "$due_today" -gt 0 ]; then
-  echo "📅 今日截止：${due_today} 个"
-fi
+### Response Format
 
-if [ "$overdue" -gt 0 ]; then
-  echo "⚠️ 已过期：${overdue} 个"
-fi
+服务端 digest 接口返回：
 
-echo ""
-echo "📝 待办列表："
-echo "$response" | jq -r '.tasks[] | select(.completed == false) | "  ○ \(.title)\(if .due_date then " [截止: \(.due_date)]" else "" end)\(if .priority == 3 then " 🔴" elif .priority == 2 then " 🟡" elif .priority == 1 then " 🟢" else "" end)"' | head -10
+```json
+{
+  "success": true,
+  "digest": {
+    "date": "2026-03-31",
+    "summary": "📋 今日任务摘要\n===============\n\n⚠️ 已过期 4 个\n  ○ 任务A [截止: 03-31]\n  ○ 任务B [截止: 04-01]\n\n📅 今日截止 3 个\n  ○ 任务C\n  ○ 任务D\n\n📝 近期待办\n  ○ 任务E [截止: 04-06]\n  ○ 任务F（无截止日）",
+    "stats": {
+      "total": 10,
+      "pending": 10,
+      "due_today": 3,
+      "overdue": 4
+    },
+    "tasks": [...]
+  }
+}
 ```
 
 ---
