@@ -80,6 +80,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 | `start_date` | No | New start date (ISO 8601) |
 | `priority` | No | 0-3 (0=none, 1=low, 2=medium, 3=high) |
 | `tags` | No | Task tags (comma-separated string) |
+| `list_id` | No | List UUID to move task to (set to null to remove from list) |
 
 ### Execution
 
@@ -95,7 +96,8 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
     \"due_date\": \"${due_date:-}\",
     \"start_date\": \"${start_date:-}\",
     \"priority\": ${priority:-null},
-    \"tags\": \"${tags:-}\"
+    \"tags\": \"${tags:-}\",
+    \"list_id\": ${list_id:-null}
   }"
 ```
 
@@ -146,6 +148,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 | `task_id` | No | Query specific task by UUID |
 | `status` | No | `all`, `pending`, or `completed` (default: `all`) |
 | `limit` | No | Max results to return (default: no limit, return all) |
+| `list_id` | No | Filter tasks by list UUID |
 
 ### Execution
 
@@ -157,7 +160,17 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -d "{
     \"action\": \"query\",
     \"status\": \"${status:-all}\"
-  }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.title)"'
+  }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.list_name // "无清单") | \(.title)"'
+
+# Query with list filter (returns tasks from specific list, showing list_name)
+curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
+  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"action\": \"query\",
+    \"status\": \"${status:-all}\",
+    \"list_id\": \"$list_id\"
+  }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.list_name) | \(.title)"'
 
 # Query with limit
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
@@ -167,16 +180,17 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
     \"action\": \"query\",
     \"status\": \"${status:-all}\",
     \"limit\": $limit
-  }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.title)"'
+  }" | jq -r '.tasks[] | "\(.id[:8]) | \(.completed | if . then "✓" else "○" end) | \(.list_name // "无清单") | \(.title)"'
 
 # Query specific task
-curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
+response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
   -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"query\",
     \"task_id\": \"$task_id\"
-  }" | jq -r '.task | "\(.title)\n状态: \(.completed | if . then "已完成" else "待完成" end)\n截止日期: \(.due_date // "无")"'
+  }")
+echo "$response" | jq -r '.task | "\(.title)\n状态: \(.completed | if . then "已完成" else "待完成" end)\n清单: \(.list_name // "无")\n截止日期: \(.due_date // "无")"'
 ```
 
 ---
