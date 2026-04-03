@@ -41,6 +41,7 @@ const updateTaskSchema = z.object({
   start_date: z.string().datetime().optional(),
   priority: z.number().int().min(0).max(3).optional(),
   tags: z.string().optional(),
+  list_id: z.string().uuid().nullable().optional(),
 });
 
 // Schema for complete action
@@ -55,6 +56,7 @@ const queryTaskSchema = z.object({
   task_id: z.string().uuid().optional(),
   status: z.enum(['pending', 'completed', 'all']).optional().default('all'),
   limit: z.number().int().min(1).optional(),
+  list_id: z.string().uuid().optional(),
 });
 
 // Schema for digest action
@@ -175,7 +177,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: errorMsg }, 400);
   }
 
-  const { task_id, title, content, due_date, start_date, priority, tags } = parsed.data;
+  const { task_id, title, content, due_date, start_date, priority, tags, list_id } = parsed.data;
 
   // Check if task exists and is not deleted
   const { data: task, error: fetchError } = await supabase
@@ -192,6 +194,22 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: 'Task not found' }, 404);
   }
 
+  if (list_id !== undefined && list_id !== null) {
+    const { data: list, error: listError } = await supabase
+      .from('lists')
+      .select('id')
+      .eq('id', list_id)
+      .maybeSingle();
+
+    if (listError) {
+      return c.json({ error: 'Failed to verify list' }, 500);
+    }
+
+    if (!list) {
+      return c.json({ error: 'List not found' }, 404);
+    }
+  }
+
   // Build update data with only provided fields
   const updateData: any = {
     modified: new Date().toISOString(),
@@ -203,6 +221,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   if (start_date !== undefined) updateData.start_date = convertToUTC0(start_date);
   if (priority !== undefined) updateData.priority = priority;
   if (tags !== undefined) updateData.tags = tags;
+  if (list_id !== undefined) updateData.list_id = list_id;
 
   const { error: updateError } = await supabase
     .from('todos')
@@ -392,13 +411,12 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, 400);
   }
 
-  const { task_id, status, limit } = parsed.data;
+  const { task_id, status, limit, list_id } = parsed.data;
 
-  // If task_id is provided, query specific task
   if (task_id) {
     const { data: task, error: fetchError } = await supabase
       .from('todos')
-      .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date')
+      .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date, list_id, lists(name)')
       .eq('id', task_id)
       .maybeSingle();
 
@@ -410,22 +428,31 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
       return c.json({ error: 'Task not found' }, 404);
     }
 
+    const taskWithListName = {
+      ...transformTaskToUTC8(task),
+      list_name: task.lists?.name ?? null,
+    };
+    delete (taskWithListName as any).lists;
+    delete (taskWithListName as any).list_id;
+
     return c.json({
       success: true,
-      task: transformTaskToUTC8(task),
+      task: taskWithListName,
     });
   }
 
-  // Query multiple tasks based on status
   let query = supabase
     .from('todos')
-    .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date')
+    .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date, list_id, lists(name)')
     .eq('deleted', false)
     .order('created_time', { ascending: false });
 
-  // Only apply limit if provided
   if (limit) {
     query = query.limit(limit);
+  }
+
+  if (list_id) {
+    query = query.eq('list_id', list_id);
   }
 
   if (status === 'pending') {
@@ -440,8 +467,15 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: queryError.message }, 500);
   }
 
-  // Transform all tasks to UTC+8
-  const transformedTasks = (tasks || []).map(transformTaskToUTC8);
+  const transformedTasks = (tasks || []).map((task: any) => {
+    const transformed = {
+      ...transformTaskToUTC8(task),
+      list_name: task.lists?.name ?? null,
+    };
+    delete (transformed as any).lists;
+    delete (transformed as any).list_id;
+    return transformed;
+  });
 
   return c.json({
     success: true,
