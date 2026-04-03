@@ -54,16 +54,23 @@ const queryTaskSchema = z.object({
   action: z.literal('query'),
   task_id: z.string().uuid().optional(),
   status: z.enum(['pending', 'completed', 'all']).optional().default('all'),
-  limit: z.number().int().min(1).max(50).optional().default(10),
+  limit: z.number().int().min(1).optional(),
+});
+
+// Schema for digest action
+const digestTaskSchema = z.object({
+  action: z.literal('digest'),
+  limit: z.number().int().min(1).optional(),
 });
 
 // Union schema for all actions
-const requestSchema = z.union([createTaskSchema, updateTaskSchema, completeTaskSchema, queryTaskSchema]);
+const requestSchema = z.union([createTaskSchema, updateTaskSchema, completeTaskSchema, queryTaskSchema, digestTaskSchema]);
 
 type CreateTaskRequest = z.infer<typeof createTaskSchema>;
 type UpdateTaskRequest = z.infer<typeof updateTaskSchema>;
 type CompleteTaskRequest = z.infer<typeof completeTaskSchema>;
 type QueryTaskRequest = z.infer<typeof queryTaskSchema>;
+type DigestTaskRequest = z.infer<typeof digestTaskSchema>;
 
 const app = new Hono();
 
@@ -84,7 +91,7 @@ app.options('/*', (c) => {
   });
 });
 
-  app.get('*', (c) => c.text('OpenClaw ingest is operational. Use POST with action field: "create", "update", "complete", or "query"'));
+  app.get('*', (c) => c.text('OpenClaw ingest is operational. Use POST with action field: "create", "update", "complete", "query", or "digest"'));
 
 app.post('*', async (c) => {
   if (!supabaseUrl || !supabaseAnonKey) {
@@ -115,7 +122,7 @@ app.post('*', async (c) => {
 
   const actionCheck = z.object({ action: z.string() }).safeParse(body);
   if (!actionCheck.success) {
-    return c.json({ error: 'Missing or invalid "action" field. Use "create", "update", "complete", or "query".' }, 400);
+    return c.json({ error: 'Missing or invalid "action" field. Use "create", "update", "complete", "query", or "digest".' }, 400);
   }
 
   const { action } = actionCheck.data;
@@ -128,8 +135,10 @@ app.post('*', async (c) => {
     return handleCompleteTask(c, body as CompleteTaskRequest, supabase);
   } else if (action === 'query') {
     return handleQueryTask(c, body as QueryTaskRequest, supabase);
+  } else if (action === 'digest') {
+    return handleDigestTask(c, body as DigestTaskRequest, supabase);
   } else {
-    return c.json({ error: `Unknown action: "${action}". Use "create", "update", "complete", or "query".` }, 400);
+    return c.json({ error: `Unknown action: "${action}". Use "create", "update", "complete", "query", or "digest".` }, 400);
   }
 });
 
@@ -220,17 +229,15 @@ async function handleCreateTask(c: any, body: unknown, supabase: any) {
 
   const requestData = parsed.data;
 
-  // 如果未提供 start_date 或 due_date，默认设置为当天（东八区），并通过 convertToUTC0 转换
-  if (!requestData.start_date || !requestData.due_date) {
+  if (requestData.due_date && !requestData.start_date) {
+    requestData.start_date = requestData.due_date;
+  } else if (requestData.start_date && !requestData.due_date) {
+    requestData.due_date = requestData.start_date;
+  } else if (!requestData.start_date && !requestData.due_date) {
     const now = new Date();
     const todayUTC8 = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    
-    if (!requestData.start_date) {
-      requestData.start_date = convertToUTC0(`${todayUTC8}T00:00:00`)!;
-    }
-    if (!requestData.due_date) {
-      requestData.due_date = convertToUTC0(`${todayUTC8}T23:59:59`)!;
-    }
+    requestData.start_date = `${todayUTC8}T00:00:00`;
+    requestData.due_date = `${todayUTC8}T23:59:59`;
   }
 
   // Check for existing event
@@ -414,8 +421,12 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     .from('todos')
     .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date')
     .eq('deleted', false)
-    .order('created_time', { ascending: false })
-    .limit(limit);
+    .order('created_time', { ascending: false });
+
+  // Only apply limit if provided
+  if (limit) {
+    query = query.limit(limit);
+  }
 
   if (status === 'pending') {
     query = query.eq('completed', false);
@@ -437,6 +448,118 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     tasks: transformedTasks,
     count: transformedTasks.length,
     status: status,
+  });
+}
+
+async function handleDigestTask(c: any, body: unknown, supabase: any) {
+  const parsed = digestTaskSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, 400);
+  }
+
+  const { limit } = parsed.data;
+
+  const now = new Date();
+  const todayUTC8 = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  let query = supabase
+    .from('todos')
+    .select('id, title, completed, deleted, priority, due_date, content, tags, created_time, completed_time, modified, start_date')
+    .eq('deleted', false)
+    .eq('completed', false)
+    .order('created_time', { ascending: false });
+
+  if (limit) {
+    query = query.limit(limit);
+  }
+
+  const { data: tasks, error: queryError } = await query;
+
+  if (queryError) {
+    return c.json({ error: queryError.message }, 500);
+  }
+
+  const transformedTasks = (tasks || []).map(transformTaskToUTC8);
+
+  const today = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const todayStr = today.toISOString().slice(0, 10);
+
+  const overdueTasks = transformedTasks.filter((t: any) => {
+    if (!t.due_date) return false;
+    return t.due_date.slice(0, 10) < todayStr;
+  });
+
+  const dueTodayTasks = transformedTasks.filter((t: any) => {
+    return t.due_date?.startsWith(todayStr);
+  });
+
+  const upcomingTasks = transformedTasks.filter((t: any) => {
+    if (!t.due_date) return true;
+    const due = t.due_date.slice(0, 10);
+    return due > todayStr;
+  });
+
+  function formatDueDate(dueDate: string | null | undefined): string {
+    if (!dueDate) return '';
+    const d = new Date(dueDate);
+    const month = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    return `${month}-${day}`;
+  }
+
+  function formatTask(t: any): string {
+    if (t.due_date) {
+      return `  ○ ${t.title} [截止: ${formatDueDate(t.due_date)}]`;
+    } else {
+      return `  ○ ${t.title}（无截止日）`;
+    }
+  }
+
+  const summaryLines: string[] = [];
+  summaryLines.push('📋 今日任务摘要');
+  summaryLines.push('===============');
+
+  if (overdueTasks.length > 0) {
+    summaryLines.push('');
+    summaryLines.push(`⚠️ 已过期 ${overdueTasks.length} 个`);
+    overdueTasks.forEach((t: any) => summaryLines.push(formatTask(t)));
+  }
+
+  if (dueTodayTasks.length > 0) {
+    summaryLines.push('');
+    summaryLines.push(`📅 今日截止 ${dueTodayTasks.length} 个`);
+    dueTodayTasks.forEach((t: any) => summaryLines.push(formatTask(t)));
+  }
+
+  if (upcomingTasks.length > 0) {
+    summaryLines.push('');
+    summaryLines.push('📝 近期待办');
+    upcomingTasks.slice(0, 10).forEach((t: any) => summaryLines.push(formatTask(t)));
+  }
+
+  if (overdueTasks.length === 0 && dueTodayTasks.length === 0 && upcomingTasks.length === 0) {
+    summaryLines.push('');
+    summaryLines.push('🎉 没有待办任务，享受你的自由时间！');
+  }
+
+  return c.json({
+    success: true,
+    digest: {
+      date: todayUTC8,
+      summary: summaryLines.join('\n'),
+      stats: {
+        total: transformedTasks.length,
+        pending: transformedTasks.length,
+        due_today: dueTodayTasks.length,
+        overdue: overdueTasks.length,
+      },
+      tasks: transformedTasks.slice(0, 10).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        priority: t.priority,
+        due_date: t.due_date,
+      })),
+    },
   });
 }
 
