@@ -8,6 +8,12 @@ import {
   ErrorHandler, 
   StatusChangeCallback 
 } from './types';
+import { 
+  handleSyncStartupError, 
+  clearSyncStateFromStorage, 
+  calculateBackoffDelay,
+  shouldClearStateBeforeRetry 
+} from './syncErrorHandling';
 
 export class SimpleSyncManager implements SimpleSyncManagerInterface {
   public shapeStreams: ShapeStream[] = [];
@@ -16,38 +22,32 @@ export class SimpleSyncManager implements SimpleSyncManagerInterface {
   
   private listeners: Set<StatusChangeCallback> = new Set();
   private messageTimeoutId: NodeJS.Timeout | null = null;
-  private readonly MESSAGE_TIMEOUT = 60000; // 60秒无消息则认为断开
+  private readonly MESSAGE_TIMEOUT = 60000;
   private messageProcessor?: (shapeName: string, messages: unknown[]) => Promise<void>;
-  private unsubscribeFunctions: (() => void)[] = []; // 存储取消订阅函数
+  private unsubscribeFunctions: (() => void)[] = [];
+  
+  // Retry state
+  private retryAttempt: number = 0;
+  private readonly MAX_RETRY_ATTEMPTS = 5;
+  private retryTimeoutId: NodeJS.Timeout | null = null;
+  private isRetrying: boolean = false;
 
   constructor() {
     this.setupMessageTimeoutCheck();
   }
 
-  /**
-   * 设置消息处理器
-   */
   setMessageProcessor(processor: (shapeName: string, messages: any[]) => Promise<void>): void {
     this.messageProcessor = processor;
   }
 
-  /**
-   * 订阅同步状态变化
-   * @param callback 状态变化回调函数，参数为是否正在运行
-   * @returns 取消订阅的函数
-   */
   subscribe(callback: StatusChangeCallback): () => void {
     this.listeners.add(callback);
-    // 立即通知当前状态
     callback(this.isReceivingMessages);
     return () => this.listeners.delete(callback);
   }
 
-  /**
-   * 通知所有监听器状态变化
-   */
   private notifyListeners() {
-    const isRunning = this.isReceivingMessages;
+    const isRunning = this.isReceivingMessages || this.isRetrying;
     this.listeners.forEach(callback => {
       try {
         callback(isRunning);
@@ -57,74 +57,122 @@ export class SimpleSyncManager implements SimpleSyncManagerInterface {
     });
   }
 
-  /**
-   * 启动同步 - 创建并订阅ShapeStream
-   */
   async startSync(messageProcessor?: (shapeName: string, messages: any[]) => Promise<void>): Promise<void> {
-    console.log('[SimpleSyncManager] 启动同步');
+    console.log('[SimpleSyncManager] Starting sync');
     
-    // 如果提供了消息处理器，设置它
     if (messageProcessor) {
       this.messageProcessor = messageProcessor;
     }
     
-    // 先停止现有订阅
     this.stopSync();
+    this.isRetrying = false;
     
     try {
-      // 创建新的ShapeStream订阅
       await this.createShapeStreams();
-      
-      // 开始订阅所有流
       this.subscribeToStreams();
-      
-      console.log(`[SimpleSyncManager] 已创建 ${this.shapeStreams.length} 个订阅`);
+      this.retryAttempt = 0;
+      console.log(`[SimpleSyncManager] Created ${this.shapeStreams.length} subscriptions`);
     } catch (error) {
-      console.error('[SimpleSyncManager] 启动同步失败:', error);
+      console.error('[SimpleSyncManager] Start sync failed:', error);
       this.updateMessageStatus(false);
+      
+      // Handle error with retry logic
+      const errorResult = handleSyncStartupError(error as Error);
+      if (errorResult.canRetry && this.retryAttempt < this.MAX_RETRY_ATTEMPTS) {
+        this.scheduleRetry(errorResult.retryDelay || 2000);
+      }
+      
       throw error;
     }
   }
 
   /**
-   * 停止同步 - 取消所有订阅
+   * Schedule a retry with exponential backoff
    */
-  stopSync(): void {
-    console.log('[SimpleSyncManager] 停止同步');
+  private scheduleRetry(delay?: number): void {
+    if (this.isRetrying) return;
     
-    // 取消所有订阅
+    this.isRetrying = true;
+    this.retryAttempt++;
+    
+    const retryDelay = delay || calculateBackoffDelay(this.retryAttempt - 1);
+    console.log(`[SimpleSyncManager] Scheduling retry ${this.retryAttempt}/${this.MAX_RETRY_ATTEMPTS} in ${retryDelay}ms`);
+    
+    this.notifyListeners();
+    
+    this.retryTimeoutId = setTimeout(async () => {
+      try {
+        console.log(`[SimpleSyncManager] Executing retry ${this.retryAttempt}`);
+        
+        // Clear sync state before retry for certain error types
+        if (this.retryAttempt === 1 || this.retryAttempt % 2 === 0) {
+          console.log('[SimpleSyncManager] Clearing sync state before retry');
+          clearSyncStateFromStorage();
+        }
+        
+        // Refresh auth token every 2 retries
+        if (this.retryAttempt % 2 === 0) {
+          console.log('[SimpleSyncManager] Refreshing auth token');
+          const { invalidateToken, getAuthToken } = await import('../auth');
+          invalidateToken();
+          await getAuthToken();
+        }
+        
+        await this.startSync();
+        console.log('[SimpleSyncManager] Retry successful');
+        this.retryAttempt = 0;
+        this.isRetrying = false;
+      } catch (error) {
+        console.error(`[SimpleSyncManager] Retry ${this.retryAttempt} failed:`, error);
+        this.isRetrying = false;
+        
+        // Continue retrying if we haven't reached max attempts
+        if (this.retryAttempt < this.MAX_RETRY_ATTEMPTS) {
+          const errorResult = handleSyncStartupError(error as Error);
+          if (errorResult.canRetry) {
+            this.scheduleRetry(errorResult.retryDelay);
+          }
+        } else {
+          console.error('[SimpleSyncManager] Max retry attempts reached');
+        }
+      }
+    }, retryDelay);
+  }
+
+  stopSync(): void {
+    console.log('[SimpleSyncManager] Stopping sync');
+    
+    // Clear any pending retry
+    if (this.retryTimeoutId) {
+      clearTimeout(this.retryTimeoutId);
+      this.retryTimeoutId = null;
+    }
+    
     this.shapeStreams.forEach(stream => {
       try {
         stream.unsubscribeAll();
       } catch (error) {
-        console.error('[SimpleSyncManager] 取消订阅时出错:', error);
+        console.error('[SimpleSyncManager] Error unsubscribing:', error);
       }
     });
     
-    // 清空流数组
     this.shapeStreams = [];
-    
-    // 更新状态
     this.updateMessageStatus(false);
+    this.isRetrying = false;
   }
 
-  /**
-   * 创建ShapeStream实例
-   */
   private async createShapeStreams(): Promise<void> {
     const electricProxyUrl = process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
     if (!electricProxyUrl) {
       throw new Error("NEXT_PUBLIC_ELECTRIC_PROXY_URL is not set.");
     }
 
-    // 获取认证令牌
     const { getCachedAuthToken } = await import('../auth');
     const token = getCachedAuthToken();
     if (!token) {
       throw new Error("Authentication token is not available for sync.");
     }
 
-    // 定义需要同步的表
     const shapes = [
       {
         name: "lists",
@@ -149,7 +197,6 @@ export class SimpleSyncManager implements SimpleSyncManagerInterface {
       },
     ];
 
-    // 创建ShapeStream实例
     this.shapeStreams = shapes.map(shape => 
       new ShapeStream({
         url: `${electricProxyUrl}/v1/shape`,
@@ -165,9 +212,6 @@ export class SimpleSyncManager implements SimpleSyncManagerInterface {
     );
   }
 
-  /**
-   * 订阅所有ShapeStream
-   */
   private subscribeToStreams(): void {
     this.shapeStreams.forEach((stream, index) => {
       const shapeName = this.getShapeNameByIndex(index);
@@ -179,76 +223,59 @@ export class SimpleSyncManager implements SimpleSyncManagerInterface {
     });
   }
 
-  /**
-   * 处理收到的消息
-   */
   private async handleMessages(shapeName: string, messages: any[]): Promise<void> {
     if (!messages?.length) return;
     
-    console.log(`[SimpleSyncManager] ${shapeName} 收到 ${messages.length} 条消息`);
-    
-    // 更新消息接收状态
+    console.log(`[SimpleSyncManager] ${shapeName} received ${messages.length} messages`);
     this.updateMessageStatus(true);
     
-    // 如果设置了消息处理器，使用它；否则使用默认处理
     if (this.messageProcessor) {
       try {
         await this.messageProcessor(shapeName, messages);
       } catch (error) {
-        console.error(`[SimpleSyncManager] 消息处理失败 (${shapeName}):`, error);
+        console.error(`[SimpleSyncManager] Message processing failed (${shapeName}):`, error);
       }
     } else {
-      // 默认处理消息（占位符）
       this.processMessages(shapeName, messages);
     }
   }
 
-  /**
-   * 处理订阅错误
-   */
   private handleError(shapeName: string, error: unknown): void {
-    console.error(`[SimpleSyncManager] ${shapeName} 订阅错误:`, error);
-    
-    // 错误时更新状态为未接收消息
+    console.error(`[SimpleSyncManager] ${shapeName} subscription error:`, error);
     this.updateMessageStatus(false);
+    
+    // Check if we should retry
+    const errorResult = handleSyncStartupError(error as Error);
+    if (errorResult.canRetry && this.retryAttempt < this.MAX_RETRY_ATTEMPTS && !this.isRetrying) {
+      console.log(`[SimpleSyncManager] Scheduling retry due to ${shapeName} error`);
+      this.scheduleRetry(errorResult.retryDelay);
+    }
   }
 
-  /**
-   * 更新消息接收状态
-   */
   private updateMessageStatus(isReceiving: boolean): void {
     const wasReceiving = this.isReceivingMessages;
     this.isReceivingMessages = isReceiving;
     this.lastMessageTime = isReceiving ? Date.now() : this.lastMessageTime;
     
-    // 状态变化时通知监听器
     if (wasReceiving !== isReceiving) {
       this.notifyListeners();
     }
     
-    // 重置超时检查
     this.resetMessageTimeout();
   }
 
-  /**
-   * 设置消息超时检查
-   */
   private setupMessageTimeoutCheck(): void {
-    // 定期检查是否超时无消息
     setInterval(() => {
       if (this.isReceivingMessages && this.lastMessageTime) {
         const timeSinceLastMessage = Date.now() - this.lastMessageTime;
         if (timeSinceLastMessage > this.MESSAGE_TIMEOUT) {
-          console.warn('[SimpleSyncManager] 消息超时，更新状态为未接收');
+          console.warn('[SimpleSyncManager] Message timeout, updating status');
           this.updateMessageStatus(false);
         }
       }
-    }, 10000); // 每10秒检查一次
+    }, 10000);
   }
 
-  /**
-   * 重置消息超时计时器
-   */
   private resetMessageTimeout(): void {
     if (this.messageTimeoutId) {
       clearTimeout(this.messageTimeoutId);
@@ -256,60 +283,48 @@ export class SimpleSyncManager implements SimpleSyncManagerInterface {
     
     if (this.isReceivingMessages) {
       this.messageTimeoutId = setTimeout(() => {
-        console.warn('[SimpleSyncManager] 消息接收超时');
+        console.warn('[SimpleSyncManager] Message receive timeout');
         this.updateMessageStatus(false);
       }, this.MESSAGE_TIMEOUT);
     }
   }
 
-  /**
-   * 根据索引获取表名
-   */
   private getShapeNameByIndex(index: number): string {
     const names = ["lists", "todos", "goals"];
     return names[index] || `shape_${index}`;
   }
 
-  /**
-   * 处理具体的消息内容（占位符方法）
-   */
   private processMessages(shapeName: string, messages: unknown[]): void {
-    // 这里可以添加具体的消息处理逻辑
-    // 目前只是记录日志，实际处理逻辑可以在后续任务中实现
-    console.log(`[SimpleSyncManager] 处理 ${shapeName} 的 ${messages.length} 条消息`);
+    console.log(`[SimpleSyncManager] Processing ${messages.length} messages for ${shapeName}`);
   }
 
-  /**
-   * 获取当前状态信息
-   */
   getStatus() {
     return {
       isReceivingMessages: this.isReceivingMessages,
+      isRetrying: this.isRetrying,
+      retryAttempt: this.retryAttempt,
       lastMessageTime: this.lastMessageTime,
       streamCount: this.shapeStreams.length,
       hasActiveStreams: this.shapeStreams.length > 0,
     };
   }
 
-  /**
-   * 清理资源
-   */
   cleanup(): void {
-    console.log('[SimpleSyncManager] 清理资源');
-    
-    // 停止同步
+    console.log('[SimpleSyncManager] Cleaning up');
     this.stopSync();
     
-    // 清理超时计时器
+    if (this.retryTimeoutId) {
+      clearTimeout(this.retryTimeoutId);
+      this.retryTimeoutId = null;
+    }
+    
     if (this.messageTimeoutId) {
       clearTimeout(this.messageTimeoutId);
       this.messageTimeoutId = null;
     }
     
-    // 清空监听器
     this.listeners.clear();
   }
 }
 
-// 导出单例实例
 export const simpleSyncManager = new SimpleSyncManager();
