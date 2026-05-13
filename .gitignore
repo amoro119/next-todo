@@ -52,3 +52,5 @@ dist-*
 .next/
 .sisyphus/
 .vscode/
+.playwright-mcp/
+calendar.yml

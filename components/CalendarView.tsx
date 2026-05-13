@@ -18,7 +18,7 @@ import {
   addMonths,
   subMonths
 } from 'date-fns';
-import { localDateToDbUTC } from '../lib/utils/dateUtils';
+import { localDateToDbUTC, dbUTCToDisplayDate } from '../lib/utils/dateUtils';
 
 interface CalendarViewProps {
   todos: Todo[];

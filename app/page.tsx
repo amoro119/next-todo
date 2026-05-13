@@ -144,11 +144,13 @@ class DateCache {
       !this.todayCache ||
       now - this.todayCache.timestamp > this.CACHE_DURATION
     ) {
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, "0");
-      const day = String(today.getDate()).padStart(2, "0");
-      this.todayCache = { date: `${year}-${month}-${day}`, timestamp: now };
+      const date = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+      this.todayCache = { date, timestamp: now };
     }
     return this.todayCache.date;
   }
@@ -171,8 +173,6 @@ const dateCache = new DateCache();
 
 // --- 日期转换函数 ---
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
-  // ... (no changes in this function)
-  // ...
   if (!utcDate) return "";
 
   const cached = dateCache.getDateCache(utcDate);
@@ -182,10 +182,12 @@ const utcToLocalDateString = (utcDate: string | null | undefined): string => {
     const date = new Date(utcDate);
     if (isNaN(date.getTime())) return "";
 
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    const result = `${year}-${month}-${day}`;
+    const result = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
 
     dateCache.setDateCache(utcDate, result);
     return result;
@@ -215,37 +217,39 @@ const localDateToEndOfDayUTC = (
 
 // --- 数据标准化函数 ---
 function formatDbDate(val: unknown): string | null {
-  // ... (no changes in this function)
-  // ...
   if (!val) return null;
   if (typeof val === "string") {
-    // 已经是数据库格式
-    if (/^\d{4}-\d{2}-\d{2}( 16:00:00\+00)?$/.test(val)) return val;
-    // 是 ISO 字符串
-    if (/^\d{4}-\d{2}-\d{2}T/.test(val)) return val.slice(0, 10);
-    // 是 JS Date 字符串
+    // 旧格式 "YYYY-MM-DD 160000" → 修复为标准 UTC 后转换
+    if (/^\d{4}-\d{2}-\d{2} 160000$/.test(val)) {
+      val = val.replace(' 160000', ' 16:00:00+00');
+    }
+    // 数据库 UTC 格式 "YYYY-MM-DD HH:mm:ss+HH" → 转换为 Asia/Shanghai 纯日期
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}$/.test(val)) {
+      try {
+        const date = new Date(val);
+        if (!isNaN(date.getTime())) {
+          return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Shanghai',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(date);
+        }
+      } catch { /* fall through */ }
+      return null;
+    }
+    // 已经是纯日期格式 YYYY-MM-DD（无时区信息，直接返回）
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+    // ISO 字符串或其他可解析格式 → 用 Intl 转换到 Asia/Shanghai 日期
     const d = new Date(val);
     if (!isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      const m = (d.getMonth() + 1).toString().padStart(2, "0");
-      const dd = d.getDate().toString().padStart(2, "0");
-      return `${y}-${m}-${dd}`;
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(d);
     }
-  }
-  // 是 Date 对象
-  if (val instanceof Date) {
-    const y = val.getFullYear();
-    const m = (val.getMonth() + 1).toString().padStart(2, "0");
-    const d = val.getDate().toString().padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  // 尝试 new Date
-  const d = new Date(val as string);
-  if (!isNaN(d.getTime())) {
-    const y = d.getFullYear();
-    const m = (d.getMonth() + 1).toString().padStart(2, "0");
-    const dd = d.getDate().toString().padStart(2, "0");
-    return `${y}-${m}-${dd}`;
   }
   return null;
 }
@@ -1774,14 +1778,14 @@ export default function TodoListPage() {
 
       {isTodoModalOpen && (
         <TodoModal
+          mode="create"
           lists={lists}
-          onSave={handleCreateTodo}
+          initialData={{ title: newTodoTitle, due_date: newTodoDate }}
+          onSubmit={handleCreateTodo}
           onClose={() => {
             setIsTodoModalOpen(false);
             setNewTodoTitle("");
           }}
-          initialTitle={newTodoTitle}
-          initialDate={newTodoDate}
         />
       )}
 
@@ -1804,8 +1808,10 @@ export default function TodoListPage() {
 
       {isCalendarCreateModalOpen && (
         <TodoModal
+          mode="create"
           lists={lists}
-          onSave={(todoData) => {
+          initialData={{ title: newTodoTitle, due_date: calendarSelectedDate }}
+          onSubmit={(todoData) => {
             const listId = todoData.list_id || null;
             const dueDateString = utcToLocalDateString(
               calendarSelectedDate
@@ -1824,19 +1830,18 @@ export default function TodoListPage() {
             setIsCalendarCreateModalOpen(false);
             setNewTodoTitle("");
           }}
-          initialTitle={newTodoTitle}
-          initialDate={calendarSelectedDate}
         />
       )}
 
       {selectedTodo && (
         <TodoModal
+          mode="edit"
           lists={lists}
-          todo={selectedTodo}
-          onSave={handleSaveTodoDetails}
+          initialData={selectedTodo}
+          onSubmit={handleSaveTodoDetails}
           onClose={() => setSelectedTodo(null)}
-          onDelete={() => {
-            handleDeleteTodo(selectedTodo.id);
+          onDelete={(todoId) => {
+            handleDeleteTodo(todoId);
             setSelectedTodo(null);
           }}
         />

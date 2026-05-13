@@ -10,6 +10,7 @@ import {
   SearchHighlighter,
 } from "../lib/search/searchUtils";
 import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator";
+import { dbUTCToDisplayDate } from "../lib/utils/dateUtils";
 import Image from "next/image";
 import React from "react";
 
@@ -33,29 +34,6 @@ interface TaskSearchModalState {
   lastSearchTime: number;
   hasMoreResults: boolean; // 添加是否有更多结果的标志
 }
-
-// Helper function for date formatting
-const utcToLocalDateString = (utcDate: string | null | undefined): string => {
-  if (!utcDate) return "";
-  try {
-    const date = new Date(utcDate);
-    if (isNaN(date.getTime())) {
-      const dateOnlyMatch = utcDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dateOnlyMatch) return utcDate;
-      return "";
-    }
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Shanghai",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    return formatter.format(date);
-  } catch (e) {
-    console.error("Error formatting date:", utcDate, e);
-    return "";
-  }
-};
 
 // SearchTodoItem component for displaying individual search results
 interface SearchTodoItemProps {
@@ -160,14 +138,14 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
           todo.next_due_date &&
           !todo.deleted && (
             <span className="search-todo-next-due" title="下次到期时间">
-              下次: {utcToLocalDateString(todo.next_due_date)}
+              下次: {dbUTCToDisplayDate(todo.next_due_date)}
             </span>
           )}
 
         {/* Due date */}
         {todo.due_date && !todo.deleted && (
           <span className="search-todo-due-date">
-            {utcToLocalDateString(todo.due_date)}
+            {dbUTCToDisplayDate(todo.due_date)}
           </span>
         )}
 
