@@ -23,12 +23,14 @@ export function createOfflineQueue(): OfflineQueue {
   window.addEventListener('online', onOnline)
 
   function enqueue(operation: Omit<PendingOperation, 'id' | 'timestamp' | 'retryCount'>): void {
-    queue.push({
+    const item = {
       ...operation,
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       retryCount: 0,
-    })
+    }
+    queue.push(item)
+    console.log(`[OfflineQueue] Enqueued ${operation.operation} for ${operation.table}, queueLength=${queue.length}`)
   }
 
   function dequeue(): PendingOperation | undefined {
@@ -38,20 +40,34 @@ export function createOfflineQueue(): OfflineQueue {
   async function processQueue(syncFn: (op: PendingOperation) => Promise<boolean>): Promise<void> {
     syncFnRef = syncFn
 
-    if (!window.navigator.onLine || isProcessing) return
+    if (!window.navigator.onLine) {
+      console.log('[OfflineQueue] processQueue skipped: offline')
+      return
+    }
+    if (isProcessing) {
+      console.log('[OfflineQueue] processQueue skipped: already processing')
+      return
+    }
 
     isProcessing = true
 
     const ops = [...queue]
     queue.length = 0
+    console.log(`[OfflineQueue] Processing ${ops.length} offline operations...`)
 
+    let successCount = 0
+    let failCount = 0
     for (const op of ops) {
       const success = await syncFn(op)
       if (!success) {
         queue.push({ ...op, retryCount: op.retryCount + 1 })
+        failCount++
+      } else {
+        successCount++
       }
     }
 
+    console.log(`[OfflineQueue] Processed ${ops.length} ops: ${successCount} succeeded, ${failCount} failed, ${queue.length} re-queued`)
     isProcessing = false
   }
 

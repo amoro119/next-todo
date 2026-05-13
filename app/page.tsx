@@ -376,7 +376,12 @@ export default function TodoListPage() {
 
   const todos = useMemo(() => {
     if (!todosRaw) return [];
-    return todosRaw.map(normalizeTodo);
+    const normalized = todosRaw.map(normalizeTodo);
+    const completedCount = normalized.filter(t => t.completed).length;
+    const withDueDate = normalized.filter(t => !!t.due_date).length;
+    const withStartDate = normalized.filter(t => !!t.start_date).length;
+    console.log(`[page.tsx] todos: ${todosRaw.length} raw → ${normalized.length} normalized | completed=${completedCount} | withDueDate=${withDueDate} | withStartDate=${withStartDate} | deleted=${normalized.filter(t => t.deleted).length}`);
+    return normalized;
   }, [todosRaw]);
 
   const lists = useMemo(() => {
@@ -421,13 +426,13 @@ export default function TodoListPage() {
 
   // --- FIX START: Create todos with list names ---
   const todosWithListNames = useMemo(() => {
-    // ... (no changes in this block)
-    // ...
     const listMap = new Map(lists.map((list) => [list.id, list.name]));
-    return todos.map((todo) => ({
+    const result = todos.map((todo) => ({
       ...todo,
       list_name: todo.list_id ? listMap.get(todo.list_id) || null : null,
     }));
+    console.log(`[page.tsx] todosWithListNames: ${todos.length} → ${result.length}`);
+    return result;
   }, [todos, lists]);
   // --- FIX END ---
 
@@ -480,10 +485,16 @@ export default function TodoListPage() {
   }, []);
   // --- FIX: Use todosWithListNames for all subsequent calculations ---
   const uncompletedTodos = useMemo(
-    () =>
-      // ... (no changes in this block)
-      // ...
-      todosWithListNames.filter((t: Todo) => !t.completed && !t.deleted),
+    () => {
+      const result = todosWithListNames.filter((t: Todo) => !t.completed && !t.deleted);
+      console.log(`[page.tsx] uncompletedTodos: ${todosWithListNames.length} → ${result.length} (filtered completed=${todosWithListNames.filter(t => t.completed).length}, deleted=${todosWithListNames.filter(t => t.deleted).length})`);
+      if (result.length > 0 && result.length <= 10) {
+        result.forEach(t => {
+          console.log(`[page.tsx] uncompleted: id=${t.id} title="${t.title.substring(0, 30)}" list_id=${t.list_id || 'null'} due_date=${t.due_date || 'null'} start_date=${t.start_date || 'null'} repeat=${!!t.repeat} recurring_parent_id=${!!t.recurring_parent_id} deleted=${t.deleted}`);
+        });
+      }
+      return result;
+    },
     [todosWithListNames]
   );
 
@@ -517,6 +528,7 @@ export default function TodoListPage() {
     const endFilter = inboxPerfMonitor.startOperation("filter");
     const filteredTodos = filterInboxTodos(uncompletedTodos);
     endFilter();
+    console.log(`[page.tsx] inbox filter: ${uncompletedTodos.length} uncompleted → ${filteredTodos.length} passed`);
 
     const endSort = inboxPerfMonitor.startOperation("sort");
     const sortedTodos = sortInboxTodos(filteredTodos);
@@ -529,7 +541,14 @@ export default function TodoListPage() {
   const todayTodos = useMemo(() => {
     if (currentView !== "today") return [];
 
-    return todosWithListNames
+    const sample = todosWithListNames.slice(0, 5);
+    sample.forEach(t => {
+      if (t.due_date) {
+        console.log(`[today-debug] due_date raw="${t.due_date}" → utcToLocal="${utcToLocalDateString(t.due_date)}" | parsed=${new Date(t.due_date).toString()} | valid=${!isNaN(new Date(t.due_date).getTime())}`);
+      }
+    });
+
+    const result = todosWithListNames
       .filter((t: Todo) => {
         if (t.deleted) return false;
 
@@ -561,6 +580,8 @@ export default function TodoListPage() {
         if (bDate) return 1;
         return 0;
       });
+    console.log(`[page.tsx] today filter: ${todosWithListNames.length} total → ${result.length} passed (today=${todayStrInUTC8})`);
+    return result;
   }, [currentView, todosWithListNames, todayStrInUTC8]);
 
   const listTodos = useMemo(() => {
@@ -1311,6 +1332,8 @@ export default function TodoListPage() {
               ...t,
               deleted: !!(t as unknown as { removed?: boolean }).removed,
             }));
+            console.log(`[CSV Import] Parsed: ${todos.length} active + ${removedTodos.length} removed = ${todosToImport.length} total`);
+            console.log(`[CSV Import] With completedTime: ${todosToImport.filter(t => t.completed_time).length} | Without: ${todosToImport.filter(t => !t.completed_time).length}`);
           } else if (file.name.endsWith(".sql")) {
             // SQL 导入暂不支持 - 使用 Dexie 后不再直接执行 SQL
             alert("SQL 文件导入在当前版本中暂不可用。请使用 CSV 格式导入。");
