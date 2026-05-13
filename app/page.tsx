@@ -1764,6 +1764,7 @@ export default function TodoListPage() {
 
       {isSearchModalOpen && (
         <TaskSearchModal
+          isOpen={isSearchModalOpen}
           todos={todosWithListNames}
           lists={lists}
           goals={goals}
