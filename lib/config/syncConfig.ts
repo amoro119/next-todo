@@ -1,58 +1,65 @@
 // lib/config/syncConfig.ts
-import { getUserState, checkUserSubscription } from '../user/userState';
-import { networkStatusManager } from '../sync/NetworkStatusManager';
 
 export interface SyncConfig {
   enabled: boolean;
-  reason?: 'free_user' | 'user_preference' | 'disabled_by_user';
+  reason?: string;
 }
 
 /**
- * 比较两个SyncConfig对象是否相等
+ * Compare two SyncConfig objects for equality
  */
 export function isSyncConfigEqual(a: SyncConfig, b: SyncConfig): boolean {
   return a.enabled === b.enabled && a.reason === b.reason;
 }
 
-// 缓存同步配置以避免重复计算
+// Cache to avoid recomputing on every call
 let cachedSyncConfig: SyncConfig | null = null;
 let lastSyncCacheTime = 0;
-const SYNC_CACHE_TTL = 3000; // 3秒缓存
+const SYNC_CACHE_TTL = 3000; // 3 second cache
 
-export const getSyncConfig = (): SyncConfig => {
-  // 在服务器端渲染时返回默认启用状态
+/**
+ * Get the current Supabase sync configuration based on environment and user preference.
+ */
+export function getSupabaseSyncConfig(): SyncConfig {
+  // Server-side rendering: default to disabled (no browser env)
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-    return { enabled: true };
+    return { enabled: false, reason: 'server_side' };
   }
 
-  // 检查缓存是否有效
   const now = Date.now();
-  if (cachedSyncConfig && (now - lastSyncCacheTime) < SYNC_CACHE_TTL) {
+  if (cachedSyncConfig && now - lastSyncCacheTime < SYNC_CACHE_TTL) {
     return cachedSyncConfig;
   }
 
-  const userState = getUserState();
-  const isPaidUser = checkUserSubscription();
-  const userPreference = localStorage.getItem('sync_enabled') !== 'false';
-  
+  const hasEnv =
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const userPref =
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem('sync_enabled') !== 'false'
+      : true;
+
   let syncConfig: SyncConfig;
-  
-  // 检查各种禁用条件
-  if (!isPaidUser) {
-    syncConfig = { enabled: false, reason: 'free_user' };
-  } else if (!userPreference) {
-    syncConfig = { enabled: false, reason: 'user_preference' };
+
+  if (!hasEnv) {
+    syncConfig = { enabled: false, reason: 'missing_env' };
+  } else if (!userPref) {
+    syncConfig = { enabled: false, reason: 'user_disabled' };
   } else {
-    // 同步功能启用，但网络状态由同步系统内部处理
     syncConfig = { enabled: true };
   }
 
-  // 更新缓存
   cachedSyncConfig = syncConfig;
   lastSyncCacheTime = now;
-  
+
   return syncConfig;
-};
+}
+
+/**
+ * @deprecated Use getSupabaseSyncConfig() instead.
+ * Kept for backward compatibility — delegates to getSupabaseSyncConfig().
+ */
+export const getSyncConfig = getSupabaseSyncConfig;
 
 export const setSyncNetworkError = (hasError: boolean) => {
   if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') {
@@ -65,16 +72,14 @@ export const setSyncNetworkError = (hasError: boolean) => {
     sessionStorage.removeItem('sync_network_error');
   }
 
-  // 清除缓存，强制重新计算
   cachedSyncConfig = null;
   lastSyncCacheTime = 0;
 
-  // 触发配置更新事件
   window.dispatchEvent(new CustomEvent('syncConfigChanged'));
 };
 
 /**
- * 清除同步配置缓存
+ * Clear the sync config cache
  */
 export const clearSyncConfigCache = () => {
   cachedSyncConfig = null;
@@ -83,13 +88,11 @@ export const clearSyncConfigCache = () => {
 
 export const getSyncDisabledMessage = (reason?: string): string => {
   switch (reason) {
-    case 'free_user':
-      return '免费版本 - 仅本地存储';
-    case 'user_preference':
-      return '同步已禁用 - 仅本地模式';
-    case 'disabled_by_user':
-      return '用户已禁用同步';
+    case 'missing_env':
+      return 'Supabase not configured — local mode';
+    case 'user_disabled':
+      return 'Sync disabled in preferences — local mode';
     default:
-      return '本地模式';
+      return 'Local mode';
   }
 };

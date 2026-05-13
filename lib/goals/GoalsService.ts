@@ -1,4 +1,3 @@
-import { PGlite } from '@electric-sql/pglite';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Goal,
@@ -16,6 +15,7 @@ import {
   isGoalOverdue
 } from '@/lib/types';
 import { DatabaseWrapper } from '@/lib/sync/ChangeInterceptor';
+import { db } from '@/lib/db/dexie';
 
 /**
  * 目标查询选项
@@ -36,11 +36,6 @@ export interface GoalQueryOptions {
  */
 export class GoalsService {
   constructor(private dbWrapper: DatabaseWrapper) {}
-
-  // 获取原始数据库实例用于只读操作
-  private get db(): PGlite {
-    return this.dbWrapper.raw;
-  }
 
   /**
    * 创建新目标
@@ -83,47 +78,28 @@ export class GoalsService {
    * 根据ID获取目标
    */
   async getGoalById(id: string): Promise<Goal | null> {
-    const query = `
-      SELECT g.*, l.name as list_name
-      FROM goals g
-      LEFT JOIN lists l ON g.list_id = l.id
-      WHERE g.id = $1
-    `;
-
-    const result = await this.db.query(query, [id]);
-    return result.rows.length > 0 ? (result.rows[0] as Goal) : null;
+    const goal = await db.goals.get(id);
+    return goal ?? null;
   }
 
   /**
    * 获取带进度信息的目标
    */
   async getGoalWithProgress(id: string): Promise<GoalWithProgress | null> {
-    const query = `
-      SELECT 
-        g.*,
-        l.name as list_name,
-        COUNT(t.id) as total_tasks,
-        COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks
-      FROM goals g
-      LEFT JOIN lists l ON g.list_id = l.id
-      LEFT JOIN todos t ON t.goal_id = g.id AND t.deleted = false
-      WHERE g.id = $1
-      GROUP BY g.id, l.name
-    `;
+    const goal = await db.goals.get(id);
+    if (!goal) return null;
 
-    const result = await this.db.query(query, [id]);
-    
-    if (result.rows.length === 0) {
-      return null;
-    }
+    const todos = await db.todos
+      .where('goal_id').equals(id)
+      .and(t => !t.deleted)
+      .toArray();
 
-    const row = result.rows[0] as any;
-    const totalTasks = parseInt(row.total_tasks) || 0;
-    const completedTasks = parseInt(row.completed_tasks) || 0;
+    const totalTasks = todos.length;
+    const completedTasks = todos.filter(t => t.completed).length;
     const progress = calculateGoalProgress(totalTasks, completedTasks);
 
     return {
-      ...row,
+      ...goal,
       total_tasks: totalTasks,
       completed_tasks: completedTasks,
       progress
@@ -139,7 +115,7 @@ export class GoalsService {
     
     // 过滤掉计算字段和只读字段，这些字段不应该被更新
     const computedFields = ['progress', 'total_tasks', 'completed_tasks', 'list_name'];
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, unknown> = {};
     
     Object.entries(sanitizedData).forEach(([key, value]) => {
       // 排除ID和计算字段
@@ -216,163 +192,90 @@ export class GoalsService {
       offset = 0
     } = options;
 
-    let query = `
-      SELECT g.*, l.name as list_name
-      FROM goals g
-      LEFT JOIN lists l ON g.list_id = l.id
-      WHERE 1=1
-    `;
+    let goals = await db.goals.toArray();
 
-    const params: any[] = [];
-    let paramIndex = 1;
+    // 过滤软删除
+    goals = goals.filter(g => g.deleted_at === null || g.deleted_at === undefined);
 
-    // 添加过滤条件
+    // 过滤存档
     if (!includeArchived) {
-      query += ` AND g.is_archived = false`;
+      goals = goals.filter(g => !g.is_archived);
     }
 
     if (listId) {
-      query += ` AND g.list_id = $${paramIndex}`;
-      params.push(listId);
-      paramIndex++;
+      goals = goals.filter(g => g.list_id === listId);
     }
 
     if (priority !== undefined) {
-      query += ` AND g.priority = $${paramIndex}`;
-      params.push(priority);
-      paramIndex++;
+      goals = goals.filter(g => g.priority === priority);
     }
 
-    // 添加排序
-    const validSortFields = ['created_time', 'due_date', 'priority', 'name'];
-    const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_time';
-    const sortDirection = sortOrder === 'asc' ? 'ASC' : 'DESC';
-    
-    query += ` ORDER BY g.${sortField} ${sortDirection}`;
+    // 排序
+    goals.sort((a, b) => {
+      const aVal = a[sortBy as keyof Goal] ?? '';
+      const bVal = b[sortBy as keyof Goal] ?? '';
+      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
 
-    // 添加分页
-    if (limit) {
-      query += ` LIMIT $${paramIndex}`;
-      params.push(limit);
-      paramIndex++;
-    }
-
-    if (offset > 0) {
-      query += ` OFFSET $${paramIndex}`;
-      params.push(offset);
-      paramIndex++;
-    }
-
-    const result = await this.db.query(query, params);
-    return result.rows as Goal[];
+    // 分页
+    const sliced = goals.slice(offset, limit ? offset + limit : undefined);
+    return sliced;
   }
 
   /**
    * 获取带进度信息的目标列表
    */
   async getGoalsWithProgress(options: GoalQueryOptions = {}): Promise<GoalWithProgress[]> {
-    const {
-      includeArchived = false,
-      listId,
-      priority,
-      sortBy = 'created_time',
-      sortOrder = 'desc',
-      limit,
-      offset = 0
-    } = options;
+    const goals = await this.getGoals(options);
 
-    let query = `
-      SELECT 
-        g.*,
-        l.name as list_name,
-        COUNT(t.id) as total_tasks,
-        COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks
-      FROM goals g
-      LEFT JOIN lists l ON g.list_id = l.id
-      LEFT JOIN todos t ON t.goal_id = g.id AND t.deleted = false
-      WHERE 1=1
-    `;
+    const goalsWithProgress = await Promise.all(
+      goals.map(async (goal) => {
+        const todos = await db.todos
+          .where('goal_id').equals(goal.id)
+          .and(t => !t.deleted)
+          .toArray();
 
-    const params: any[] = [];
-    let paramIndex = 1;
+        const totalTasks = todos.length;
+        const completedTasks = todos.filter(t => t.completed).length;
+        const progress = calculateGoalProgress(totalTasks, completedTasks);
 
-    // 添加过滤条件
-    if (!includeArchived) {
-      query += ` AND g.is_archived = false`;
-    }
+        return {
+          ...goal,
+          total_tasks: totalTasks,
+          completed_tasks: completedTasks,
+          progress
+        } as GoalWithProgress;
+      })
+    );
 
-    if (listId) {
-      query += ` AND g.list_id = $${paramIndex}`;
-      params.push(listId);
-      paramIndex++;
-    }
-
-    if (priority !== undefined) {
-      query += ` AND g.priority = $${paramIndex}`;
-      params.push(priority);
-      paramIndex++;
-    }
-
-    query += ` GROUP BY g.id, l.name`;
-
-    // 添加排序
-    const validSortFields = ['created_time', 'due_date', 'priority', 'name'];
-    const sortField = validSortFields.includes(sortBy) ? sortBy : 'created_time';
-    const sortDirection = sortOrder === 'asc' ? 'ASC' : 'DESC';
-    
-    query += ` ORDER BY g.${sortField} ${sortDirection}`;
-
-    // 添加分页
-    if (limit) {
-      query += ` LIMIT $${paramIndex}`;
-      params.push(limit);
-      paramIndex++;
-    }
-
-    if (offset > 0) {
-      query += ` OFFSET $${paramIndex}`;
-      params.push(offset);
-      paramIndex++;
-    }
-
-    const result = await this.db.query(query, params);
-    
-    return result.rows.map((row: any) => {
-      const totalTasks = parseInt(row.total_tasks) || 0;
-      const completedTasks = parseInt(row.completed_tasks) || 0;
-      const progress = calculateGoalProgress(totalTasks, completedTasks);
-
-      return {
-        ...row,
-        total_tasks: totalTasks,
-        completed_tasks: completedTasks,
-        progress
-      } as GoalWithProgress;
-    });
+    return goalsWithProgress;
   }
 
   /**
    * 获取目标关联的待办事项
    */
   async getGoalTodos(goalId: string, includeCompleted = true): Promise<Todo[]> {
-    let query = `
-      SELECT t.*, l.name as list_name, g.name as goal_name
-      FROM todos t
-      LEFT JOIN lists l ON t.list_id = l.id
-      LEFT JOIN goals g ON t.goal_id = g.id
-      WHERE t.goal_id = $1 AND t.deleted = false
-    `;
-
-    const params = [goalId];
+    let todos = await db.todos
+      .where('goal_id').equals(goalId)
+      .and(t => !t.deleted)
+      .toArray();
 
     if (!includeCompleted) {
-      query += ` AND t.completed = false`;
+      todos = todos.filter(t => !t.completed);
     }
 
-    query += ` ORDER BY t.sort_order_in_goal ASC, t.created_time ASC`;
+    todos.sort((a, b) => {
+      const aOrder = a.sort_order_in_goal ?? Infinity;
+      const bOrder = b.sort_order_in_goal ?? Infinity;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      const aTime = a.created_time ?? '';
+      const bTime = b.created_time ?? '';
+      return aTime < bTime ? -1 : aTime > bTime ? 1 : 0;
+    });
 
-    const result = await this.db.query(query, params);
-    return result.rows as Todo[];
+    return todos as unknown as Todo[];
   }
 
   /**
@@ -392,16 +295,19 @@ export class GoalsService {
     } else {
       // 如果没有指定排序，自动分配到最后
       if (sortOrder === undefined) {
-        const maxOrderResult = await this.db.query(
-          'SELECT COALESCE(MAX(sort_order_in_goal), 0) + 1 as next_order FROM todos WHERE goal_id = $1',
-          [goalId]
+        const todosInGoal = await db.todos
+          .where('goal_id').equals(goalId)
+          .toArray();
+        const maxOrder = todosInGoal.reduce(
+          (max, t) => Math.max(max, t.sort_order_in_goal ?? 0),
+          0
         );
-        sortOrder = maxOrderResult.rows[0]?.next_order || 1;
+        sortOrder = maxOrder + 1;
       }
 
       // 检查待办事项是否存在
-      const todoExists = await this.db.query('SELECT id FROM todos WHERE id = $1', [todoId]);
-      if (todoExists.rows.length === 0) {
+      const todo = await db.todos.get(todoId);
+      if (!todo) {
         throw new Error('待办事项不存在');
       }
 
@@ -420,12 +326,14 @@ export class GoalsService {
     if (todoIds.length === 0) return;
 
     // 获取当前最大排序值
-    const maxOrderResult = await this.db.query(
-      'SELECT COALESCE(MAX(sort_order_in_goal), 0) as max_order FROM todos WHERE goal_id = $1',
-      [goalId]
+    const todosInGoal = await db.todos
+      .where('goal_id').equals(goalId)
+      .toArray();
+    const maxOrder = todosInGoal.reduce(
+      (max, t) => Math.max(max, t.sort_order_in_goal ?? 0),
+      0
     );
-    
-    let nextOrder = (maxOrderResult.rows[0]?.max_order || 0) + 1;
+    const nextOrder = maxOrder + 1;
 
     // 批量更新
     const updatePromises = todoIds.map((todoId, index) => 
@@ -457,9 +365,6 @@ export class GoalsService {
     if (!validation.isValid) {
       throw new Error(`表单数据验证失败: ${validation.errors.join(', ')}`);
     }
-
-    // 开始事务
-    await this.db.query('BEGIN');
 
     try {
       // 创建目标
@@ -504,13 +409,8 @@ export class GoalsService {
         await Promise.all(newTodoPromises);
       }
 
-      // 提交事务
-      await this.db.query('COMMIT');
-      
       return goal;
     } catch (error) {
-      // 回滚事务
-      await this.db.query('ROLLBACK');
       throw error;
     }
   }
@@ -523,25 +423,26 @@ export class GoalsService {
       return this.getGoals(options);
     }
 
-    const searchQuery = `
-      SELECT g.*, l.name as list_name
-      FROM goals g
-      LEFT JOIN lists l ON g.list_id = l.id
-      WHERE (
-        g.name ILIKE $1 OR 
-        g.description ILIKE $1
-      )
-      ${options.includeArchived ? '' : 'AND g.is_archived = false'}
-      ORDER BY 
-        CASE WHEN g.name ILIKE $1 THEN 1 ELSE 2 END,
-        g.created_time DESC
-      LIMIT ${options.limit || 50}
-    `;
+    const searchTerm = query.trim().toLowerCase();
+    let goals = await this.getGoals({ ...options, limit: undefined, offset: 0 });
 
-    const searchTerm = `%${query.trim()}%`;
-    const result = await this.db.query(searchQuery, [searchTerm]);
-    
-    return result.rows as Goal[];
+    goals = goals.filter(g =>
+      g.name.toLowerCase().includes(searchTerm) ||
+      (g.description ?? '').toLowerCase().includes(searchTerm)
+    );
+
+    // Sort: name matches first, then by created_time desc
+    goals.sort((a, b) => {
+      const aNameMatch = a.name.toLowerCase().includes(searchTerm) ? 0 : 1;
+      const bNameMatch = b.name.toLowerCase().includes(searchTerm) ? 0 : 1;
+      if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
+      const aTime = a.created_time ?? '';
+      const bTime = b.created_time ?? '';
+      return bTime < aTime ? -1 : bTime > aTime ? 1 : 0;
+    });
+
+    const limit = options.limit ?? 50;
+    return goals.slice(0, limit);
   }
 
   /**
@@ -563,29 +464,23 @@ export class GoalsService {
     completed: number;
     overdue: number;
   }> {
-    const query = `
-      SELECT 
-        COUNT(*) as total,
-        COUNT(CASE WHEN is_archived = false THEN 1 END) as active,
-        COUNT(CASE WHEN is_archived = true THEN 1 END) as archived,
-        COUNT(CASE WHEN due_date < NOW() AND is_archived = false THEN 1 END) as overdue
-      FROM goals
-    `;
+    const allGoals = await db.goals
+      .filter(g => g.deleted_at === null || g.deleted_at === undefined)
+      .toArray();
 
-    const result = await this.db.query(query);
-    const stats = result.rows[0] as any;
+    const now = new Date().toISOString();
+    const total = allGoals.length;
+    const active = allGoals.filter(g => !g.is_archived).length;
+    const archived = allGoals.filter(g => g.is_archived).length;
+    const overdue = allGoals.filter(g =>
+      !g.is_archived && g.due_date !== null && g.due_date !== undefined && g.due_date < now
+    ).length;
 
     // 计算已完成的目标（需要通过进度计算）
     const goalsWithProgress = await this.getGoalsWithProgress({ includeArchived: true });
     const completed = goalsWithProgress.filter(goal => goal.progress === 100).length;
 
-    return {
-      total: parseInt(stats.total) || 0,
-      active: parseInt(stats.active) || 0,
-      archived: parseInt(stats.archived) || 0,
-      completed,
-      overdue: parseInt(stats.overdue) || 0
-    };
+    return { total, active, archived, completed, overdue };
   }
 }
 

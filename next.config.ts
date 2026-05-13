@@ -41,19 +41,6 @@ const nextConfig: NextConfig = {
       ];
     }
     
-    // 保留 wasm 文件加载规则
-    config.experiments = { ...config.experiments, asyncWebAssembly: true };
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: 'asset/resource',
-    });
-    
-    // 保留 raw 文件加载规则 (如果需要)
-    config.module.rules.push({
-      resourceQuery: /raw/,
-      type: 'asset/source',
-    });
-
     return config;
   },
 };

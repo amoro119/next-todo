@@ -1,5 +1,4 @@
 // lib/config/index.ts
-import { networkStatusManager } from '../sync/NetworkStatusManager';
 
 export { 
   type UserState, 
@@ -40,14 +39,29 @@ export {
   type ConfigValidationResult
 } from './configValidator';
 
-// 导出现有的网络状态管理器
-export { networkStatusManager } from '../sync/NetworkStatusManager';
+// 网络状态管理器（简化版，替代已删除的 lib/sync/NetworkStatusManager）
+const networkListeners = new Set<() => void>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => networkListeners.forEach((cb) => cb()));
+  window.addEventListener('offline', () => networkListeners.forEach((cb) => cb()));
+}
+
+export const networkStatusManager = {
+  isOnline(): boolean {
+    return typeof navigator !== 'undefined' ? navigator.onLine : true;
+  },
+  onNetworkChange(callback: () => void): () => void {
+    networkListeners.add(callback);
+    return () => networkListeners.delete(callback);
+  },
+};
 
 // 便捷的组合函数
 export const getAppConfig = () => {
   const currentUserState = getUserState();
   const currentSyncConfig = getSyncConfig();
-  
+
   return {
     user: currentUserState,
     sync: currentSyncConfig,

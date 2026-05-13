@@ -1,11 +1,5 @@
 // components/ModeSwitcher.tsx
 import { useState, useRef, useCallback } from "react";
-import type { PGliteWithLive } from "@electric-sql/pglite/live";
-import type { PGliteWithSync } from "@electric-sql/pglite-sync";
-import { getAuthToken, getCachedAuthToken } from "../lib/auth";
-import { useAppConfig } from "../lib/hooks/useAppConfig";
-import { updateUserState } from "../lib/user/userState";
-import { SyncControlButton } from "./SyncControlButton";
 
 type AppMode = 'todo' | 'goals';
 
@@ -48,8 +42,6 @@ export default function ShortcutSwitch({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const sqlInputRef = useRef<HTMLInputElement>(null);
-  const { sync } = useAppConfig();
-
   // 持久化模式状态
   const persistMode = useCallback((mode: AppMode) => {
     if (typeof window !== 'undefined') {
@@ -93,12 +85,6 @@ export default function ShortcutSwitch({
       onImport(file);
     }
     event.target.value = "";
-  };
-
-  type PGliteWithExtensions = PGliteWithLive & PGliteWithSync;
-
-  const handleUpgradeClick = () => {
-    window.dispatchEvent(new CustomEvent('showUpgradeDialog'));
   };
 
   // 获取模式图标
@@ -165,11 +151,6 @@ export default function ShortcutSwitch({
                       onClick={onManageLists}
                     />
                   </li>
-                  {sync.enabled && (
-                    <li>
-                      <SyncControlButton />
-                    </li>
-                  )}
                   {recycleBinCount > 0 && (
                     <li>
                       <input
@@ -230,143 +211,6 @@ export default function ShortcutSwitch({
                       onClick={() => csvInputRef.current?.click()}
                     />
                   </li>
-                  {process.env.NODE_ENV === "development" && (
-                    <li>
-                      <input
-                        value="数据库REPL"
-                        type="button"
-                        className="btn-small action-repl"
-                        onClick={() =>
-                          window.open("/pg-repl-standalone.html", "_blank")
-                        }
-                      />
-                    </li>
-                  )}
-                  {sync.enabled && (
-                    <li>
-                      <input
-                        value="手动全量同步"
-                        type="button"
-                        className="btn-small action-sync"
-                        onClick={async () => {
-                          try {
-                            const win = window as unknown as {
-                              pg?: PGliteWithExtensions;
-                            };
-                            const pg = win.pg;
-                            if (!pg) {
-                              alert("数据库未初始化，无法同步");
-                              return;
-                            }
-                            const mod = await import("../app/sync");
-                            if (mod && typeof mod.forceFullTableSync === "function") {
-                              const electricProxyUrl =
-                                process.env.NEXT_PUBLIC_ELECTRIC_PROXY_URL;
-                              let token = getCachedAuthToken && getCachedAuthToken();
-                              if (!token && getAuthToken) {
-                                token = await getAuthToken();
-                              }
-                              if (!electricProxyUrl || !token) {
-                                alert("缺少同步配置");
-                                return;
-                              }
-                              // lists表
-                              await mod.forceFullTableSync({
-                                table: "lists",
-                                columns: [
-                                  "id",
-                                  "name",
-                                  "sort_order",
-                                  "is_hidden",
-                                  "modified",
-                                ],
-                                electricProxyUrl,
-                                token,
-                                pg,
-                                upsertSql: `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ($1, $2, $3, $4, $5)
-                                  ON CONFLICT(id) DO UPDATE SET name = $2, sort_order = $3, is_hidden = $4, modified = $5`,
-                              });
-                              // goals表（在todos之前，保持依赖顺序 lists -> goals -> todos）
-                              await mod.forceFullTableSync({
-                                table: "goals",
-                                columns: [
-                                  "id",
-                                  "name",
-                                  "description",
-                                  "list_id",
-                                  "start_date",
-                                  "due_date",
-                                  "priority",
-                                  "created_time",
-                                  "is_archived",
-                                  "modified",
-                                ],
-                                electricProxyUrl,
-                                token,
-                                pg,
-                                upsertSql: `INSERT INTO goals (id, name, description, list_id, start_date, due_date, priority, created_time, is_archived, modified)
-                                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-                                  ON CONFLICT(id) DO UPDATE SET name=$2, description=$3, list_id=$4, start_date=$5, due_date=$6, priority=$7, created_time=$8, is_archived=$9, modified=$10`,
-                              });
-                              // todos表
-                              await mod.forceFullTableSync({
-                                table: "todos",
-                                columns: [
-                                  "id",
-                                  "title",
-                                  "completed",
-                                  "deleted",
-                                  "sort_order",
-                                  "due_date",
-                                  "content",
-                                  "tags",
-                                  "priority",
-                                  "created_time",
-                                  "completed_time",
-                                  "start_date",
-                                  "list_id",
-                                  "repeat",
-                                  "reminder",
-                                  "is_recurring",
-                                  "recurring_parent_id",
-                                  "instance_number",
-                                  "next_due_date",
-                                  // 目标关联字段
-                                  "goal_id",
-                                  "sort_order_in_goal",
-                                  // 修改时间字段，保持与运行时shape一致
-                                  "modified",
-                                ],
-                                electricProxyUrl,
-                                token,
-                                pg,
-                                upsertSql: `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, goal_id, sort_order_in_goal, modified)
-                                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-                                  ON CONFLICT(id) DO UPDATE SET title=$2, completed=$3, deleted=$4, sort_order=$5, due_date=$6, content=$7, tags=$8, priority=$9, created_time=$10, completed_time=$11, start_date=$12, list_id=$13, repeat=$14, reminder=$15, is_recurring=$16, recurring_parent_id=$17, instance_number=$18, next_due_date=$19, goal_id=$20, sort_order_in_goal=$21, modified=$22`,
-                              });
-                              alert("全量同步已完成");
-                            } else {
-                              alert("找不到同步方法");
-                            }
-                          } catch (e) {
-                            alert(
-                              "同步失败: " + (e instanceof Error ? e.message : e)
-                            );
-                          }
-                        }}
-                      />
-                    </li>
-                  )}
-                  {!sync.enabled && sync.reason === 'free_user' && (
-                    <li>
-                      <input
-                        value="升级解锁同步"
-                        type="button"
-                        className="btn-small action-upgrade"
-                        onClick={() => handleUpgradeClick()}
-                      />
-                    </li>
-                  )}
                 </ul>
               </>
             )}
