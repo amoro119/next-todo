@@ -31,16 +31,46 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
     async function init() {
       try {
+        console.log('[DatabaseProvider] Initializing database...')
         await initializeDatabase()
+        console.log('[DatabaseProvider] Database initialized')
+
+        const todosBefore = await db.todos.toArray()
+        const listsBefore = await db.lists.toArray()
+        const goalsBefore = await db.goals.toArray()
+        console.log('[DatabaseProvider] Before sync:', {
+          todos: todosBefore.length,
+          lists: listsBefore.length,
+          goals: goalsBefore.length,
+          todos_deleted_count: todosBefore.filter(t => t.deleted_at != null).length,
+          todos_no_deleted_at: todosBefore.filter(t => t.deleted_at === undefined).length,
+        })
+
         if (cancelled) return
 
         if (supabase) {
+          console.log('[DatabaseProvider] Supabase client available, initializing realtime sync...')
           const service = RealtimeSyncService.getInstance()
           await service.initialize(supabase, db)
+          console.log('[DatabaseProvider] Realtime sync initialized')
+        } else {
+          console.log('[DatabaseProvider] No Supabase client, skipping sync')
         }
+
+        const todosAfter = await db.todos.toArray()
+        const listsAfter = await db.lists.toArray()
+        const goalsAfter = await db.goals.toArray()
+        console.log('[DatabaseProvider] After sync:', {
+          todos: todosAfter.length,
+          lists: listsAfter.length,
+          goals: goalsAfter.length,
+          todos_deleted_count: todosAfter.filter(t => t.deleted_at != null).length,
+          todos_no_deleted_at: todosAfter.filter(t => t.deleted_at === undefined).length,
+        })
 
         if (!cancelled) setIsReady(true)
       } catch (err) {
+        console.error('[DatabaseProvider] Initialization failed:', err)
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err))
         }
@@ -51,6 +81,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
+      console.log('[DatabaseProvider] Cleaning up, disconnecting sync...')
       const service = RealtimeSyncService.getInstance()
       service.disconnect()
     }

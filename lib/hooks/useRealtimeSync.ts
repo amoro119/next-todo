@@ -17,15 +17,20 @@ export function useRealtimeSync(options: UseRealtimeSyncOptions): void {
   const { client, db, config, enabled = true } = options
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      console.log('[useRealtimeSync] Sync disabled by enabled=false')
+      return
+    }
 
+    console.log('[useRealtimeSync] Initializing realtime sync...')
     const service = RealtimeSyncService.getInstance()
 
     service.initialize(client, db, config).catch((err) => {
-      console.error('Failed to initialize realtime sync:', err)
+      console.error('[useRealtimeSync] Failed to initialize realtime sync:', err)
     })
 
     return () => {
+      console.log('[useRealtimeSync] Disconnecting realtime sync...')
       service.disconnect()
     }
   }, [client, db, enabled, JSON.stringify(config)])

@@ -27,6 +27,7 @@ export async function fetchRemoteLatestTimestamp(
   client: SupabaseClient,
   table: RealtimeSyncTable,
 ): Promise<string | null> {
+  console.log(`[SyncOps] fetchRemoteLatestTimestamp: ${table}`)
   const { data, error } = await client
     .from(table)
     .select('modified')
@@ -34,18 +35,47 @@ export async function fetchRemoteLatestTimestamp(
     .limit(1)
     .single()
 
-  if (error || !data) return null
-  return (data as { modified: string }).modified
+  if (error) {
+    console.error(`[SyncOps] fetchRemoteLatestTimestamp failed for ${table}:`, error.message)
+    return null
+  }
+  const result = (data as { modified: string } | null)?.modified ?? null
+  console.log(`[SyncOps] fetchRemoteLatestTimestamp: ${table} = ${result}`)
+  return result
 }
 
 export async function fetchRemoteAllRecords(
   client: SupabaseClient,
   table: RealtimeSyncTable,
 ): Promise<SyncRecord[]> {
-  const { data, error } = await client.from(table).select('*')
+  console.log(`[SyncOps] fetchRemoteAllRecords: ${table}`)
 
-  if (error || !data) return []
-  return (data as Record<string, unknown>[]).map(fromSupabaseRow)
+  const BATCH_SIZE = 1000
+  let offset = 0
+  let hasMore = true
+  const allRecords: SyncRecord[] = []
+
+  while (hasMore) {
+    const { data, error } = await client
+      .from(table)
+      .select('*')
+      .order('id')
+      .range(offset, offset + BATCH_SIZE - 1)
+
+    if (error) {
+      console.error(`[SyncOps] fetchRemoteAllRecords failed for ${table} at offset ${offset}:`, error.message)
+      break
+    }
+
+    const batch = (data as Record<string, unknown>[] | null) ?? []
+    allRecords.push(...batch.map(fromSupabaseRow))
+    console.log(`[SyncOps] fetchRemoteAllRecords: ${table} batch offset=${offset}, received ${batch.length} records`)
+    offset += BATCH_SIZE
+    hasMore = batch.length === BATCH_SIZE
+  }
+
+  console.log(`[SyncOps] fetchRemoteAllRecords: ${table} total returned ${allRecords.length} records`)
+  return allRecords
 }
 
 export async function upsertRecords(
@@ -53,12 +83,17 @@ export async function upsertRecords(
   table: RealtimeSyncTable,
   records: SyncRecord[],
 ): Promise<SyncOperationResult> {
+  console.log(`[SyncOps] upsertRecords: ${table} count=${records.length}`)
   const payload = records.map(toSupabaseRecord)
   const { data, error } = await client.from(table).upsert(payload)
 
-  if (error) return { success: false, error: error.message }
+  if (error) {
+    console.error(`[SyncOps] upsertRecords failed for ${table}:`, error.message)
+    return { success: false, error: error.message }
+  }
 
   const rows = (data as SyncRecord[] | null) ?? records
+  console.log(`[SyncOps] upsertRecords: ${table} succeeded, affectedRows=${rows.length}`)
   return { success: true, affectedRows: rows.length }
 }
 
@@ -67,12 +102,17 @@ export async function markRecordsAsDeleted(
   table: RealtimeSyncTable,
   ids: string[],
 ): Promise<SyncOperationResult> {
+  console.log(`[SyncOps] markRecordsAsDeleted: ${table} ids=${ids.length}`)
   const { error } = await client
     .from(table)
     .update({ deleted: true, modified: new Date().toISOString() })
     .in('id', ids)
 
-  if (error) return { success: false, error: error.message }
+  if (error) {
+    console.error(`[SyncOps] markRecordsAsDeleted failed for ${table}:`, error.message)
+    return { success: false, error: error.message }
+  }
+  console.log(`[SyncOps] markRecordsAsDeleted: ${table} succeeded`)
   return { success: true }
 }
 
@@ -81,7 +121,10 @@ export async function uploadLocalChanges(
   table: RealtimeSyncTable,
   records: SyncRecord[],
 ): Promise<SyncOperationResult> {
-  return upsertRecords(client, table, records)
+  console.log(`[SyncOps] uploadLocalChanges: ${table} count=${records.length}`)
+  const result = await upsertRecords(client, table, records)
+  console.log(`[SyncOps] uploadLocalChanges: ${table} result=`, result)
+  return result
 }
 
 export async function downloadRemoteChanges(
@@ -89,11 +132,33 @@ export async function downloadRemoteChanges(
   table: RealtimeSyncTable,
   since: string,
 ): Promise<SyncRecord[]> {
-  const { data, error } = await client
-    .from(table)
-    .select('*')
-    .gt('modified', since)
+  console.log(`[SyncOps] downloadRemoteChanges: ${table} since=${since}`)
 
-  if (error || !data) return []
-  return (data as Record<string, unknown>[]).map(fromSupabaseRow)
+  const BATCH_SIZE = 1000
+  let offset = 0
+  let hasMore = true
+  const allRecords: SyncRecord[] = []
+
+  while (hasMore) {
+    const { data, error } = await client
+      .from(table)
+      .select('*')
+      .gt('modified', since)
+      .order('modified', { ascending: true })
+      .range(offset, offset + BATCH_SIZE - 1)
+
+    if (error) {
+      console.error(`[SyncOps] downloadRemoteChanges failed for ${table} at offset ${offset}:`, error.message)
+      break
+    }
+
+    const batch = (data as Record<string, unknown>[] | null) ?? []
+    allRecords.push(...batch.map(fromSupabaseRow))
+    console.log(`[SyncOps] downloadRemoteChanges: ${table} batch offset=${offset}, received ${batch.length} records`)
+    offset += BATCH_SIZE
+    hasMore = batch.length === BATCH_SIZE
+  }
+
+  console.log(`[SyncOps] downloadRemoteChanges: ${table} total returned ${allRecords.length} records`)
+  return allRecords
 }

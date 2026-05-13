@@ -41,15 +41,23 @@ export async function performInitialSync(
   const tables = options?.tables ?? DEXIE_SYNC_TABLES
   const onProgress = options?.onProgress
 
+  console.log(`[InitialSync] Starting initial sync for tables:`, tables)
+
   for (const table of tables) {
     const dexieTable = getDexieTable(db, table)
-    if (!dexieTable) continue
+    if (!dexieTable) {
+      console.warn(`[InitialSync] Skipping table "${table}" (Dexie table not found)`)
+      continue
+    }
 
     try {
+      console.log(`[InitialSync] [${table}] Phase: downloading`)
       onProgress?.({ table, phase: 'downloading', processed: 0, total: 0 })
       const remoteRecords = await fetchRemoteAllRecords(client, table)
+      console.log(`[InitialSync] [${table}] Downloaded ${remoteRecords.length} remote records`)
 
       const localRecords = await dexieTable.toArray()
+      console.log(`[InitialSync] [${table}] Found ${localRecords.length} local records`)
 
       const localMap = new Map<string, SyncRecord>()
       for (const record of localRecords) {
@@ -76,20 +84,29 @@ export async function performInitialSync(
         merged++
         onProgress?.({ table, phase: 'merging', processed: merged, total: remoteRecords.length })
       }
+      console.log(`[InitialSync] [${table}] Merged ${merged} remote records`)
 
       const localOnly = localRecords.filter(
         (record) => !remoteMap.has((record as unknown as SyncRecord).id),
       )
 
       if (localOnly.length > 0) {
+        console.log(`[InitialSync] [${table}] Uploading ${localOnly.length} local-only records`)
         onProgress?.({ table, phase: 'uploading', processed: 0, total: localOnly.length })
-        await upsertRecords(client, table, localOnly as unknown as SyncRecord[])
+        const result = await upsertRecords(
+          client,
+          table,
+          localOnly.map((r) => r as unknown as SyncRecord),
+        )
+        console.log(`[InitialSync] [${table}] Upload result:`, result)
+        onProgress?.({ table, phase: 'done', processed: localOnly.length, total: localOnly.length })
+      } else {
+        onProgress?.({ table, phase: 'done', processed: 0, total: 0 })
       }
-
-      onProgress?.({ table, phase: 'done', processed: remoteRecords.length, total: remoteRecords.length })
     } catch (err) {
       console.warn(`[InitialSync] Skipping table "${table}" (not found or unavailable):`, err)
-      onProgress?.({ table, phase: 'done', processed: 0, total: 0 })
     }
   }
+
+  console.log(`[InitialSync] Initial sync complete for all tables`)
 }

@@ -24,6 +24,10 @@ export function useTodosQuery(listId?: string): QueryResult<Todo> {
     [listId],
   )
 
+  if (data !== undefined) {
+    console.log(`[useDexieQuery] useTodosQuery returned ${data.length} todos (deleted_at == null)`)
+  }
+
   return {
     data: data ?? [],
     isLoading: data === undefined,
