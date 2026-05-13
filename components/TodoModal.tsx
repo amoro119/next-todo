@@ -75,12 +75,16 @@ function localDateToDbUTC(date: string | null | undefined): string | null {
 const cleanTodoDates = (todo: Todo): Todo => {
   const cleanDate = (date: string | null | undefined) => {
     if (!date) return null;
-    // 已经是数据库格式
+    // 已经是数据库格式 "YYYY-MM-DD HH:mm:ss+00"
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(date)) return date; // ISO 8601 format
-    if (/^\d{4}-\d{2}-\d{2} 160000$/.test(date)) return date; // YYYY-MM-DD HH:mm:ss+00
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}$/.test(date)) return date; // DB UTC format
+    // 旧格式兼容：将 "YYYY-MM-DD 160000" 转换为正确的 DB UTC 格式
+    if (/^\d{4}-\d{2}-\d{2} 160000$/.test(date)) {
+      return date.replace(' 160000', ' 16:00:00+00');
+    }
     // 只有日期
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return localDateToDbUTC(date)?.replace(' 16:00:00+00', ' 160000') || null;
+      return localDateToDbUTC(date) || null;
     }
     // 其他情况尝试转为 Date
     try {
@@ -89,7 +93,7 @@ const cleanTodoDates = (todo: Todo): Todo => {
         const year = d.getUTCFullYear();
         const month = (d.getUTCMonth() + 1).toString().padStart(2, '0');
         const day = d.getUTCDate().toString().padStart(2, '0');
-        return `${year}-${month}-${day} 160000`;
+        return `${year}-${month}-${day} 16:00:00+00`;
       }
     } catch (e) {
       console.error("Error cleaning date:", date, e);

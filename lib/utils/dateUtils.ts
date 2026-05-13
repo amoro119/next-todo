@@ -1,7 +1,15 @@
 /**
  * 通用日期格式化工具函数
  * 处理各种数据库日期格式并转换为本地日期显示
+ *
+ * 存储约定：数据库中日期字段以 UTC+0 存储，表示东八区当天零点
+ *   例：东八区 2026-05-13 00:00 → 数据库 "2026-05-12 16:00:00+00"
+ *
+ * 显示约定：所有日期展示以 Asia/Shanghai 时区为准
  */
+
+// 数据库 UTC 格式：YYYY-MM-DD HH:mm:ss+00 或 YYYY-MM-DD HH:mm:ss+HH
+const DB_UTC_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[+-]\d{2}$/;
 
 /**
  * 将数据库中的日期字符串转换为本地日期对象
@@ -10,43 +18,64 @@
  */
 export function parseDatabaseDate(dateString: string | null | undefined): Date | null {
   if (!dateString) return null;
-  
-  // 尝试解析不同的日期格式
+
   let date: Date | null = null;
-  
-  // 如果是 YYYY-MM-DD 格式
+
+  // 纯日期 YYYY-MM-DD：用本地时间构造，避免 JS 将其解释为 UTC 导致时区偏移
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     const [year, month, day] = dateString.split('-').map(Number);
     date = new Date(year, month - 1, day);
   }
-  // 如果是数据库格式 YYYY-MM-DD 16:00:00+00 或类似格式
-  else if (/^(\d{4}-\d{2}-\d{2})/.test(dateString)) {
-    const match = dateString.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (match) {
-      const [year, month, day] = match[1].split('-').map(Number);
-      date = new Date(year, month - 1, day);
-    }
+  // 数据库 UTC 格式 "YYYY-MM-DD HH:mm:ss+00"：保留时区信息交给 JS 原生解析
+  // new Date("2026-05-12 16:00:00+00") → UTC 5/12 16:00，UTC+8 下等于 5/13 00:00
+  else if (DB_UTC_PATTERN.test(dateString)) {
+    date = new Date(dateString);
   }
-  // 其他格式尝试直接解析
+  // 其他格式（ISO 8601 等）直接解析
   else {
     date = new Date(dateString);
   }
-  
-  // 检查日期是否有效
+
   if (!date || isNaN(date.getTime())) {
     console.error('Invalid date string:', dateString);
     return null;
   }
-  
+
   return date;
 }
 
 /**
- * 格式化日期为本地化字符串
- * @param dateString 数据库中的日期字符串
- * @param options 格式化选项
- * @returns 格式化后的日期字符串
+ * 将数据库 UTC 日期字符串转换为用于展示的 YYYY-MM-DD 字符串（Asia/Shanghai 时区）
+ * 这是展示层的统一入口，替代各组件中分散的 utcToLocalDateString 实现。
+ *
+ * @param utcDate 数据库中的日期字符串（任意格式）
+ * @returns YYYY-MM-DD 格式字符串，空字符串表示无效
  */
+export function dbUTCToDisplayDate(utcDate: string | null | undefined): string {
+  if (!utcDate) return '';
+
+  // 纯日期字符串无需转换，直接返回
+  if (/^\d{4}-\d{2}-\d{2}$/.test(utcDate)) return utcDate;
+
+  try {
+    const date = new Date(utcDate);
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date for display:', utcDate);
+      return '';
+    }
+    // en-CA locale 输出 YYYY-MM-DD 格式，timeZone 指定东八区
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+  } catch (e) {
+    console.error('Error converting UTC date for display:', utcDate, e);
+    return '';
+  }
+}
+
 export function formatDate(
   dateString: string | null | undefined,
   options: Intl.DateTimeFormatOptions = {
@@ -56,12 +85,12 @@ export function formatDate(
   }
 ): string {
   if (!dateString) return '';
-  
+
   const date = parseDatabaseDate(dateString);
   if (!date) return '无效日期';
-  
+
   try {
-    return date.toLocaleDateString('zh-CN', options);
+    return date.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai', ...options });
   } catch (error) {
     console.error('Error formatting date:', error);
     return '无效日期';
@@ -81,19 +110,14 @@ export function formatShortDate(dateString: string | null | undefined): string {
   });
 }
 
-/**
- * 格式化日期时间为本地化字符串
- * @param dateString 数据库中的日期时间字符串
- * @returns 格式化后的日期时间字符串
- */
 export function formatDateTime(dateString: string | null | undefined): string {
   if (!dateString) return '';
-  
+
   const date = parseDatabaseDate(dateString);
   if (!date) return '无效日期';
-  
+
   try {
-    return date.toLocaleString('zh-CN');
+    return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
   } catch (error) {
     console.error('Error formatting date time:', error);
     return '无效日期';
