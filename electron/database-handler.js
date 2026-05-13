@@ -1,8 +1,7 @@
 // electron/database-handler.js
-const { app, ipcMain } = require('electron');
-const { PGlite } = require('@electric-sql/pglite');
-const path = require('path');
-const fs = require('fs');
+// This file is intentionally empty.
+// Database access is handled by Dexie (IndexedDB) in the renderer process.
+// IndexedDB is available in Electron's renderer (Chromium), so no main-process DB handler is needed.
 
 const migrationsPath = path.join(__dirname, '../db/migrations-client/index.js');
 let migratePromise = import(migrationsPath).catch(err => {

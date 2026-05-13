@@ -1,7 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.scss";
-import DbProvider from "./electric-client-provider"; // 现在导入的是 DbProvider
+import { DatabaseProvider } from "@/app/providers";
 
 export const metadata: Metadata = {
   title: "Todo List Local-First",
@@ -19,9 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <DbProvider>
+        <DatabaseProvider>
           {children}
-        </DbProvider>
+        </DatabaseProvider>
       </body>
     </html>
   );

@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
-import { useLiveQuery } from "@electric-sql/pglite-react";
+import { useLiveQuery as useDexieLiveQuery } from "dexie-react-hooks";
 import debounce from "lodash.debounce";
 import { parseDidaCsv } from "../lib/csvParser";
 import { TodoList } from "../components/TodoList";
@@ -29,18 +29,15 @@ import {
   inboxPerfMonitor,
   InboxPerformanceDisplay,
 } from "../components/InboxPerformanceOptimizer";
-import type { Todo, List } from "../lib/types";
-import dynamic from "next/dynamic";
-import { getDbWrapper } from "../lib/sync/initOfflineSync";
+import type { Todo, List, Goal } from "../lib/types";
 import { RecurringTaskIntegration } from "../lib/recurring/RecurringTaskIntegration";
 import { UpgradePrompt } from "../components/UpgradePrompt";
 import { ModeIndicator } from "../components/ModeIndicator";
-
-// 动态导入调试组件，避免服务端渲染问题
-const OfflineSyncDebugger = dynamic(
-  () => import("../components/OfflineSyncDebugger"),
-  { ssr: false }
-);
+import { db } from "@/lib/db/dexie";
+import { createDexieDatabaseAPI } from "@/lib/db/databaseAPI";
+import type { DatabaseAPI } from "@/lib/db/databaseAPI";
+import { useTodosQuery, useListsQuery, useGoalsQuery } from "@/lib/hooks/useDexieQuery";
+import type { Todo as DbTodo } from "@/lib/db/types";
 
 /**
  * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
@@ -62,101 +59,75 @@ function sanitizeUuidField(value: unknown): string | null {
   return null;
 }
 
-// --- 统一的数据库API层 ---
-interface DatabaseAPI {
-  query: <T = any>(sql: string, params?: any[]) => Promise<{ rows: T[] }>;
-  insert: (
-    table: "todos" | "lists" | "goals",
-    data: Record<string, any>
-  ) => Promise<unknown>;
-  update: (
-    table: "todos" | "lists" | "goals",
-    id: string,
-    data: Record<string, unknown>
-  ) => Promise<unknown>;
-  delete: (table: "todos" | "lists" | "goals", id: string) => Promise<unknown>;
-  transaction: (
-    queries: { sql: string; params?: unknown[] }[]
-  ) => Promise<void>;
-  rawWrite: (sql: string, params?: unknown[]) => Promise<unknown>;
-}
+// Backward-compat wrapper for RecurringTaskIntegration
+function createBackwardCompatApi(base: DatabaseAPI): DatabaseAPI & {
+  insert: (table: string, data: Record<string, unknown>) => Promise<unknown>;
+  query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
+  transaction: (queries: Array<{ sql: string; params?: unknown[] }>) => Promise<void>;
+} {
+  return {
+    ...base,
 
-function getDatabaseAPI(): DatabaseAPI {
-  // 优先使用渲染进程中的 PGlite（与 useLiveQuery 使用的实例一致），避免读写落在不同数据库
-  if (typeof window !== "undefined" && (window as unknown).pg) {
-    const dbWrapper = getDbWrapper();
+    async insert(table: string, data: Record<string, unknown>) {
+      if (table === "todos") {
+        const mapped: Record<string, unknown> = {
+          ...data,
+          content: data.content ?? data.notes ?? null,
+        };
+        delete mapped.notes;
+        delete mapped.list_name;
+        return base.addTodo(mapped as Partial<DbTodo>);
+      }
+      if (table === "lists") return base.addList(data as Partial<List>);
+      if (table === "goals") return base.addGoal(data as Partial<Goal>);
+      throw new Error(`Unsupported table: ${table}`);
+    },
 
-    if (!dbWrapper) {
-      // 免费模式或未启用离线包装：直接使用 PGlite 实例
-      const pg = (window as unknown as { pg: unknown }).pg;
-      return {
-        query: (sql, params) => pg.query(sql, params),
-        insert: (table, data) => {
-          const keys = Object.keys(data);
-          const values = Object.values(data);
-          const placeholders = keys.map((_, i) => `${i + 1}`).join(", ");
-          return pg.query(
-            `INSERT INTO ${table} (${keys.join(
-              ", "
-            )}) VALUES (${placeholders})`,
-            values
-          );
-        },
-        update: (table, id, data) => {
-          const keys = Object.keys(data);
-          const values = Object.values(data);
-          const setClause = keys
-            .map((key, i) => `${key} = ${i + 2}`)
-            .join(", ");
-          return pg.query(`UPDATE ${table} SET ${setClause} WHERE id = $1`, [
-            id,
-            ...values,
-          ]);
-        },
-        delete: (table, id) =>
-          pg.query(`DELETE FROM ${table} WHERE id = $1`, [id]),
-        rawWrite: (sql, params) => pg.query(sql, params),
-        transaction: async (queries) => {
-          console.warn(
-            "Executing a raw transaction which is not intercepted for offline sync."
-          );
-          await pg.transaction(async (tx: unknown) => {
-            for (const { sql, params } of queries) {
-              await (tx as unknown).query(sql, params);
-            }
-          });
-        },
-      };
-    }
+    async query<T = unknown>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      if (sql.includes("SELECT * FROM todos WHERE id = ANY(")) {
+        const todos = await base.getTodos();
+        const ids = (params?.[0] as string[]) || [];
+        const matched = todos.filter(t => ids.includes(t.id));
+        return { rows: matched as T[] };
+      }
+      if (sql.includes("SELECT * FROM todos WHERE id")) {
+        const todos = await base.getTodos();
+        const id = params?.[0] as string;
+        const matched = todos.filter(t => t.id === id);
+        return { rows: matched as T[] };
+      }
+      if (sql.includes("SELECT id FROM todos WHERE is_recurring")) {
+        const todos = await base.getTodos();
+        const matched = todos
+          .filter(t => t.is_recurring && !t.completed)
+          .map(t => ({ id: t.id }));
+        return { rows: matched as T[] };
+      }
+      console.warn("Unsupported query pattern:", sql.substring(0, 80));
+      return { rows: [] as T[] };
+    },
 
-    return {
-      query: (sql, params) => dbWrapper.raw.query(sql, params),
-      insert: (table, data) => dbWrapper.insert(table, data),
-      update: (table, id, data) => dbWrapper.update(table, id, data),
-      delete: (table, id) => dbWrapper.delete(table, id),
-      rawWrite: (sql, params) => dbWrapper.raw.query(sql, params),
-      transaction: async (queries) => {
-        console.warn(
-          "Executing a raw transaction which is not intercepted for offline sync."
-        );
-        await dbWrapper.raw.transaction(async (tx: unknown) => {
-          for (const { sql, params } of queries) {
-            await (tx as unknown).query(sql, params);
-          }
-        });
-      },
-    };
-  }
-
-  // 回退到 Electron IPC（仅当没有渲染进程 PGlite 可用时）
-  if (typeof window !== "undefined" && (window as unknown).electron?.db) {
-    return (window as unknown).electron.db as DatabaseAPI;
-  }
-
-  // 环境不可用
-  throw new Error(
-    "Database API not available. Please ensure the application is properly initialized."
-  );
+    async transaction(queries: Array<{ sql: string; params?: unknown[] }>) {
+      for (const q of queries) {
+        if (q.sql.toUpperCase().startsWith("INSERT INTO TODOS")) {
+          const p = (q.params || []) as unknown[];
+          const data: Record<string, unknown> = {
+            id: p[0],
+            title: p[1],
+            content: p[2] ?? null,
+            completed: p[3] ?? false,
+            due_date: p[4] ?? null,
+            created_time: p[5] ?? new Date().toISOString(),
+            repeat: p[7] ?? null,
+            is_recurring: p[8] ?? false,
+            instance_number: p[9] ?? null,
+            next_due_date: p[10] ?? null,
+          };
+          await base.addTodo(data as Partial<DbTodo>);
+        }
+      }
+    },
+  };
 }
 
 // --- 日期缓存类 ---
@@ -187,13 +158,12 @@ class DateCache {
     return this.dateCache.get(utcDate) || "";
   }
 
-  setDateCache(utcDate: string, result: string): void {
+  setDateCache(utcDate: string, result: string) {
     this.dateCache.set(utcDate, result);
   }
 
-  clear(): void {
+  clear() {
     this.dateCache.clear();
-    this.todayCache = null;
   }
 }
 
@@ -280,11 +250,11 @@ function formatDbDate(val: unknown): string | null {
   return null;
 }
 
-const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
+const normalizeTodo = (raw: Todo): Todo => ({
   id: String(raw.id),
   title: String(raw.title || ""),
   completed: Boolean(raw.completed),
-  deleted: Boolean(raw.deleted),
+  deleted: Boolean(raw.deleted_at) || Boolean(raw.deleted),
   sort_order: Number(raw.sort_order) || 0,
   due_date: formatDbDate(raw.due_date),
   content: raw.content ? String(raw.content) : null,
@@ -313,7 +283,7 @@ const normalizeTodo = (raw: Record<string, unknown>): Todo => ({
     : null,
 });
 
-const normalizeList = (raw: Record<string, unknown>): List => ({
+const normalizeList = (raw: List): List => ({
   // ... (no changes in this function)
   // ...
   id: String(raw.id),
@@ -344,12 +314,15 @@ type LastAction =
     };
 
 export default function TodoListPage() {
-  const db = getDatabaseAPI();
+  const api = useMemo(() => {
+    const base = createDexieDatabaseAPI(db);
+    return createBackwardCompatApi(base);
+  }, []);
 
   // 初始化重复任务系统
   useEffect(() => {
-    RecurringTaskIntegration.initialize(db);
-  }, [db]);
+    RecurringTaskIntegration.initialize(api);
+  }, [api]);
 
   // 模式状态管理
   const [currentMode, setCurrentMode] = useState<"todo" | "goals">(() => {
@@ -360,83 +333,83 @@ export default function TodoListPage() {
     return "todo";
   });
 
-    const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
-
   const [currentView, setCurrentView] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      const savedMode = localStorage.getItem("app_mode") as "todo" | "goals";
-      return savedMode === "goals" ? "goals-main" : "today";
+      return localStorage.getItem("currentView") || "inbox";
     }
-    return "today";
+    return "inbox";
   });
+
+  const [searchRefreshTrigger, setSearchRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    localStorage.setItem("currentView", currentView);
+  }, [currentView]);
+
+  const [newTodoTitle, setNewTodoTitle] = useState("");
+  const [newTodoDate, setNewTodoDate] = useState<string | null>(null);
+  const [newGoalTitle, setNewGoalTitle] = useState("");
   const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
-    const [isManageListsOpen, setIsManageListsOpen] = useState(false);
-  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
-  const [newTodoTitle, setNewTodoTitle] = useState("");
-  const [newGoalTitle, setNewGoalTitle] = useState("");
-  const [newTodoDate, setNewTodoDate] = useState<string | null>(null);
-  const [lastAction, setLastAction] = useState<LastAction | null>(null);
-  const [isEditingSlogan, setIsEditingSlogan] = useState(false);
-  const [originalSlogan, setOriginalSlogan] = useState("");
   const [slogan, setSlogan] = useState("今日事今日毕，勿将今事待明日!.☕");
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [searchRefreshTrigger, setSearchRefreshTrigger] = useState(0);
+  const [originalSlogan, setOriginalSlogan] = useState(slogan);
+  const [isEditingSlogan, setIsEditingSlogan] = useState(false);
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
+  const [isManageListsModalOpen, setIsManageListsModalOpen] = useState(false);
+  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [isCalendarCreateModalOpen, setIsCalendarCreateModalOpen] =
     useState(false);
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string>("");
-  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
-  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
-  const addTodoInputRef = useRef<HTMLInputElement>(null);
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+
   const goalsMainInterfaceRef = useRef<GoalsMainInterfaceRef>(null);
+  const addTodoInputRef = useRef<HTMLInputElement>(null);
 
-  // --- START: BUG FIX ---
-  // When the view changes, if it's not the calendar view,
-  // reset the newTodoDate state to null.
-  useEffect(() => {
-    if (currentView !== "calendar") {
-      setNewTodoDate(null);
-    }
-  }, [currentView]);
-  // --- END: BUG FIX ---
-
-  const todosResult = useLiveQuery(
-    "SELECT * FROM todos ORDER BY sort_order, created_time DESC"
-  );
-  const listsResult = useLiveQuery("SELECT * FROM lists ORDER BY sort_order");
-  const sloganResult = useLiveQuery(
-    "SELECT value FROM meta WHERE key = 'slogan'"
-  );
-  const goalsResult = useLiveQuery(
-    "SELECT g.*, l.name as list_name, COUNT(t.id) as total_tasks, COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks FROM goals g LEFT JOIN lists l ON g.list_id = l.id LEFT JOIN todos t ON t.goal_id = g.id AND t.deleted = false WHERE g.is_archived = false GROUP BY g.id, l.name ORDER BY g.created_time DESC"
-  );
+  // 使用 Dexie hooks 替代 useLiveQuery
+  const { data: todosRaw } = useTodosQuery();
+  const { data: listsRaw } = useListsQuery();
+  const { data: goalsRaw } = useGoalsQuery();
+  const sloganMeta = useDexieLiveQuery(() => db.meta.get("slogan"), []);
 
   const todos = useMemo(() => {
-    if (!todosResult?.rows) return [];
-    return todosResult.rows.map(normalizeTodo);
-  }, [todosResult?.rows]);
+    if (!todosRaw) return [];
+    return todosRaw.map(normalizeTodo);
+  }, [todosRaw]);
 
   const lists = useMemo(() => {
-    if (!listsResult?.rows) return [];
-    return listsResult.rows.map(normalizeList);
-  }, [listsResult?.rows]);
+    if (!listsRaw) return [];
+    return listsRaw.map(normalizeList);
+  }, [listsRaw]);
 
   const goals = useMemo(() => {
-    if (!goalsResult?.rows) return [];
-    return goalsResult.rows.map((goal: unknown) => ({
-      ...goal,
-      progress:
-        goal.total_tasks > 0
-          ? Math.round((goal.completed_tasks / goal.total_tasks) * 100)
-          : 0,
-    }));
-  }, [goalsResult?.rows]);
+    if (!goalsRaw || !listsRaw || !todosRaw) return [];
+    return goalsRaw.map((goal) => {
+      const list = listsRaw.find((l) => l.id === goal.list_id);
+      const taskTodos = todosRaw.filter(
+        (t) => t.goal_id === goal.id && !t.deleted
+      );
+      const completedTasks = taskTodos.filter((t) => t.completed);
+      return {
+        ...goal,
+        list_name: list?.name ?? null,
+        total_tasks: taskTodos.length,
+        completed_tasks: completedTasks.length,
+        progress:
+          taskTodos.length > 0
+            ? Math.round((completedTasks.length / taskTodos.length) * 100)
+            : 0,
+      } as Goal;
+    });
+  }, [goalsRaw, listsRaw, todosRaw]);
 
   useEffect(() => {
-    if (sloganResult?.rows?.[0]?.value) {
-      setSlogan(String(sloganResult.rows[0].value));
+    if (sloganMeta?.value) {
+      setSlogan(String(sloganMeta.value));
     }
-  }, [sloganResult?.rows]);
+  }, [sloganMeta]);
 
   // 使用优化的收件箱过滤函数
   const {
@@ -474,9 +447,9 @@ export default function TodoListPage() {
 
   // Keyboard shortcut for search modal (Ctrl+K / Cmd+K)
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
-        event.preventDefault();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
         setIsSearchModalOpen((prev) => !prev);
       }
     };
@@ -543,11 +516,11 @@ export default function TodoListPage() {
 
     const endFilter = inboxPerfMonitor.startOperation("filter");
     const filteredTodos = filterInboxTodos(uncompletedTodos);
-    endFilter(filteredTodos.length);
+    endFilter();
 
     const endSort = inboxPerfMonitor.startOperation("sort");
     const sortedTodos = sortInboxTodos(filteredTodos);
-    endSort(sortedTodos.length);
+    endSort();
 
     return sortedTodos;
   }, [currentView, uncompletedTodos, filterInboxTodos, sortInboxTodos]);
@@ -563,40 +536,37 @@ export default function TodoListPage() {
         const startDateStr = utcToLocalDateString(t.start_date);
         const dueDateStr = utcToLocalDateString(t.due_date);
 
-        // If task has both start_date and due_date, check if today falls within the range
+        // If task has both start_date and due_date, check if today is within the range
         if (startDateStr && dueDateStr) {
-          return startDateStr <= todayStrInUTC8 && todayStrInUTC8 <= dueDateStr;
+          return startDateStr <= todayStrInUTC8 && dueDateStr >= todayStrInUTC8;
         }
 
-        // If task only has due_date, check if it matches today
+        // If task only has due_date, check if due_date is today or past
         if (dueDateStr) {
-          return dueDateStr === todayStrInUTC8;
+          return dueDateStr <= todayStrInUTC8;
         }
 
-        // If task only has start_date, check if it matches today
+        // If task only has start_date, check if start_date is today or past
         if (startDateStr) {
-          return startDateStr === todayStrInUTC8;
+          return startDateStr <= todayStrInUTC8 && !t.completed;
         }
 
         return false;
       })
-      .sort((a, b) => {
-        // First sort by completion status (uncompleted first)
-        if (a.completed !== b.completed) {
-          return a.completed ? 1 : -1;
-        }
-        // Then sort by priority (higher priority first)
-        return (b.priority || 0) - (a.priority || 0);
+      .sort((a: Todo, b: Todo) => {
+        const aDate = utcToLocalDateString(a.due_date || a.start_date);
+        const bDate = utcToLocalDateString(b.due_date || b.start_date);
+        if (aDate && bDate) return aDate.localeCompare(bDate);
+        if (aDate) return -1;
+        if (bDate) return 1;
+        return 0;
       });
   }, [currentView, todosWithListNames, todayStrInUTC8]);
 
-  // 优化的列表任务计算
   const listTodos = useMemo(() => {
-    if (
-      ["inbox", "completed", "recycle", "today", "calendar"].includes(
-        currentView
-      )
-    ) {
+    if (currentView === "inbox" || currentView === "completed" ||
+        currentView === "recycle" || currentView === "today" ||
+        currentView === "calendar" || currentView === "goals-main") {
       return [];
     }
 
@@ -686,13 +656,14 @@ export default function TodoListPage() {
     debounce(async () => {
       setIsEditingSlogan(false);
       if (slogan === originalSlogan) return;
-      // This write is not intercepted for offline sync, which is acceptable for this feature.
-      await db.rawWrite(
-        `INSERT INTO meta (key, value) VALUES ('slogan', $1) ON CONFLICT(key) DO UPDATE SET value = $1`,
-        [slogan]
-      );
+      await db.meta.put({
+        key: "slogan",
+        value: slogan,
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+      });
     }, 500),
-    [slogan, originalSlogan, db]
+    [slogan, originalSlogan]
   );
 
   const handleSloganKeyDown = useCallback(
@@ -721,7 +692,7 @@ export default function TodoListPage() {
         created_time: new Date().toISOString(),
       };
 
-      await db.insert("todos", newTodoData);
+      await api.addTodo(newTodoData);
       setIsTodoModalOpen(false);
       setNewTodoTitle("");
       // 修复：只有在非日历视图下才重置日期，保持日历视图中的日期状态
@@ -729,7 +700,7 @@ export default function TodoListPage() {
         setNewTodoDate(null);
       }
     },
-    [db, currentView]
+    [api, currentView]
   );
 
   const handleCreateTodoFromCalendar = useCallback(
@@ -750,10 +721,10 @@ export default function TodoListPage() {
         deleted: false,
       };
 
-      await db.insert("todos", newTodoData);
+      await api.addTodo(newTodoData);
       setIsCalendarCreateModalOpen(false);
     },
-    [db]
+    [api]
   );
 
   const handleUpdateTodo = useCallback(
@@ -765,19 +736,19 @@ export default function TodoListPage() {
       if (!updates || Object.keys(updates).length === 0) return;
       
       // 先更新任务
-      await db.update("todos", todoId, updates);
+      await api.updateTodo(todoId, updates);
       
       // 如果是完成操作，处理周期任务
       if (updates.completed === true) {
         try {
-          await RecurringTaskIntegration.handleTaskUpdate(todoId, updates, db);
+          await RecurringTaskIntegration.handleTaskUpdate(todoId, updates, api);
         } catch (error) {
           console.error('Failed to handle recurring task:', error);
           // 不影响原任务的完成状态
         }
       }
     },
-    [db]
+    [api]
   );
 
   const handleToggleComplete = useCallback(
@@ -811,11 +782,11 @@ export default function TodoListPage() {
       if (!todoToDelete) return;
       setLastAction({ type: "delete", data: todoToDelete });
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-      await db.update("todos", todoId, { deleted: true });
+      await api.updateTodo(todoId, { deleted: true });
       // 触发搜索结果刷新
       setSearchRefreshTrigger((prev) => prev + 1);
     },
-    [todos, selectedTodo, db]
+    [todos, selectedTodo, api]
   );
 
   const handleRestoreTodo = useCallback(
@@ -824,11 +795,11 @@ export default function TodoListPage() {
       if (!todoToRestore) return;
       setLastAction({ type: "restore", data: todoToRestore });
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-      await db.update("todos", todoId, { deleted: false });
+      await api.updateTodo(todoId, { deleted: false });
       // 触发搜索结果刷新
       setSearchRefreshTrigger((prev) => prev + 1);
     },
-    [recycledTodos, selectedTodo, db]
+    [recycledTodos, selectedTodo, api]
   );
 
   const handlePermanentDeleteTodo = useCallback(
@@ -839,11 +810,11 @@ export default function TodoListPage() {
         `确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`
       );
       if (confirmed) {
-        await db.delete("todos", todoId);
+        await api.deleteTodo(todoId);
         if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
       }
     },
-    [recycledTodos, selectedTodo, db]
+    [recycledTodos, selectedTodo, api]
   );
 
   const handleSaveTodoDetails = useCallback(
@@ -868,19 +839,19 @@ export default function TodoListPage() {
           is_hidden: false,
           modified: new Date().toISOString(),
         };
-        await db.insert("lists", newList);
+        await api.addList(newList);
         return newList;
       } catch (error) {
         console.error("Failed to add list:", error);
         alert(
           `添加清单失败: ${
-            error instanceof Error ? error.message : "Unknown error"
+            error instanceof Error ? error.message : "未知错误"
           }`
         );
         return null;
       }
     },
-    [lists.length, db]
+    [lists, api]
   );
 
   const handleDeleteList = useCallback(
@@ -892,44 +863,39 @@ export default function TodoListPage() {
       );
       if (!confirmed) return;
 
-      // 先获取需要更新的待办事项
-      const todosToUpdateQuery = await db.query<{ id: string }>(
-        `SELECT id FROM todos WHERE list_id = $1`,
-        [listId]
-      );
-      const todosToUpdate = todosToUpdateQuery.rows;
+      // 获取需要更新的待办事项
+      const allTodos = await api.getTodos();
+      const todosToUpdate = allTodos.filter((t) => t.list_id === listId);
 
-      // 使用包装器方法来确保同步拦截器能够捕获操作
       // 1. 先将清单下的所有待办事项移至收件箱
       for (const todo of todosToUpdate) {
-        await db.update("todos", todo.id, { list_id: null });
+        await api.updateTodo(todo.id, { list_id: null });
       }
 
-      // 2. 删除清单（这将被同步拦截器捕获并同步到远程）
-      await db.delete("lists", listId);
+      // 2. 删除清单
+      await api.deleteList(listId);
 
       if (currentView === listToDelete.name) setCurrentView("inbox");
     },
-    [lists, currentView, db]
+    [lists, currentView, api]
   );
 
   const handleUpdateList = useCallback(
     async (listId: string, updates: Partial<Omit<List, "id">>) => {
       if (Object.keys(updates).length === 0) return;
-      await db.update("lists", listId, updates);
+      await api.updateList(listId, updates);
     },
-    [db]
+    [api]
   );
 
   const handleUpdateListsOrder = useCallback(
     async (reorderedLists: List[]) => {
-      // 使用包装器方法来确保同步拦截器能够捕获操作
       for (let index = 0; index < reorderedLists.length; index++) {
         const list = reorderedLists[index];
-        await db.update("lists", list.id, { sort_order: index });
+        await api.updateList(list.id, { sort_order: index });
       }
     },
-    [db]
+    [api]
   );
 
   const handleAddTodoFromCalendar = useCallback((date: string) => {
@@ -982,32 +948,30 @@ export default function TodoListPage() {
             localStorage.setItem("app_mode", "goals");
           }
 
-          // 直接从数据库查询新创建的目标
-          const result = await db.query(
-            `
-          SELECT g.*, l.name as list_name, 
-                 COUNT(t.id) as total_tasks, 
-                 COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks 
-          FROM goals g 
-          LEFT JOIN lists l ON g.list_id = l.id 
-          LEFT JOIN todos t ON t.goal_id = g.id AND t.deleted = false 
-          WHERE g.id = $1 AND g.is_archived = false 
-          GROUP BY g.id, l.name
-        `,
-            [goalId]
-          );
+          // 从数据库查询新创建的目标
+          const allGoals = await api.getGoals();
+          const goalRaw = allGoals.find((g) => g.id === goalId);
 
-          if (result.rows.length > 0) {
-            const goalData = result.rows[0];
+          if (goalRaw) {
+            const allLists = await api.getLists();
+            const list = allLists.find((l) => l.id === goalRaw.list_id);
+            const allTodos = await api.getTodos();
+            const taskTodos = allTodos.filter(
+              (t) => t.goal_id === goalId && !t.deleted
+            );
+            const completedTasks = taskTodos.filter((t) => t.completed);
             const goal = {
-              ...goalData,
+              ...goalRaw,
+              list_name: list?.name ?? null,
+              total_tasks: taskTodos.length,
+              completed_tasks: completedTasks.length,
               progress:
-                goalData.total_tasks > 0
+                taskTodos.length > 0
                   ? Math.round(
-                      (goalData.completed_tasks / goalData.total_tasks) * 100
+                      (completedTasks.length / taskTodos.length) * 100
                     )
                   : 0,
-            };
+            } as Goal;
 
             console.log("从数据库获取到目标数据:", goal);
 
@@ -1036,7 +1000,7 @@ export default function TodoListPage() {
         }
       });
     },
-    [goals, db]
+    [api]
   );
 
   // 移除 handleViewGoalsList 函数，因为不再需要通过按钮进入目标列表
@@ -1062,7 +1026,7 @@ export default function TodoListPage() {
           };
 
           console.log("更新目标数据:", updateData);
-          await db.update("goals", goalId, updateData);
+          await api.updateGoal(goalId, updateData);
           console.log("目标更新成功，ID:", goalId);
           
           // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据
@@ -1072,18 +1036,18 @@ export default function TodoListPage() {
                 ...prevSelectedGoal,
                 ...updateData,
                 id: goalId
-              };
+              } as Goal;
             }
             return prevSelectedGoal;
           });
-          
+
           // 更新 GoalsMainInterface 组件内部的 selectedGoal 状态
           if (goalsMainInterfaceRef.current) {
             const updatedGoal = {
               ...goals.find(g => g.id === goalId),
               ...updateData,
               id: goalId
-            };
+            } as Goal;
             goalsMainInterfaceRef.current.updateSelectedGoal(updatedGoal);
           }
         } else {
@@ -1101,7 +1065,7 @@ export default function TodoListPage() {
           };
 
           console.log("准备插入目标数据:", goal);
-          await db.insert("goals", goal);
+          await api.addGoal(goal);
           console.log("目标插入成功，ID:", goalId);
         }
 
@@ -1117,7 +1081,7 @@ export default function TodoListPage() {
             console.log("关联现有待办事项:", associatedTodos.existing);
             for (let i = 0; i < associatedTodos.existing.length; i++) {
               const todoId = associatedTodos.existing[i];
-              await db.update("todos", todoId, {
+              await api.updateTodo(todoId, {
                 goal_id: goalId,
                 sort_order_in_goal: i + 1,
               });
@@ -1143,20 +1107,24 @@ export default function TodoListPage() {
                   sort_order_in_goal: existingCount + i + 1,
                   created_time: new Date().toISOString(),
                 };
-                await db.insert("todos", newTodo);
+                await api.addTodo(newTodo);
               }
             }
           }
         }
 
-        console.log("目标保存完成！");
         return goalId;
       } catch (error) {
         console.error("保存目标失败:", error);
+        alert(
+          `保存目标失败: ${
+            error instanceof Error ? error.message : "未知错误"
+          }`
+        );
         throw error;
       }
     },
-    [db]
+    [goals, api]
   );
 
   const handleUpdateGoal = useCallback(
@@ -1169,7 +1137,7 @@ export default function TodoListPage() {
         if (updateData.list_id !== undefined) {
           updateData.list_id = sanitizeUuidField(updateData.list_id);
         }
-        await db.update("goals", updatedGoal.id, updateData);
+        await api.updateGoal(updatedGoal.id, updateData);
         
         // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据
         setSelectedGoal(prevSelectedGoal => {
@@ -1190,18 +1158,18 @@ export default function TodoListPage() {
         );
       }
     },
-    [db, setSelectedGoal]
+    [api]
   );
 
   const handleCreateTodoForGoal = useCallback(
-    async (todoData: Omit<Todo, "id" | "created_time">) => {
+    async (todoData: Partial<Todo>) => {
       try {
         const newTodo = {
           ...todoData,
           id: uuid(),
           created_time: new Date().toISOString(),
         };
-        await db.insert("todos", newTodo);
+        await api.addTodo(newTodo);
       } catch (error) {
         console.error("创建待办事项失败:", error);
         alert(
@@ -1211,7 +1179,7 @@ export default function TodoListPage() {
         );
       }
     },
-    [db]
+    [api]
   );
 
   const handleDeleteGoal = useCallback(
@@ -1224,21 +1192,18 @@ export default function TodoListPage() {
       );
       
       if (confirmed) {
-        await db.delete("goals", goalId);
+        await api.deleteGoal(goalId);
         // 同时删除与该目标关联的所有待办事项
-        const todosToUpdateQuery = await db.query<{ id: string }>(
-          `SELECT id FROM todos WHERE goal_id = $1`,
-          [goalId]
-        );
-        const todosToUpdate = todosToUpdateQuery.rows;
+        const allTodos = await api.getTodos();
+        const todosToUpdate = allTodos.filter((t) => t.goal_id === goalId);
         
         // 将目标下的所有待办事项的目标ID设为null
         for (const todo of todosToUpdate) {
-          await db.update("todos", todo.id, { goal_id: null });
+          await api.updateTodo(todo.id, { goal_id: null });
         }
       }
     },
-    [goals, db]
+    [goals, api]
   );
 
   const handleAssociateTasks = useCallback(
@@ -1246,7 +1211,7 @@ export default function TodoListPage() {
       try {
         // 更新每个任务的 goal_id 字段
         for (const taskId of taskIds) {
-          await db.update("todos", taskId, { goal_id: goalId });
+          await api.updateTodo(taskId, { goal_id: goalId });
         }
         console.log(`成功关联 ${taskIds.length} 个任务到目标 ${goalId}`);
       } catch (error) {
@@ -1258,7 +1223,7 @@ export default function TodoListPage() {
         );
       }
     },
-    [db]
+    [api]
   );
 
   const handleUndo = useCallback(async () => {
@@ -1298,7 +1263,7 @@ export default function TodoListPage() {
       );
     }
     setLastAction(null);
-  }, [lastAction, handleUpdateTodo, db]);
+  }, [lastAction, handleUpdateTodo]);
 
   const handleMarkAllCompleted = useCallback(async () => {
     const todosToUpdate = displayTodos.filter((t: Todo) => !t.completed_time);
@@ -1347,32 +1312,9 @@ export default function TodoListPage() {
               deleted: !!(t as unknown as { removed?: boolean }).removed,
             }));
           } else if (file.name.endsWith(".sql")) {
-            // 处理 SQL 文件导入
-            const confirmed = confirm(
-              "导入 SQL 文件将会覆盖当前所有数据，是否继续？"
-            );
-            if (!confirmed) {
-              return;
-            }
-
-            // 执行 SQL 语句
-            const sqlStatements = content
-              .split("\n")
-              .map((line) => line.trim())
-              .filter((line) => line && !line.startsWith("--")) // 过滤注释和空行
-              .join("\n")
-              .split(";")
-              .map((stmt) => stmt.trim())
-              .filter((stmt) => stmt);
-
-            for (const statement of sqlStatements) {
-              if (statement) {
-                await db.exec(statement);
-              }
-            }
-
-            alert("SQL 文件导入成功！");
-            return; // SQL 导入直接返回，不需要后续处理
+            // SQL 导入暂不支持 - 使用 Dexie 后不再直接执行 SQL
+            alert("SQL 文件导入在当前版本中暂不可用。请使用 CSV 格式导入。");
+            return;
           } else {
             alert("不支持的文件格式。请选择 .csv 或 .sql 文件。");
             return;
@@ -1421,7 +1363,6 @@ export default function TodoListPage() {
           );
 
           const createdLists: List[] = [];
-          // 使用包装器方法来确保同步拦截器能够捕获操作
           for (let i = 0; i < newListsToCreate.length; i++) {
             const listName = newListsToCreate[i];
             const newListData = {
@@ -1431,19 +1372,16 @@ export default function TodoListPage() {
               sort_order: lists.length + i,
             };
             createdLists.push(newListData);
-            await db.insert("lists", newListData);
+            await api.addList(newListData);
           }
 
-          const currentListsRes = await db.query<List>(
-            `SELECT id, name, sort_order, is_hidden FROM lists`
-          );
+          const currentLists = await api.getLists();
           const listNameToIdMap = new Map<string, string>();
-          currentListsRes.rows.forEach((list: List) =>
+          currentLists.forEach((list) =>
             listNameToIdMap.set(list.name, list.id)
           );
 
           const createdTodos: Todo[] = [];
-          // 使用包装器方法来确保同步拦截器能够捕获操作
           for (const todo of todosToImport) {
             const listId = todo.list_name
               ? listNameToIdMap.get(todo.list_name) || null
@@ -1462,21 +1400,30 @@ export default function TodoListPage() {
               completed_time: todo.completed_time || null,
               start_date: todo.start_date || null,
               list_id: listId,
-              // 重复任务相关字段
               repeat: todo.repeat || null,
               reminder: todo.reminder || null,
-              is_recurring: !!todo.is_recurring,
+              is_recurring: todo.is_recurring || false,
               recurring_parent_id: todo.recurring_parent_id || null,
               instance_number: todo.instance_number || null,
               next_due_date: todo.next_due_date || null,
+              goal_id: todo.goal_id || null,
+              sort_order_in_goal: todo.sort_order_in_goal || null,
             };
+            await api.addTodo(newTodoData);
             createdTodos.push(newTodoData as Todo);
-            await db.insert("todos", newTodoData);
           }
 
-          alert(`成功导入 ${todosToImport.length} 个事项！`);
+          const summary = `成功导入 ${createdLists.length} 个清单和 ${createdTodos.length} 个待办事项。`;
+          if (recurringTasks.length > 0) {
+            alert(
+              summary +
+                `\n注意：重复任务已导入，但需要重新设置重复规则。`
+            );
+          } else {
+            alert(summary);
+          }
         } catch (error) {
-          console.error("Import failed:", error);
+          console.error("导入失败:", error);
           alert(
             `导入失败: ${
               error instanceof Error ? error.message : "Unknown error"
@@ -1486,7 +1433,7 @@ export default function TodoListPage() {
       };
       reader.readAsText(file);
     },
-    [lists, db]
+    [lists, api]
   );
 
   const handleExport = useCallback(async () => {
@@ -1545,13 +1492,17 @@ export default function TodoListPage() {
         sqlContent += `${reminder ? `'${reminder}'` : "NULL"}, `;
         sqlContent += `${todo.is_recurring || false}, `;
         sqlContent += `${
-          todo.recurring_parent_id ? `'${todo.recurring_parent_id}'` : "NULL"
+          todo.recurring_parent_id
+            ? `'${todo.recurring_parent_id}'`
+            : "NULL"
         }, `;
-        sqlContent += `${todo.instance_number || "NULL"}, `;
+        sqlContent += `${todo.instance_number ?? "NULL"}, `;
         sqlContent += `${
           todo.next_due_date ? `'${todo.next_due_date}'` : "NULL"
         }, `;
-        sqlContent += `${todo.modified ? `'${todo.modified}'` : "NULL"}`;
+        sqlContent += `'${
+          todo.modified || new Date().toISOString()
+        }'`;
         sqlContent += ");\n";
       }
 
@@ -1579,8 +1530,6 @@ export default function TodoListPage() {
   return (
     <>
       <div className="bg-pattern"></div>
-      {/* 添加离线同步调试器 */}
-      {process.env.NODE_ENV !== "production" && <OfflineSyncDebugger />}
       {/* 开发模式下显示模式指示器 */}
       {process.env.NODE_ENV === "development" && <ModeIndicator />}
       <div className="todo-wrapper">
@@ -1697,24 +1646,25 @@ export default function TodoListPage() {
                             全部标为完成
                           </button>
                         )}
-                      {isEditingSlogan ? (
-                        <input
-                          type="text"
-                          className="slogan-input"
-                          value={slogan}
-                          onChange={(e) => setSlogan(e.target.value)}
-                          onKeyDown={handleSloganKeyDown}
-                          onBlur={handleUpdateSlogan}
-                        />
-                      ) : (
-                        <div
-                          className="bar-message-text"
-                          onDoubleClick={handleEditSlogan}
-                        >
-                          {slogan}
-                        </div>
-                      )}
-                    </div>
+
+                        {isEditingSlogan ? (
+                          <input
+                            type="text"
+                            className="slogan-input"
+                            value={slogan}
+                            onChange={(e) => setSlogan(e.target.value)}
+                            onKeyDown={handleSloganKeyDown}
+                            onBlur={handleUpdateSlogan}
+                          />
+                        ) : (
+                          <div
+                            className="bar-message-text"
+                            onDoubleClick={handleEditSlogan}
+                          >
+                            {slogan}
+                          </div>
+                        )}
+                      </div>
 
                     <TodoList
                       todos={displayTodos}
@@ -1758,11 +1708,11 @@ export default function TodoListPage() {
             ) : (
               <CalendarView
                 todos={todosWithListNames}
-                onAddTodo={handleAddTodoFromCalendar}
-                onUpdateTodo={handleUpdateTodo}
-                onOpenModal={setSelectedTodo}
                 currentDate={currentDate}
                 onDateChange={setCurrentDate}
+                onUpdateTodo={handleUpdateTodo}
+                onOpenModal={setSelectedTodo}
+                onAddTodo={handleAddTodoFromCalendar}
                 onOpenCreateModal={handleOpenCalendarCreateModal}
               />
             )}
@@ -1772,167 +1722,123 @@ export default function TodoListPage() {
               setCurrentView={setCurrentView}
               onUndo={handleUndo}
               canUndo={!!lastAction}
-              recycleBinCount={recycledTodos.length}
+              recycleBinCount={recycleBinCount}
               onMarkAllCompleted={handleMarkAllCompleted}
               showMarkAllCompleted={displayTodos.some(
                 (t: Todo) => !t.completed_time
               )}
-              onManageLists={() => setIsManageListsOpen(true)}
+              onManageLists={() => setIsManageListsModalOpen(true)}
               onImport={handleImport}
               onOpenSearch={handleOpenSearch}
               onExport={handleExport}
             />
           </div>
-
-          {selectedTodo && (
-            <TodoModal
-              mode="edit"
-              initialData={selectedTodo}
-              lists={lists}
-              goals={goals}
-              onClose={() => setSelectedTodo(null)}
-              onSubmit={handleSaveTodoDetails}
-              onDelete={handleDeleteTodo}
-              onUpdate={handleUpdateTodo}
-              onRestore={handleRestoreTodo}
-              onPermanentDelete={handlePermanentDeleteTodo}
-            />
-          )}
-
-          {isManageListsOpen && (
-            <ManageListsModal
-              lists={lists}
-              onAddList={handleAddList}
-              onDeleteList={handleDeleteList}
-              onUpdateList={handleUpdateList}
-              onUpdateListsOrder={handleUpdateListsOrder}
-              onClose={() => setIsManageListsOpen(false)}
-            />
-          )}
-
-          {isSearchModalOpen && (
-            <TaskSearchModal
-              isOpen={isSearchModalOpen}
-              onClose={() => setIsSearchModalOpen(false)}
-              onSelectTodo={setSelectedTodo}
-              onToggleComplete={handleToggleComplete}
-              onDelete={handleDeleteTodo}
-              currentView={currentView}
-              refreshTrigger={searchRefreshTrigger}
-            />
-          )}
-
-          {isCalendarCreateModalOpen && (
-            <TodoModal
-              mode="create"
-              initialData={{
-                start_date: localDateToEndOfDayUTC(calendarSelectedDate),
-                due_date: localDateToEndOfDayUTC(calendarSelectedDate),
-              }}
-              context={{
-                view: "calendar",
-                selectedDate: calendarSelectedDate,
-              }}
-              lists={lists}
-              goals={goals}
-              onClose={() => setIsCalendarCreateModalOpen(false)}
-              onSubmit={(todoData) =>
-                handleCreateTodoFromCalendar(
-                  todoData.title,
-                  todoData.list_id,
-                  todoData.start_date,
-                  todoData.due_date
-                )
-              }
-            />
-          )}
-
-          {isTodoModalOpen && (
-            <TodoModal
-              mode="create"
-              initialData={{
-                title: newTodoTitle,
-                start_date: newTodoDate ? localDateToEndOfDayUTC(newTodoDate) : null,
-                due_date: newTodoDate ? localDateToEndOfDayUTC(newTodoDate) : null,
-              }}
-              context={{
-                view: currentView,
-                todayDate: todayStrInUTC8,
-                selectedDate: newTodoDate || undefined,
-                listId: (() => {
-                  if (currentView !== "inbox" && currentView !== "today" && currentView !== "calendar" && currentView !== "recycle") {
-                    const list = lists.find((l: List) => l.name === currentView);
-                    return list ? list.id : undefined;
-                  }
-                  return undefined;
-                })()
-              }}
-              lists={lists}
-              goals={goals}
-              onClose={() => setIsTodoModalOpen(false)}
-              onSubmit={(todoData) => {
-                // 确保创建的待办事项包含列表信息
-                // 优先使用用户在TodoModal中选择的清单，如果没有选择则使用当前视图的默认清单
-                let listId = todoData.list_id || null;
-                if (!listId) {
-                  if (
-                    currentView !== "list" &&
-                    currentView !== "inbox" &&
-                    currentView !== "calendar" &&
-                    currentView !== "recycle"
-                  ) {
-                    const list = lists.find((l: List) => l.name === currentView);
-                    if (list) listId = list.id;
-                  }
-                }
-                
-                // 修复: 在 today 视图下，dueDateString 应为 todayStrInUTC8
-                let dueDateString = newTodoDate;
-                if (!dueDateString) {
-                  if (currentView === "list") {
-                    dueDateString = todayStrInUTC8;
-                  } else if (currentView === "today") {
-                    dueDateString = todayStrInUTC8;
-                  } else {
-                    dueDateString = null;
-                  }
-                }
-
-                const dueDateUTC = dueDateString ? localDateToEndOfDayUTC(dueDateString) : null;
-
-                handleCreateTodo({
-                  ...todoData,
-                  list_id: listId,
-                  due_date: dueDateUTC,
-                  start_date: dueDateUTC,
-                });
-              }}
-            />
-          )}
-
-          {isGoalModalOpen && (
-            <GoalModal
-              isOpen={isGoalModalOpen}
-              goal={editingGoalId && editingGoalId !== "new" ? goals.find(g => g.id === editingGoalId) || undefined : undefined}
-              goalId={editingGoalId}
-              initialName={editingGoalId === "new" ? newGoalTitle : undefined}
-              lists={memoizedLists}
-              availableTodos={memoizedUncompletedTodos}
-              goalTodos={editingGoalId && editingGoalId !== "new" ? todos.filter(t => t.goal_id === editingGoalId) : undefined}
-              onSave={handleSaveGoal}
-              onClose={handleCloseGoalModal}
-              onGoalCreated={handleGoalCreated}
-            />
-          )}
-
-          {/* 升级提示组件 */}
-          <UpgradePrompt />
-
-          {/* 性能监控组件（仅开发环境显示） */}
-          <CalendarPerformanceDisplay />
-          <InboxPerformanceDisplay />
         </div>
       </div>
+
+      {isManageListsModalOpen && (
+        <ManageListsModal
+          lists={lists}
+          todosByList={todosByList}
+          recycleBinCount={recycleBinCount}
+          onAddList={handleAddList}
+          onUpdateList={handleUpdateList}
+          onDeleteList={handleDeleteList}
+          onUpdateListsOrder={handleUpdateListsOrder}
+          onClose={() => setIsManageListsModalOpen(false)}
+        />
+      )}
+
+      {isTodoModalOpen && (
+        <TodoModal
+          lists={lists}
+          onSave={handleCreateTodo}
+          onClose={() => {
+            setIsTodoModalOpen(false);
+            setNewTodoTitle("");
+          }}
+          initialTitle={newTodoTitle}
+          initialDate={newTodoDate}
+        />
+      )}
+
+      {isSearchModalOpen && (
+        <TaskSearchModal
+          todos={todosWithListNames}
+          lists={lists}
+          goals={goals}
+          refreshTrigger={searchRefreshTrigger}
+          onSelectTodo={(todo) => setSelectedTodo(todo)}
+          onUpdateTodo={handleUpdateTodo}
+          onToggleComplete={async (todo) => {
+            // 使用 handleToggleComplete 确保周期任务处理被触发
+            await handleToggleComplete(todo);
+          }}
+          onClose={() => setIsSearchModalOpen(false)}
+        />
+      )}
+
+      {isCalendarCreateModalOpen && (
+        <TodoModal
+          lists={lists}
+          onSave={(todoData) => {
+            const listId = todoData.list_id || null;
+            const dueDateString = utcToLocalDateString(
+              calendarSelectedDate
+            );
+
+            const dueDateUTC = dueDateString ? localDateToEndOfDayUTC(dueDateString) : null;
+
+            handleCreateTodo({
+              ...todoData,
+              list_id: listId,
+              due_date: dueDateUTC,
+              start_date: dueDateUTC,
+            });
+          }}
+          onClose={() => {
+            setIsCalendarCreateModalOpen(false);
+            setNewTodoTitle("");
+          }}
+          initialTitle={newTodoTitle}
+          initialDate={calendarSelectedDate}
+        />
+      )}
+
+      {selectedTodo && (
+        <TodoModal
+          lists={lists}
+          todo={selectedTodo}
+          onSave={handleSaveTodoDetails}
+          onClose={() => setSelectedTodo(null)}
+          onDelete={() => {
+            handleDeleteTodo(selectedTodo.id);
+            setSelectedTodo(null);
+          }}
+        />
+      )}
+
+      {isGoalModalOpen && (
+        <GoalModal
+          isOpen={isGoalModalOpen}
+          goal={editingGoalId && editingGoalId !== "new" ? goals.find(g => g.id === editingGoalId) || undefined : undefined}
+          goalId={editingGoalId}
+          initialName={editingGoalId === "new" ? newGoalTitle : undefined}
+          lists={memoizedLists}
+          availableTodos={memoizedUncompletedTodos}
+          goalTodos={editingGoalId && editingGoalId !== "new" ? todos.filter(t => t.goal_id === editingGoalId) : undefined}
+          onSave={handleSaveGoal}
+          onClose={handleCloseGoalModal}
+          onGoalCreated={handleGoalCreated}
+        />
+      )}
+
+      {/* 升级提示组件 */}
+      <UpgradePrompt />
+
+      {/* 性能监控组件（仅开发环境显示） */}
+      <CalendarPerformanceDisplay />
+      <InboxPerformanceDisplay />
     </>
   );
 }

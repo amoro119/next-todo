@@ -1,5 +1,4 @@
-import { PGlite } from '@electric-sql/pglite';
-import { Goal, Todo } from '@/lib/types';
+import { db } from '@/lib/db/dexie';
 
 /**
  * 目标进度信息
@@ -38,8 +37,6 @@ export class GoalProgressService {
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5分钟缓存
   private progressChangeListeners: ((event: ProgressChangeEvent) => void)[] = [];
 
-  constructor(private db: PGlite) {}
-
   /**
    * 计算单个目标的进度
    */
@@ -50,17 +47,14 @@ export class GoalProgressService {
     }
 
     // 从数据库查询
-    const result = await this.db.query(`
-      SELECT 
-        COUNT(t.id) as total_tasks,
-        COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks
-      FROM todos t
-      WHERE t.goal_id = $1 AND t.deleted = false
-    `, [goalId]);
+    const todos = await db.todos
+      .where('goal_id')
+      .equals(goalId)
+      .and(t => !t.deleted)
+      .toArray();
 
-    const row = result.rows[0] as any;
-    const totalTasks = parseInt(row.total_tasks) || 0;
-    const completedTasks = parseInt(row.completed_tasks) || 0;
+    const totalTasks = todos.length;
+    const completedTasks = todos.filter(t => t.completed).length;
     const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     const progressInfo: GoalProgress = {
@@ -99,29 +93,24 @@ export class GoalProgressService {
 
     // 批量查询未缓存的目标
     if (uncachedGoalIds.length > 0) {
-      const placeholders = uncachedGoalIds.map((_, index) => `$${index + 1}`).join(',');
-      const batchResult = await this.db.query(`
-        SELECT 
-          t.goal_id,
-          COUNT(t.id) as total_tasks,
-          COUNT(CASE WHEN t.completed = true THEN 1 END) as completed_tasks
-        FROM todos t
-        WHERE t.goal_id IN (${placeholders}) AND t.deleted = false
-        GROUP BY t.goal_id
-      `, uncachedGoalIds);
+      const uncachedSet = new Set(uncachedGoalIds);
+      const todos = await db.todos
+        .filter(t => t.goal_id !== null && uncachedSet.has(t.goal_id) && !t.deleted)
+        .toArray();
 
-      // 处理查询结果
+      // 按 goal_id 分组统计
       const progressMap = new Map<string, { totalTasks: number; completedTasks: number }>();
-      batchResult.rows.forEach((row: any) => {
-        progressMap.set(row.goal_id, {
-          totalTasks: parseInt(row.total_tasks) || 0,
-          completedTasks: parseInt(row.completed_tasks) || 0
-        });
-      });
+      for (const todo of todos) {
+        const gid = todo.goal_id!;
+        const entry = progressMap.get(gid) ?? { totalTasks: 0, completedTasks: 0 };
+        entry.totalTasks++;
+        if (todo.completed) entry.completedTasks++;
+        progressMap.set(gid, entry);
+      }
 
       // 为每个目标创建进度信息
       for (const goalId of uncachedGoalIds) {
-        const data = progressMap.get(goalId) || { totalTasks: 0, completedTasks: 0 };
+        const data = progressMap.get(goalId) ?? { totalTasks: 0, completedTasks: 0 };
         const progress = data.totalTasks > 0 ? Math.round((data.completedTasks / data.totalTasks) * 100) : 0;
 
         const progressInfo: GoalProgress = {
@@ -144,11 +133,11 @@ export class GoalProgressService {
    * 获取所有目标的进度（用于批量更新）
    */
   async getAllGoalsProgress(): Promise<BatchProgressResult> {
-    const goalsResult = await this.db.query(`
-      SELECT id FROM goals WHERE is_archived = false
-    `);
+    const goals = await db.goals
+      .filter(g => !g.is_archived && g.deleted_at === null)
+      .toArray();
 
-    const goalIds = goalsResult.rows.map((row: any) => row.id);
+    const goalIds = goals.map(g => g.id);
     return this.batchCalculateProgress(goalIds, false); // 不使用缓存，确保数据最新
   }
 
@@ -156,7 +145,7 @@ export class GoalProgressService {
    * 当任务状态发生变化时更新进度
    */
   async onTaskStatusChange(
-    goalId: string | null, 
+    goalId: string | null,
     changeType: ProgressChangeEvent['changeType'],
     oldCompleted?: boolean,
     newCompleted?: boolean
@@ -248,7 +237,7 @@ export class GoalProgressService {
     let validCached = 0;
     let expiredCached = 0;
 
-    for (const [goalId, expiry] of this.cacheExpiry.entries()) {
+    for (const [, expiry] of this.cacheExpiry.entries()) {
       if (now <= expiry) {
         validCached++;
       } else {
@@ -293,14 +282,14 @@ export class GoalProgressService {
   private isCacheValid(goalId: string): boolean {
     const expiry = this.cacheExpiry.get(goalId);
     if (!expiry) return false;
-    
+
     const isValid = Date.now() <= expiry;
     if (!isValid) {
       // 清理过期缓存
       this.progressCache.delete(goalId);
       this.cacheExpiry.delete(goalId);
     }
-    
+
     return isValid;
   }
 
@@ -329,6 +318,6 @@ export class GoalProgressService {
 /**
  * 创建目标进度服务实例
  */
-export function createGoalProgressService(db: PGlite): GoalProgressService {
-  return new GoalProgressService(db);
+export function createGoalProgressService(): GoalProgressService {
+  return new GoalProgressService();
 }

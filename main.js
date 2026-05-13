@@ -5,7 +5,6 @@ const { fork } = require('child_process');
 const fs = require('fs');
 const treeKill = require('tree-kill');
 const portfinder = require('portfinder');
-const { setupDatabaseHandlers } = require('./electron/database-handler');
 
 let serverProcess;
 let writeServerProcess;
@@ -92,8 +91,6 @@ function createWindow() {
     icon: path.join(__dirname, 'public', 'favicon.png'),
     show: false,
   });
-
-  setupDatabaseHandlers(mainWindow);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
