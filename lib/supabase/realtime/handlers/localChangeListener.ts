@@ -10,6 +10,8 @@ export interface LocalChangeListenerOptions {
   userId: string
   offlineQueue: OfflineQueue
   tables?: RealtimeSyncTable[]
+  /** Optional override for uploading a record — use to hook in echo suppression */
+  onUpload?: (table: RealtimeSyncTable, record: SyncRecord) => Promise<void>
 }
 
 const DEFAULT_TABLES: RealtimeSyncTable[] = ['todos', 'lists', 'goals', 'goal_progress']
@@ -29,7 +31,7 @@ function fireAndForget(promise: Promise<unknown>): void {
 }
 
 export function startLocalChangeListener(options: LocalChangeListenerOptions): () => void {
-  const { db, client, userId, offlineQueue, tables = DEFAULT_TABLES } = options
+  const { db, client, userId, offlineQueue, tables = DEFAULT_TABLES, onUpload } = options
 
   type DexieTable = typeof db.todos
 
@@ -46,7 +48,7 @@ export function startLocalChangeListener(options: LocalChangeListenerOptions): (
     ) {
       const record = toSyncRecord(obj, userId)
       if (window.navigator.onLine) {
-        fireAndForget(uploadLocalChanges(client, tableName, [record]))
+        fireAndForget(onUpload ? onUpload(tableName, record) : uploadLocalChanges(client, tableName, [record]))
       } else {
         offlineQueue.enqueue({ table: tableName, operation: 'insert', record })
       }
@@ -60,7 +62,7 @@ export function startLocalChangeListener(options: LocalChangeListenerOptions): (
     ) {
       const record = toSyncRecord({ ...obj, ...modifications }, userId)
       if (window.navigator.onLine) {
-        fireAndForget(uploadLocalChanges(client, tableName, [record]))
+        fireAndForget(onUpload ? onUpload(tableName, record) : uploadLocalChanges(client, tableName, [record]))
       } else {
         offlineQueue.enqueue({ table: tableName, operation: 'update', record })
       }
@@ -74,7 +76,7 @@ export function startLocalChangeListener(options: LocalChangeListenerOptions): (
       const now = new Date().toISOString()
       const record = toSyncRecord({ ...obj, deleted_at: now, updated_at: now }, userId)
       if (window.navigator.onLine) {
-        fireAndForget(uploadLocalChanges(client, tableName, [record]))
+        fireAndForget(onUpload ? onUpload(tableName, record) : uploadLocalChanges(client, tableName, [record]))
       } else {
         offlineQueue.enqueue({ table: tableName, operation: 'delete', record })
       }

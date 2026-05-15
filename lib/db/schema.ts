@@ -4,4 +4,5 @@ export const SCHEMA = {
   goals: '&id, list_id, user_id, deleted_at, updated_at',
   goal_progress: '&id, goal_id, todo_id, deleted_at, updated_at',
   meta: '&key',
+  pendingOperations: '&id, table, recordId, timestamp',
 } as const

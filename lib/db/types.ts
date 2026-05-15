@@ -75,6 +75,16 @@ export interface GoalProgress {
   deleted_at: string | null;
 }
 
+// Pending operation for offline sync queue
+export interface PendingOperation {
+  id: string
+  table: 'todos' | 'lists' | 'goals'
+  operation: 'insert' | 'update' | 'delete'
+  record: Record<string, unknown>
+  timestamp: string
+  retryCount: number
+}
+
 export interface Meta {
   key: string;
   value: string;

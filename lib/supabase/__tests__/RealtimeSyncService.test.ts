@@ -1,8 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { RealtimeSyncService } from '../realtime/RealtimeSyncService'
 
+// Stub window for node env (no jsdom)
+Object.defineProperty(globalThis, 'window', {
+  value: {
+    navigator: { onLine: true },
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  },
+  writable: true,
+  configurable: true,
+})
+
 vi.mock('../realtime/InitialSyncManager', () => ({
-  performInitialSync: vi.fn().mockResolvedValue(undefined),
+  InitialSyncManager: vi.fn().mockImplementation(() => ({
+    performSync: vi.fn().mockResolvedValue({ uploaded: 0, downloaded: 0, deleted: 0, errors: [] }),
+    abort: vi.fn(),
+  })),
 }))
 
 vi.mock('../syncOperations', () => ({
@@ -17,11 +31,16 @@ vi.mock('../realtime/conflictResolver', () => ({
   resolveConflict: vi.fn((local: unknown, remote: unknown) => remote),
 }))
 
+vi.mock('../realtime/handlers/localChangeListener', () => ({
+  startLocalChangeListener: vi.fn().mockReturnValue(() => {}),
+}))
+
 vi.mock('../realtime/offlineQueue', () => ({
-  createOfflineQueue: vi.fn(() => ({
+  createOfflineQueue: vi.fn((_db: unknown) => ({
     enqueue: vi.fn(),
     dequeue: vi.fn(),
     processQueue: vi.fn().mockResolvedValue(undefined),
+    processQueueOnStart: vi.fn().mockResolvedValue(undefined),
     getQueueLength: vi.fn().mockReturnValue(0),
     clearQueue: vi.fn(),
     destroy: vi.fn(),
@@ -66,12 +85,8 @@ beforeEach(() => {
   service?.disconnect?.()
   ;(RealtimeSyncService as unknown as { instance: null }).instance = null
 
-  // Default: online
-  Object.defineProperty(window, 'navigator', {
-    value: { onLine: true },
-    writable: true,
-    configurable: true,
-  })
+  // Reset to online
+  ;(window as unknown as { navigator: { onLine: boolean } }).navigator.onLine = true
 })
 
 afterEach(() => {
@@ -138,7 +153,7 @@ describe('RealtimeSyncService', () => {
     const service = RealtimeSyncService.getInstance()
     await service.initialize(client as never, db as never)
 
-    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
+    ;(window as unknown as { navigator: { onLine: boolean } }).navigator.onLine = true
 
     await service.uploadChange('todos', { id: 'abc', updated_at: '2024-01-01T00:00:00Z' })
 
@@ -158,11 +173,7 @@ describe('RealtimeSyncService', () => {
     const service = RealtimeSyncService.getInstance()
     await service.initialize(client as never, db as never)
 
-    Object.defineProperty(window, 'navigator', {
-      value: { onLine: false },
-      writable: true,
-      configurable: true,
-    })
+    ;(window as unknown as { navigator: { onLine: boolean } }).navigator.onLine = false
 
     await service.uploadChange('todos', { id: 'xyz', updated_at: '2024-01-01T00:00:00Z' })
 
@@ -191,19 +202,23 @@ describe('RealtimeSyncService', () => {
     expect(state.isSyncing).toBe(false)
   })
 
-  it('initial sync runs on initialize — performInitialSync is called', async () => {
-    const { performInitialSync } = await import('../realtime/InitialSyncManager')
+  it('initial sync runs on initialize — InitialSyncManager.performSync is called', async () => {
+    const { InitialSyncManager } = await import('../realtime/InitialSyncManager')
     const client = makeSupabaseClient()
     const db = makeDexieDb()
     const service = RealtimeSyncService.getInstance()
 
     await service.initialize(client as never, db as never)
 
-    expect(performInitialSync).toHaveBeenCalledOnce()
-    expect(performInitialSync).toHaveBeenCalledWith(
-      client,
-      db,
-      expect.objectContaining({ onProgress: expect.any(Function) }),
+    expect(InitialSyncManager).toHaveBeenCalledWith(client, db)
+
+    const instance = (InitialSyncManager as ReturnType<typeof vi.fn>).mock.results[0]?.value
+    expect(instance?.performSync).toHaveBeenCalledOnce()
+    expect(instance?.performSync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tables: expect.any(Array),
+        onProgress: expect.any(Function),
+      }),
     )
   })
 })
