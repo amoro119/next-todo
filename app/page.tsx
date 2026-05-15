@@ -339,7 +339,7 @@ export default function TodoListPage() {
 
   const [currentView, setCurrentView] = useState<string>(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("currentView") || "inbox";
+      return localStorage.getItem("currentView") || "today";
     }
     return "inbox";
   });
@@ -1780,7 +1780,7 @@ export default function TodoListPage() {
         <TodoModal
           mode="create"
           lists={lists}
-          initialData={{ title: newTodoTitle, due_date: newTodoDate }}
+          initialData={{ title: newTodoTitle, start_date: newTodoDate, due_date: newTodoDate }}
           onSubmit={handleCreateTodo}
           onClose={() => {
             setIsTodoModalOpen(false);
@@ -1839,6 +1839,7 @@ export default function TodoListPage() {
           lists={lists}
           initialData={selectedTodo}
           onSubmit={handleSaveTodoDetails}
+          onUpdate={handleUpdateTodo}
           onClose={() => setSelectedTodo(null)}
           onDelete={(todoId) => {
             handleDeleteTodo(todoId);
