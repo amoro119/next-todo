@@ -54,3 +54,4 @@ dist-*
 .vscode/
 .playwright-mcp/
 calendar.yml
+spec/
