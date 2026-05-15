@@ -14,7 +14,7 @@ interface ShortcutSwitchProps {
   onManageLists: () => void;
   onImport: (file: File) => void;
   onOpenSearch: () => void;
-  onExport: () => void;
+  onOpenSettings: () => void;
 }
 
 export default function ShortcutSwitch({
@@ -28,7 +28,7 @@ export default function ShortcutSwitch({
   onManageLists,
   onImport,
   onOpenSearch,
-  onExport,
+  onOpenSettings,
 }: ShortcutSwitchProps) {
   // 模式状态管理和持久化
   const [currentMode, setCurrentMode] = useState<AppMode>(() => {
@@ -41,7 +41,6 @@ export default function ShortcutSwitch({
 
   const [isTransitioning, setIsTransitioning] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
-  const sqlInputRef = useRef<HTMLInputElement>(null);
   // 持久化模式状态
   const persistMode = useCallback((mode: AppMode) => {
     if (typeof window !== 'undefined') {
@@ -114,14 +113,6 @@ export default function ShortcutSwitch({
         accept=".csv"
         onChange={handleFileChange}
       />
-      <input
-        type="file"
-        ref={sqlInputRef}
-        style={{ display: "none" }}
-        accept=".sql"
-        onChange={handleFileChange}
-      />
-
       <div className={`footer side-bar`}>
         <div className="side-shortcut" onClick={handleModeSwitch}>
           <div className="shortcut-switch">
@@ -188,27 +179,18 @@ export default function ShortcutSwitch({
                 <ul className="todo-func-list datasave">
                   <li>
                     <input
-                      type="button"
-                      value="备份数据(sql)"
-                      className="btn-small action-download"
-                      id="download"
-                      onClick={onExport}
-                    />
-                  </li>
-                  <li>
-                    <input
-                      value="恢复数据(sql)"
-                      type="button"
-                      className="btn-small action-import"
-                      onClick={() => sqlInputRef.current?.click()}
-                    />
-                  </li>
-                  <li>
-                    <input
                       value="导入滴答(csv)"
                       type="button"
                       className="btn-small action-import"
                       onClick={() => csvInputRef.current?.click()}
+                    />
+                  </li>
+                  <li>
+                    <input
+                      type="button"
+                      value="数据与备份"
+                      className="btn-small"
+                      onClick={onOpenSettings}
                     />
                   </li>
                 </ul>
@@ -232,6 +214,14 @@ export default function ShortcutSwitch({
                     type="button"
                     value="管理清单"
                     onClick={onManageLists}
+                  />
+                </li>
+                <li>
+                  <input
+                    type="button"
+                    value="数据与备份设置"
+                    className="btn-small"
+                    onClick={onOpenSettings}
                   />
                 </li>
               </ul>

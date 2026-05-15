@@ -1,5 +1,7 @@
 // lib/config/syncConfig.ts
 
+import { hasSupabaseConfig } from './supabaseStorage';
+
 export interface SyncConfig {
   enabled: boolean;
   reason?: string;
@@ -31,9 +33,7 @@ export function getSupabaseSyncConfig(): SyncConfig {
     return cachedSyncConfig;
   }
 
-  const hasEnv =
-    !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const hasConfig = hasSupabaseConfig();
   const userPref =
     typeof localStorage !== 'undefined'
       ? localStorage.getItem('sync_enabled') !== 'false'
@@ -41,8 +41,8 @@ export function getSupabaseSyncConfig(): SyncConfig {
 
   let syncConfig: SyncConfig;
 
-  if (!hasEnv) {
-    syncConfig = { enabled: false, reason: 'missing_env' };
+  if (!hasConfig) {
+    syncConfig = { enabled: false, reason: 'missing_config' };
   } else if (!userPref) {
     syncConfig = { enabled: false, reason: 'user_disabled' };
   } else {
@@ -88,7 +88,7 @@ export const clearSyncConfigCache = () => {
 
 export const getSyncDisabledMessage = (reason?: string): string => {
   switch (reason) {
-    case 'missing_env':
+    case 'missing_config':
       return 'Supabase not configured — local mode';
     case 'user_disabled':
       return 'Sync disabled in preferences — local mode';

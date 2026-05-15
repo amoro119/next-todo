@@ -1,7 +1,7 @@
 // components/InboxPerformanceOptimizer.tsx
 "use client";
 
-import { useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import type { Todo } from '../lib/types';
 
 // 高性能收件箱缓存系统
@@ -226,61 +226,6 @@ export const useOptimizedInboxCount = (todos: Todo[]) => {
   return inboxCount;
 };
 
-// 性能监控
-class InboxPerformanceMonitor {
-  private metrics: Array<{
-    operation: string;
-    duration: number;
-    todoCount: number;
-    timestamp: number;
-  }> = [];
-
-  startOperation(operation: string): () => void {
-    const startTime = performance.now();
-    
-    return (todoCount: number = 0) => {
-      const duration = performance.now() - startTime;
-      
-      this.metrics.push({
-        operation,
-        duration,
-        todoCount,
-        timestamp: Date.now()
-      });
-
-      // 只保留最近50次记录
-      if (this.metrics.length > 50) {
-        this.metrics.shift();
-      }
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`Inbox ${operation}: ${duration.toFixed(2)}ms (${todoCount} todos)`);
-      }
-    };
-  }
-
-  getAverageTime(operation: string): number {
-    const operationMetrics = this.metrics.filter(m => m.operation === operation);
-    if (operationMetrics.length === 0) return 0;
-    
-    return operationMetrics.reduce((sum, m) => sum + m.duration, 0) / operationMetrics.length;
-  }
-
-  getMetrics() {
-    return {
-      filterAvg: this.getAverageTime('filter'),
-      sortAvg: this.getAverageTime('sort'),
-      totalOperations: this.metrics.length
-    };
-  }
-
-  reset() {
-    this.metrics = [];
-  }
-}
-
-export const inboxPerfMonitor = new InboxPerformanceMonitor();
-
 // 清理缓存的Hook
 export const useInboxCacheCleanup = () => {
   const clearCache = useCallback(() => {
@@ -293,45 +238,5 @@ export const useInboxCacheCleanup = () => {
 
   return { clearCache, clearFilterCache };
 };
-
-// 性能指标显示组件（仅开发环境显示）
-export function InboxPerformanceDisplay() {
-  const [metrics, setMetrics] = useState({
-    filterAvg: 0,
-    sortAvg: 0,
-    totalOperations: 0
-  });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(inboxPerfMonitor.getMetrics());
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  if (process.env.NODE_ENV !== 'development') {
-    return null;
-  }
-
-  return (
-    <div style={{
-      position: 'fixed',
-      top: '60px',
-      right: '10px',
-      background: 'rgba(0,0,0,0.8)',
-      color: 'white',
-      padding: '10px',
-      borderRadius: '5px',
-      fontSize: '12px',
-      zIndex: 9998
-    }}>
-      <div>收件箱性能监控</div>
-      <div>过滤平均: {metrics.filterAvg.toFixed(2)}ms</div>
-      <div>排序平均: {metrics.sortAvg.toFixed(2)}ms</div>
-      <div>总操作数: {metrics.totalOperations}</div>
-    </div>
-  );
-}
 
 export { inboxCache };
