@@ -2,10 +2,15 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 let supabaseInstance: SupabaseClient | null = null
 
-function getSupabaseClient(): SupabaseClient | null {
+export function getSupabaseClient(): SupabaseClient | null {
+  // SSR guard — localStorage not available on server
+  if (typeof window === 'undefined') {
+    return null
+  }
+
   if (!supabaseInstance) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const url = localStorage.getItem('supabase_url')
+    const key = localStorage.getItem('supabase_anon_key')
 
     if (!url || !key) {
       return null

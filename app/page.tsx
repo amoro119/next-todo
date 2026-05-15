@@ -21,17 +21,15 @@ import TodoModal from "../components/TodoModal";
 import ManageListsModal from "../components/ManageListsModal";
 import TaskSearchModal from "../components/TaskSearchModal";
 import CalendarView from "../components/CalendarView";
-import { CalendarPerformanceDisplay } from "../components/CalendarPerformanceMonitor";
 import {
   useOptimizedInboxFilter,
   useOptimizedInboxSort,
   useInboxCacheCleanup,
-  inboxPerfMonitor,
-  InboxPerformanceDisplay,
 } from "../components/InboxPerformanceOptimizer";
 import type { Todo, List, Goal } from "../lib/types";
 import { RecurringTaskIntegration } from "../lib/recurring/RecurringTaskIntegration";
 import { UpgradePrompt } from "../components/UpgradePrompt";
+import SyncSettingsModal from "../components/SyncSettingsModal";
 import { ModeIndicator } from "../components/ModeIndicator";
 import { db } from "@/lib/db/dexie";
 import { createDexieDatabaseAPI } from "@/lib/db/databaseAPI";
@@ -368,6 +366,7 @@ export default function TodoListPage() {
   const [calendarSelectedDate, setCalendarSelectedDate] = useState<string>("");
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const goalsMainInterfaceRef = useRef<GoalsMainInterfaceRef>(null);
   const addTodoInputRef = useRef<HTMLInputElement>(null);
@@ -529,14 +528,10 @@ export default function TodoListPage() {
   const inboxTodos = useMemo(() => {
     if (currentView !== "inbox") return [];
 
-    const endFilter = inboxPerfMonitor.startOperation("filter");
     const filteredTodos = filterInboxTodos(uncompletedTodos);
-    endFilter();
     console.log(`[page.tsx] inbox filter: ${uncompletedTodos.length} uncompleted → ${filteredTodos.length} passed`);
 
-    const endSort = inboxPerfMonitor.startOperation("sort");
     const sortedTodos = sortInboxTodos(filteredTodos);
-    endSort();
 
     return sortedTodos;
   }, [currentView, uncompletedTodos, filterInboxTodos, sortInboxTodos]);
@@ -1757,11 +1752,15 @@ export default function TodoListPage() {
               onManageLists={() => setIsManageListsModalOpen(true)}
               onImport={handleImport}
               onOpenSearch={handleOpenSearch}
-              onExport={handleExport}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
           </div>
         </div>
       </div>
+
+      {isSettingsOpen && (
+        <SyncSettingsModal onClose={() => setIsSettingsOpen(false)} />
+      )}
 
       {isManageListsModalOpen && (
         <ManageListsModal
@@ -1810,7 +1809,7 @@ export default function TodoListPage() {
         <TodoModal
           mode="create"
           lists={lists}
-          initialData={{ title: newTodoTitle, due_date: calendarSelectedDate }}
+          initialData={{ title: newTodoTitle, start_date: calendarSelectedDate, due_date: calendarSelectedDate }}
           onSubmit={(todoData) => {
             const listId = todoData.list_id || null;
             const dueDateString = utcToLocalDateString(
@@ -1865,10 +1864,6 @@ export default function TodoListPage() {
 
       {/* 升级提示组件 */}
       <UpgradePrompt />
-
-      {/* 性能监控组件（仅开发环境显示） */}
-      <CalendarPerformanceDisplay />
-      <InboxPerformanceDisplay />
     </>
   );
 }

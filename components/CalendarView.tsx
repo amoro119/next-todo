@@ -3,7 +3,6 @@
 
 import { useMemo, useCallback, memo, useEffect } from 'react';
 import type { Todo } from '../lib/types';
-import { useCalendarPerformanceMonitor, calendarPerfMonitor } from './CalendarPerformanceMonitor';
 import { useOptimizedClick, useOptimizedDrag, useINPMonitoring } from './INPOptimizer';
 import {
   format,
@@ -370,9 +369,6 @@ export default function CalendarView({
   onOpenCreateModal,
 }: CalendarViewProps) {
   
-  // 性能监控
-  useCalendarPerformanceMonitor(todos.length);
-  
   // INP优化
   const { handleDragStart, handleDrop, handleDragOver } = useOptimizedDrag();
   const { startInteraction, endInteraction } = useINPMonitoring('CalendarView');
@@ -469,11 +465,8 @@ export default function CalendarView({
     // 检查缓存
     const cached = calendarCache.getTodosByDateCache(todos, currentDate);
     if (cached) {
-      calendarPerfMonitor.recordCacheHit();
       return cached;
     }
-    
-    calendarPerfMonitor.recordCacheMiss();
     
     // 使用Map提升性能，避免原型链查找
     const map = new Map<string, Todo[]>();
