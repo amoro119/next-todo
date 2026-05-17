@@ -14,7 +14,7 @@ import {
   type PendingOperation,
   DEFAULT_USER_ID,
 } from './types'
-import { downloadRemoteChanges, uploadLocalChanges } from '../syncOperations'
+import { downloadRemoteChanges, uploadLocalChanges, fromSupabaseRow } from '../syncOperations'
 import { startLocalChangeListener } from './handlers/localChangeListener'
 
 import type { Table } from 'dexie'
@@ -353,21 +353,34 @@ export class RealtimeSyncService {
 
   private handleRealtimeEvent(
     table: RealtimeSyncTable,
-    payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
+    rawPayload: RealtimePostgresChangesPayload<Record<string, unknown>>,
   ): void {
-    console.log(`[Sync] handleRealtimeEvent: ${table} ${payload.eventType}`)
+    const { eventType, new: newRecord, old: oldRecord } = rawPayload
+    console.log(
+      `[Sync] RealtimeEvent: table=${table} event=${eventType}`,
+      {
+        newId: (newRecord as Record<string, unknown>)?.id ?? '(none)',
+        oldId: (oldRecord as Record<string, unknown>)?.id ?? '(none)',
+        newKeys: newRecord ? Object.keys(newRecord) : [],
+        hasModified: newRecord ? 'modified' in newRecord : false,
+        hasUpdatedAt: newRecord ? 'updated_at' in newRecord : false,
+      },
+    )
+
     const dexieTable = this.getDexieTable(table)
     if (!dexieTable) {
       console.warn(`[Sync] No dexie table found for ${table}`)
       return
     }
 
-    const eventType = payload.eventType
-
-    if (eventType === 'DELETE') {
-      void this.applyRemoteDelete(table, dexieTable, payload)
-    } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
-      void this.applyRemoteUpsert(table, dexieTable, payload)
+    try {
+      if (eventType === 'DELETE') {
+        void this.applyRemoteDelete(table, dexieTable, rawPayload)
+      } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
+        void this.applyRemoteUpsert(table, dexieTable, rawPayload)
+      }
+    } catch (err) {
+      console.error(`[Sync] handleRealtimeEvent ${table} ${eventType} error:`, err)
     }
   }
 
@@ -376,11 +389,19 @@ export class RealtimeSyncService {
     dexieTable: Table,
     payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
   ): Promise<void> {
-    const remote = payload.new as SyncRecord | undefined
+    // Normalize raw Realtime payload: Supabase uses `modified`/`deleted`,
+    // but the sync layer expects `updated_at`/`deleted_at` (Dexie format).
+    const raw = payload.new as Record<string, unknown> | undefined
+    const remote = raw ? fromSupabaseRow(raw) : null
     if (!remote?.id) {
-      console.warn('[Sync] applyRemoteUpsert: no remote id')
+      console.warn('[Sync] applyRemoteUpsert: no remote id after normalization')
       return
     }
+
+    console.log(
+      `[Sync] applyRemoteUpsert: ${table} id=${remote.id}`,
+      { updated_at: remote.updated_at, deleted_at: remote.deleted_at },
+    )
 
     if (this.isEchoRecord(table, remote)) {
       console.log(`[Sync] applyRemoteUpsert: ignoring echo record ${remote.id}`)
@@ -411,11 +432,17 @@ export class RealtimeSyncService {
     dexieTable: Table,
     payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
   ): Promise<void> {
-    const old = payload.old as Partial<SyncRecord> | undefined
+    const raw = payload.old as Record<string, unknown> | undefined
+    const old = raw ? fromSupabaseRow(raw) : null
     if (!old?.id) {
-      console.warn('[Sync] applyRemoteDelete: no old id')
+      console.warn('[Sync] applyRemoteDelete: no old id after normalization')
       return
     }
+
+    console.log(
+      `[Sync] applyRemoteDelete: ${table} id=${old.id}`,
+      { updated_at: old.updated_at },
+    )
 
     if (old.id && old.updated_at && this.recentlySent.get(`${table}:${old.id}`) === old.updated_at) {
       console.log(`[Sync] applyRemoteDelete: ignoring echo delete for ${old.id}`)

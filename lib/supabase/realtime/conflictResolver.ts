@@ -14,7 +14,7 @@ export interface BatchResolveResult {
  * updatedAt → timestamp → updated_at. Returns 0 if no valid timestamp found.
  */
 export function extractTimestamp(record: SyncRecord | Record<string, unknown>): number {
-  const candidates = [record.updatedAt, record.timestamp, record.updated_at]
+  const candidates = [record.updatedAt, record.timestamp, record.updated_at, record.modified]
   for (const value of candidates) {
     if (value !== undefined && value !== null) {
       const ts = new Date(value as string).getTime()
