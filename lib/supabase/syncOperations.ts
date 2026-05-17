@@ -13,7 +13,7 @@ function toSupabaseRecord(record: SyncRecord): Record<string, unknown> {
 }
 
 // 下载后将 Supabase 字段映射回 Dexie 字段
-function fromSupabaseRow(row: Record<string, unknown>): SyncRecord {
+export function fromSupabaseRow(row: Record<string, unknown>): SyncRecord {
   return {
     ...row,
     user_id: 'default_user',
