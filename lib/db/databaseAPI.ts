@@ -16,6 +16,7 @@ export interface DatabaseAPI {
   addGoal(goal: Partial<Goal>): Promise<Goal>
   updateGoal(id: string, updates: Partial<Goal>): Promise<Goal>
   deleteGoal(id: string): Promise<Goal>
+  clearLocalData(): Promise<void>
 }
 
 export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
@@ -153,6 +154,23 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       if (!record) throw new Error(`Goal not found: ${id}`)
       await database.goals.update(id, { deleted_at: now(), updated_at: now() })
       return record
+    },
+
+    async clearLocalData(): Promise<void> {
+      await database.transaction(
+        'rw',
+        [database.todos, database.lists, database.goals, database.goal_progress, database.meta, database.pendingOperations],
+        async () => {
+          await Promise.all([
+            database.todos.clear(),
+            database.lists.clear(),
+            database.goals.clear(),
+            database.goal_progress.clear(),
+            database.meta.clear(),
+            database.pendingOperations.clear(),
+          ])
+        }
+      )
     },
   }
 }

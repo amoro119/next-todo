@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { getSupabaseConfig, saveSupabaseConfig } from '../lib/config/supabaseStorage'
+import { getSupabaseConfig, saveSupabaseConfig, clearSupabaseConfig } from '../lib/config/supabaseStorage'
 import { clearSyncConfigCache } from '../lib/config/syncConfig'
 import { useSyncStatus } from '../lib/hooks/useSyncStatus'
+import { useDatabase } from '../app/providers/DatabaseProvider'
 
 interface SyncSettingsModalProps {
   onClose: () => void
@@ -18,8 +19,11 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
       ? localStorage.getItem('sync_enabled') !== 'false'
       : true
   )
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const { connectionStatus } = useSyncStatus()
+  const { api } = useDatabase()
 
   const statusDot: Record<string, { color: string; label: string }> = {
     connected:    { color: 'bg-green-500',  label: '已连接' },
@@ -34,6 +38,20 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
     localStorage.setItem('sync_enabled', syncEnabled ? 'true' : 'false')
     clearSyncConfigCache()
     window.location.reload()
+  }
+
+  async function handleClearLocalData() {
+    setClearing(true)
+    try {
+      localStorage.setItem('sync_enabled', 'false')
+      clearSyncConfigCache()
+      clearSupabaseConfig()
+      await api.clearLocalData()
+      window.location.reload()
+    } finally {
+      setClearing(false)
+      setConfirmClear(false)
+    }
   }
 
   return (
@@ -95,10 +113,59 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
               type="checkbox"
               className="sr-only peer"
               checked={syncEnabled}
-              onChange={(e) => setSyncEnabled(e.target.checked)}
+              onChange={(e) => {
+                setSyncEnabled(e.target.checked)
+                setConfirmClear(false)
+              }}
             />
             <div className="w-10 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4" />
           </label>
+        </div>
+
+        <div className="mb-6 border border-gray-200 rounded-lg p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-700">清除本地数据</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {syncEnabled
+                  ? '请先关闭实时同步再执行此操作'
+                  : '将清空本地所有待办、清单和目标数据，操作不可恢复'}
+              </p>
+            </div>
+            {!confirmClear && (
+              <button
+                type="button"
+                disabled={syncEnabled}
+                onClick={() => setConfirmClear(true)}
+                className="shrink-0 px-3 py-1.5 text-xs rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                清除数据
+              </button>
+            )}
+          </div>
+
+          {confirmClear && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-xs text-red-600 mb-2 font-medium">⚠️ 确认要清除所有本地数据吗？此操作不可撤销。</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmClear(false)}
+                  className="px-3 py-1.5 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearLocalData}
+                  disabled={clearing}
+                  className="px-3 py-1.5 text-xs bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-60"
+                >
+                  {clearing ? '清除中...' : '确认清除'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-3">
