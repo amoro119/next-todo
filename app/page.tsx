@@ -36,6 +36,7 @@ import { createDexieDatabaseAPI } from "@/lib/db/databaseAPI";
 import type { DatabaseAPI } from "@/lib/db/databaseAPI";
 import { useTodosQuery, useListsQuery, useGoalsQuery } from "@/lib/hooks/useDexieQuery";
 import type { Todo as DbTodo } from "@/lib/db/types";
+import { useStores } from '@/lib/stores/createStores';
 
 /**
  * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
@@ -320,6 +321,8 @@ export default function TodoListPage() {
     const base = createDexieDatabaseAPI(db);
     return createBackwardCompatApi(base);
   }, []);
+
+  const { todoStore, listStore, goalStore } = useStores();
 
   // 初始化重复任务系统
   useEffect(() => {
@@ -712,7 +715,7 @@ export default function TodoListPage() {
         created_time: new Date().toISOString(),
       };
 
-      await api.addTodo(newTodoData);
+      await todoStore.getState().addTodo(newTodoData);
       setIsTodoModalOpen(false);
       setNewTodoTitle("");
       // 修复：只有在非日历视图下才重置日期，保持日历视图中的日期状态
@@ -741,7 +744,7 @@ export default function TodoListPage() {
         deleted: false,
       };
 
-      await api.addTodo(newTodoData);
+      await todoStore.getState().addTodo(newTodoData);
       setIsCalendarCreateModalOpen(false);
     },
     [api]
@@ -756,7 +759,7 @@ export default function TodoListPage() {
       if (!updates || Object.keys(updates).length === 0) return;
       
       // 先更新任务
-      await api.updateTodo(todoId, updates);
+      await todoStore.getState().updateTodo(todoId, updates);
       
       // 如果是完成操作，处理周期任务
       if (updates.completed === true) {
@@ -802,7 +805,7 @@ export default function TodoListPage() {
       if (!todoToDelete) return;
       setLastAction({ type: "delete", data: todoToDelete });
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-      await api.updateTodo(todoId, { deleted: true });
+      await todoStore.getState().updateTodo(todoId, { deleted: true });
       // 触发搜索结果刷新
       setSearchRefreshTrigger((prev) => prev + 1);
     },
@@ -815,7 +818,7 @@ export default function TodoListPage() {
       if (!todoToRestore) return;
       setLastAction({ type: "restore", data: todoToRestore });
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
-      await api.updateTodo(todoId, { deleted: false });
+      await todoStore.getState().updateTodo(todoId, { deleted: false });
       // 触发搜索结果刷新
       setSearchRefreshTrigger((prev) => prev + 1);
     },
@@ -830,7 +833,7 @@ export default function TodoListPage() {
         `确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`
       );
       if (confirmed) {
-        await api.deleteTodo(todoId);
+        await todoStore.getState().deleteTodo(todoId);
         if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
       }
     },
@@ -859,7 +862,7 @@ export default function TodoListPage() {
           is_hidden: false,
           modified: new Date().toISOString(),
         };
-        await api.addList(newList);
+        await listStore.getState().addList(newList);
         return newList;
       } catch (error) {
         console.error("Failed to add list:", error);
@@ -889,11 +892,11 @@ export default function TodoListPage() {
 
       // 1. 先将清单下的所有待办事项移至收件箱
       for (const todo of todosToUpdate) {
-        await api.updateTodo(todo.id, { list_id: null });
+        await todoStore.getState().updateTodo(todo.id, { list_id: null });
       }
 
       // 2. 删除清单
-      await api.deleteList(listId);
+      await listStore.getState().deleteList(listId);
 
       if (currentView === listToDelete.name) setCurrentView("inbox");
     },
@@ -903,7 +906,7 @@ export default function TodoListPage() {
   const handleUpdateList = useCallback(
     async (listId: string, updates: Partial<Omit<List, "id">>) => {
       if (Object.keys(updates).length === 0) return;
-      await api.updateList(listId, updates);
+      await listStore.getState().updateList(listId, updates);
     },
     [api]
   );
@@ -912,7 +915,7 @@ export default function TodoListPage() {
     async (reorderedLists: List[]) => {
       for (let index = 0; index < reorderedLists.length; index++) {
         const list = reorderedLists[index];
-        await api.updateList(list.id, { sort_order: index });
+        await listStore.getState().updateList(list.id, { sort_order: index });
       }
     },
     [api]
@@ -1046,7 +1049,7 @@ export default function TodoListPage() {
           };
 
           console.log("更新目标数据:", updateData);
-          await api.updateGoal(goalId, updateData);
+          await goalStore.getState().updateGoal(goalId, updateData);
           console.log("目标更新成功，ID:", goalId);
           
           // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据
@@ -1085,7 +1088,7 @@ export default function TodoListPage() {
           };
 
           console.log("准备插入目标数据:", goal);
-          await api.addGoal(goal);
+          await goalStore.getState().addGoal(goal);
           console.log("目标插入成功，ID:", goalId);
         }
 
@@ -1101,7 +1104,7 @@ export default function TodoListPage() {
             console.log("关联现有待办事项:", associatedTodos.existing);
             for (let i = 0; i < associatedTodos.existing.length; i++) {
               const todoId = associatedTodos.existing[i];
-              await api.updateTodo(todoId, {
+              await todoStore.getState().updateTodo(todoId, {
                 goal_id: goalId,
                 sort_order_in_goal: i + 1,
               });
@@ -1127,7 +1130,7 @@ export default function TodoListPage() {
                   sort_order_in_goal: existingCount + i + 1,
                   created_time: new Date().toISOString(),
                 };
-                await api.addTodo(newTodo);
+                await todoStore.getState().addTodo(newTodo);
               }
             }
           }
@@ -1157,7 +1160,7 @@ export default function TodoListPage() {
         if (updateData.list_id !== undefined) {
           updateData.list_id = sanitizeUuidField(updateData.list_id);
         }
-        await api.updateGoal(updatedGoal.id, updateData);
+        await goalStore.getState().updateGoal(updatedGoal.id, updateData);
         
         // 更新 selectedGoal 状态，确保 GoalDetails 页面显示最新的数据
         setSelectedGoal(prevSelectedGoal => {
@@ -1189,7 +1192,7 @@ export default function TodoListPage() {
           id: uuid(),
           created_time: new Date().toISOString(),
         };
-        await api.addTodo(newTodo);
+        await todoStore.getState().addTodo(newTodo);
       } catch (error) {
         console.error("创建待办事项失败:", error);
         alert(
@@ -1212,14 +1215,14 @@ export default function TodoListPage() {
       );
       
       if (confirmed) {
-        await api.deleteGoal(goalId);
+        await goalStore.getState().deleteGoal(goalId);
         // 同时删除与该目标关联的所有待办事项
         const allTodos = await api.getTodos();
         const todosToUpdate = allTodos.filter((t) => t.goal_id === goalId);
         
         // 将目标下的所有待办事项的目标ID设为null
         for (const todo of todosToUpdate) {
-          await api.updateTodo(todo.id, { goal_id: null });
+          await todoStore.getState().updateTodo(todo.id, { goal_id: null });
         }
       }
     },
@@ -1231,7 +1234,7 @@ export default function TodoListPage() {
       try {
         // 更新每个任务的 goal_id 字段
         for (const taskId of taskIds) {
-          await api.updateTodo(taskId, { goal_id: goalId });
+          await todoStore.getState().updateTodo(taskId, { goal_id: goalId });
         }
         console.log(`成功关联 ${taskIds.length} 个任务到目标 ${goalId}`);
       } catch (error) {
@@ -1394,7 +1397,7 @@ export default function TodoListPage() {
               sort_order: lists.length + i,
             };
             createdLists.push(newListData);
-            await api.addList(newListData);
+            await listStore.getState().addList(newListData);
           }
 
           const currentLists = await api.getLists();
@@ -1431,7 +1434,7 @@ export default function TodoListPage() {
               goal_id: todo.goal_id || null,
               sort_order_in_goal: todo.sort_order_in_goal || null,
             };
-            await api.addTodo(newTodoData);
+            await todoStore.getState().addTodo(newTodoData);
             createdTodos.push(newTodoData as Todo);
           }
 
