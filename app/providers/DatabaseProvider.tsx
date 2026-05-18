@@ -5,6 +5,7 @@ import { initializeDatabase, db } from '@/lib/db/dexie'
 import { createDexieDatabaseAPI, type DatabaseAPI } from '@/lib/db/databaseAPI'
 import { supabase } from '@/lib/supabase/client'
 import { RealtimeSyncService } from '@/lib/supabase/realtime/RealtimeSyncService'
+import { getSupabaseSyncConfig } from '@/lib/config/syncConfig'
 
 interface DatabaseContextValue {
   db: typeof db
@@ -49,10 +50,15 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
 
         if (supabase) {
-          console.log('[DatabaseProvider] Supabase client available, initializing realtime sync...')
-          const service = RealtimeSyncService.getInstance()
-          await service.initialize(supabase, db)
-          console.log('[DatabaseProvider] Realtime sync initialized')
+          const syncConfig = getSupabaseSyncConfig()
+          if (syncConfig.enabled) {
+            console.log('[DatabaseProvider] Supabase client available, initializing realtime sync...')
+            const service = RealtimeSyncService.getInstance()
+            await service.initialize(supabase, db)
+            console.log('[DatabaseProvider] Realtime sync initialized')
+          } else {
+            console.log('[DatabaseProvider] Sync disabled:', syncConfig.reason)
+          }
         } else {
           console.log('[DatabaseProvider] No Supabase client, skipping sync')
         }

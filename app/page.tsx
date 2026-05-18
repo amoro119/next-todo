@@ -1810,21 +1810,20 @@ export default function TodoListPage() {
           mode="create"
           lists={lists}
           initialData={{ title: newTodoTitle, start_date: calendarSelectedDate, due_date: calendarSelectedDate }}
-          onSubmit={(todoData) => {
-            const listId = todoData.list_id || null;
-            const dueDateString = utcToLocalDateString(
-              calendarSelectedDate
-            );
+            onSubmit={async (todoData) => {
+              const listId = todoData.list_id || null;
+              // calendarSelectedDate 已经是本地 YYYY-MM-DD 字符串，不需要经过 utcToLocalDateString 转换
+              const dueDateUTC = calendarSelectedDate ? localDateToEndOfDayUTC(calendarSelectedDate) : null;
 
-            const dueDateUTC = dueDateString ? localDateToEndOfDayUTC(dueDateString) : null;
+              setIsCalendarCreateModalOpen(false);
 
-            handleCreateTodo({
-              ...todoData,
-              list_id: listId,
-              due_date: dueDateUTC,
-              start_date: dueDateUTC,
-            });
-          }}
+              await handleCreateTodo({
+                ...todoData,
+                list_id: listId,
+                due_date: dueDateUTC,
+                start_date: dueDateUTC,
+              });
+            }}
           onClose={() => {
             setIsCalendarCreateModalOpen(false);
             setNewTodoTitle("");
