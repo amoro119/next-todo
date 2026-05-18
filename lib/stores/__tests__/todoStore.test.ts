@@ -46,16 +46,16 @@ function makeMockApi(overrides: Partial<DatabaseAPI> = {}): DatabaseAPI {
   return {
     getTodos: vi.fn().mockResolvedValue([]),
     addTodo: vi.fn().mockResolvedValue(makeTodo({ id: 'todo-new' })),
-    updateTodo: vi.fn().mockResolvedValue(undefined),
-    deleteTodo: vi.fn().mockResolvedValue(undefined),
+    updateTodo: vi.fn().mockResolvedValue(makeTodo()),
+    deleteTodo: vi.fn().mockResolvedValue(makeTodo()),
     getLists: vi.fn().mockResolvedValue([]),
     addList: vi.fn().mockResolvedValue({}),
-    updateList: vi.fn().mockResolvedValue(undefined),
-    deleteList: vi.fn().mockResolvedValue(undefined),
+    updateList: vi.fn().mockResolvedValue({}),
+    deleteList: vi.fn().mockResolvedValue({}),
     getGoals: vi.fn().mockResolvedValue([]),
     addGoal: vi.fn().mockResolvedValue({}),
-    updateGoal: vi.fn().mockResolvedValue(undefined),
-    deleteGoal: vi.fn().mockResolvedValue(undefined),
+    updateGoal: vi.fn().mockResolvedValue({}),
+    deleteGoal: vi.fn().mockResolvedValue({}),
     ...overrides,
   } as unknown as DatabaseAPI
 }
