@@ -28,8 +28,8 @@ function makeList(overrides: Partial<List> = {}): List {
 function makeMockApi(overrides: Partial<DatabaseAPI> = {}): DatabaseAPI {
   return {
     addList: vi.fn().mockResolvedValue(makeList()),
-    updateList: vi.fn().mockResolvedValue(undefined),
-    deleteList: vi.fn().mockResolvedValue(undefined),
+    updateList: vi.fn().mockResolvedValue(makeList()),
+    deleteList: vi.fn().mockResolvedValue(makeList()),
     // minimal required stubs
     getTodos: vi.fn(),
     addTodo: vi.fn(),
@@ -160,7 +160,7 @@ describe('createListStore', () => {
       expect(event.detail.source).toBe('local')
       expect(event.detail.action).toBe('delete')
       expect(event.detail.id).toBe('list-1')
-      expect(event.detail.record).toBeNull()
+      expect(event.detail.record).toEqual(expect.objectContaining({ id: 'list-1' }))
       expect(event.detail.table).toBe('lists')
     })
   })

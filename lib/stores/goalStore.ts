@@ -22,16 +22,15 @@ export function createGoalStore(api: DatabaseAPI) {
     },
 
     async updateGoal(id, updates) {
-      await api.updateGoal(id, updates)
+      const updated = await api.updateGoal(id, updates)
       set({ goals: get().goals.map(g => g.id === id ? { ...g, ...updates } : g) })
-      const record = get().goals.find(g => g.id === id) ?? null
-      dispatchDataChange('goals', { source: 'local', action: 'update', id, record, table: 'goals' })
+      dispatchDataChange('goals', { source: 'local', action: 'update', id, record: updated, table: 'goals' })
     },
 
     async deleteGoal(id) {
-      await api.deleteGoal(id)
+      const deleted = await api.deleteGoal(id)
       set({ goals: get().goals.filter(g => g.id !== id) })
-      dispatchDataChange('goals', { source: 'local', action: 'delete', id, record: null, table: 'goals' })
+      dispatchDataChange('goals', { source: 'local', action: 'delete', id, record: deleted, table: 'goals' })
     },
 
     setGoals(goals) {

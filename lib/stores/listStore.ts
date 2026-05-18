@@ -22,16 +22,15 @@ export function createListStore(api: DatabaseAPI) {
     },
 
     async updateList(id, updates) {
-      await api.updateList(id, updates)
+      const updated = await api.updateList(id, updates)
       set({ lists: get().lists.map(l => l.id === id ? { ...l, ...updates } : l) })
-      const record = get().lists.find(l => l.id === id) ?? null
-      dispatchDataChange('lists', { source: 'local', action: 'update', id, record, table: 'lists' })
+      dispatchDataChange('lists', { source: 'local', action: 'update', id, record: updated, table: 'lists' })
     },
 
     async deleteList(id) {
-      await api.deleteList(id)
+      const deleted = await api.deleteList(id)
       set({ lists: get().lists.filter(l => l.id !== id) })
-      dispatchDataChange('lists', { source: 'local', action: 'delete', id, record: null, table: 'lists' })
+      dispatchDataChange('lists', { source: 'local', action: 'delete', id, record: deleted, table: 'lists' })
     },
 
     setLists(lists) {

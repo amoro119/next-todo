@@ -13,7 +13,7 @@ interface TodoState {
 }
 
 export function createTodoStore(api: DatabaseAPI): StoreApi<TodoState> {
-  return createStore<TodoState>((set) => ({
+  return createStore<TodoState>((set, get) => ({
     todos: [],
 
     async addTodo(partial) {
@@ -29,7 +29,7 @@ export function createTodoStore(api: DatabaseAPI): StoreApi<TodoState> {
     },
 
     async updateTodo(id, updates) {
-      await api.updateTodo(id, updates)
+      const updated = await api.updateTodo(id, updates)
       set((s) => ({
         todos: s.todos.map((t) => (t.id === id ? { ...t, ...updates } : t)),
       }))
@@ -37,19 +37,19 @@ export function createTodoStore(api: DatabaseAPI): StoreApi<TodoState> {
         source: 'local',
         action: 'update',
         id,
-        record: null,
+        record: updated,
         table: 'todos',
       })
     },
 
     async deleteTodo(id) {
-      await api.deleteTodo(id)
+      const deleted = await api.deleteTodo(id)
       set((s) => ({ todos: s.todos.filter((t) => t.id !== id) }))
       dispatchDataChange('todos', {
         source: 'local',
         action: 'delete',
         id,
-        record: null,
+        record: deleted,
         table: 'todos',
       })
     },

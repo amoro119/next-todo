@@ -8,14 +8,14 @@ export interface DatabaseAPI {
   getLists(): Promise<List[]>
   getGoals(): Promise<Goal[]>
   addTodo(todo: Partial<Todo>): Promise<Todo>
-  updateTodo(id: string, updates: Partial<Todo>): Promise<void>
-  deleteTodo(id: string): Promise<void>
+  updateTodo(id: string, updates: Partial<Todo>): Promise<Todo>
+  deleteTodo(id: string): Promise<Todo>
   addList(list: Partial<List>): Promise<List>
-  updateList(id: string, updates: Partial<List>): Promise<void>
-  deleteList(id: string): Promise<void>
+  updateList(id: string, updates: Partial<List>): Promise<List>
+  deleteList(id: string): Promise<List>
   addGoal(goal: Partial<Goal>): Promise<Goal>
-  updateGoal(id: string, updates: Partial<Goal>): Promise<void>
-  deleteGoal(id: string): Promise<void>
+  updateGoal(id: string, updates: Partial<Goal>): Promise<Goal>
+  deleteGoal(id: string): Promise<Goal>
 }
 
 export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
@@ -73,7 +73,7 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       return record
     },
 
-    async updateTodo(id: string, updates: Partial<Todo>): Promise<void> {
+    async updateTodo(id: string, updates: Partial<Todo>): Promise<Todo> {
       const patch: Partial<Todo> & { updated_at: string } = { ...updates, updated_at: now() }
       if (updates.deleted === true && updates.deleted_at === undefined) {
         patch.deleted_at = now()
@@ -82,10 +82,16 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
         patch.deleted_at = null
       }
       await database.todos.update(id, patch)
+      const record = await database.todos.get(id)
+      if (!record) throw new Error(`Todo not found: ${id}`)
+      return record
     },
 
-    async deleteTodo(id: string): Promise<void> {
+    async deleteTodo(id: string): Promise<Todo> {
+      const record = await database.todos.get(id)
+      if (!record) throw new Error(`Todo not found: ${id}`)
       await database.todos.update(id, { deleted_at: now(), updated_at: now() })
+      return record
     },
 
     async addList(list: Partial<List>): Promise<List> {
@@ -102,12 +108,18 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       return record
     },
 
-    async updateList(id: string, updates: Partial<List>): Promise<void> {
+    async updateList(id: string, updates: Partial<List>): Promise<List> {
       await database.lists.update(id, { ...updates, updated_at: now() })
+      const record = await database.lists.get(id)
+      if (!record) throw new Error(`List not found: ${id}`)
+      return record
     },
 
-    async deleteList(id: string): Promise<void> {
+    async deleteList(id: string): Promise<List> {
+      const record = await database.lists.get(id)
+      if (!record) throw new Error(`List not found: ${id}`)
       await database.lists.update(id, { deleted_at: now(), updated_at: now() })
+      return record
     },
 
     async addGoal(goal: Partial<Goal>): Promise<Goal> {
@@ -129,12 +141,18 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       return record
     },
 
-    async updateGoal(id: string, updates: Partial<Goal>): Promise<void> {
+    async updateGoal(id: string, updates: Partial<Goal>): Promise<Goal> {
       await database.goals.update(id, { ...updates, updated_at: now() })
+      const record = await database.goals.get(id)
+      if (!record) throw new Error(`Goal not found: ${id}`)
+      return record
     },
 
-    async deleteGoal(id: string): Promise<void> {
+    async deleteGoal(id: string): Promise<Goal> {
+      const record = await database.goals.get(id)
+      if (!record) throw new Error(`Goal not found: ${id}`)
       await database.goals.update(id, { deleted_at: now(), updated_at: now() })
+      return record
     },
   }
 }

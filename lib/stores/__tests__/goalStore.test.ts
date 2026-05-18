@@ -25,8 +25,8 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
 function makeMockApi(overrides: Partial<DatabaseAPI> = {}): DatabaseAPI {
   return {
     addGoal: vi.fn().mockResolvedValue(makeGoal()),
-    updateGoal: vi.fn().mockResolvedValue(undefined),
-    deleteGoal: vi.fn().mockResolvedValue(undefined),
+    updateGoal: vi.fn().mockResolvedValue(makeGoal()),
+    deleteGoal: vi.fn().mockResolvedValue(makeGoal()),
     getTodos: vi.fn(),
     addTodo: vi.fn(),
     updateTodo: vi.fn(),
@@ -152,7 +152,7 @@ describe('createGoalStore', () => {
       expect(event.detail.source).toBe('local')
       expect(event.detail.action).toBe('delete')
       expect(event.detail.id).toBe('goal-1')
-      expect(event.detail.record).toBeNull()
+      expect(event.detail.record).toEqual(expect.objectContaining({ id: 'goal-1' }))
       expect(event.detail.table).toBe('goals')
     })
   })
