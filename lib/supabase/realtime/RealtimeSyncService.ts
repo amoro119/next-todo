@@ -12,7 +12,6 @@ import {
   type RealtimeSyncConfig,
   type SyncRecord,
   type PendingOperation,
-  DEFAULT_USER_ID,
 } from './types'
 import { downloadRemoteChanges, uploadLocalChanges, fromSupabaseRow } from '../syncOperations'
 import { startLocalChangeListener } from './handlers/localChangeListener'
@@ -25,7 +24,6 @@ export interface StateChangeCallback {
 
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 1000
-const SENT_TRACK_TTL_MS = 5_000
 
 export class RealtimeSyncService {
   private static instance: RealtimeSyncService | null = null
@@ -52,9 +50,6 @@ export class RealtimeSyncService {
   }
   private stateListeners = new Set<StateChangeCallback>()
   private isInitialized = false
-  /** Tracks recently uploaded records to prevent echo */
-  private recentlySent = new Map<string, string>()
-  private sentTrackerTimer: ReturnType<typeof setTimeout> | null = null
   private initialSyncManager: InitialSyncManager | null = null
   private stopLocalChangeListener: (() => void) | null = null
 
@@ -102,11 +97,8 @@ export class RealtimeSyncService {
       await this.subscribeToChannels()
 
       this.stopLocalChangeListener = startLocalChangeListener({
-        db,
         client,
-        userId: DEFAULT_USER_ID,
         offlineQueue: this.offlineQueue!,
-        tables: this.config.tables,
         onUpload: (table, record) => this.uploadChange(table, record),
       })
 
@@ -215,9 +207,7 @@ export class RealtimeSyncService {
     if (typeof window !== 'undefined' && window.navigator.onLine) {
       const result = await uploadLocalChanges(this.client, table, [syncRecord])
       console.log(`[Sync] uploadChange result for ${table}:`, result)
-      if (result.success) {
-        this.trackSentRecord(table, syncRecord)
-      } else {
+      if (!result.success) {
         console.log(`[Sync] Enqueuing offline operation for ${table}`)
         await this.offlineQueue?.enqueue({
           table,
@@ -257,12 +247,6 @@ export class RealtimeSyncService {
 
     this.initialSyncManager?.abort()
     this.initialSyncManager = null
-
-    this.recentlySent.clear()
-    if (this.sentTrackerTimer !== null) {
-      clearTimeout(this.sentTrackerTimer)
-      this.sentTrackerTimer = null
-    }
 
     this.setState({
       isConnected: false,
@@ -403,11 +387,6 @@ export class RealtimeSyncService {
       { updated_at: remote.updated_at, deleted_at: remote.deleted_at },
     )
 
-    if (this.isEchoRecord(table, remote)) {
-      console.log(`[Sync] applyRemoteUpsert: ignoring echo record ${remote.id}`)
-      return
-    }
-
     try {
       const local = await dexieTable.get(remote.id)
       const localSyncRecord: SyncRecord | null = local
@@ -444,12 +423,6 @@ export class RealtimeSyncService {
       { updated_at: old.updated_at },
     )
 
-    if (old.id && old.updated_at && this.recentlySent.get(`${table}:${old.id}`) === old.updated_at) {
-      console.log(`[Sync] applyRemoteDelete: ignoring echo delete for ${old.id}`)
-      this.recentlySent.delete(`${table}:${old.id}`)
-      return
-    }
-
     try {
       const local = await dexieTable.get(old.id)
       if (local) {
@@ -469,32 +442,6 @@ export class RealtimeSyncService {
     }
   }
 
-  private trackSentRecord(table: RealtimeSyncTable, record: SyncRecord): void {
-    if (!record.id || !record.updated_at) return
-    const key = `${table}:${record.id}`
-    this.recentlySent.set(key, record.updated_at)
-    this.scheduleSentCleanup()
-  }
-
-  private isEchoRecord(table: RealtimeSyncTable, record: SyncRecord): boolean {
-    if (!record.id || !record.updated_at) return false
-    const key = `${table}:${record.id}`
-    const trackedTimestamp = this.recentlySent.get(key)
-    if (trackedTimestamp === record.updated_at) {
-      this.recentlySent.delete(key)
-      return true
-    }
-    return false
-  }
-
-  private scheduleSentCleanup(): void {
-    if (this.sentTrackerTimer !== null) return
-    this.sentTrackerTimer = setTimeout(() => {
-      this.recentlySent.clear()
-      this.sentTrackerTimer = null
-    }, SENT_TRACK_TTL_MS)
-  }
-
   private async mergeRemoteChanges(table: RealtimeSyncTable, since: string): Promise<void> {
     if (!this.client || !this.config) return
 
@@ -507,11 +454,6 @@ export class RealtimeSyncService {
 
     let applied = 0
     for (const remote of changes) {
-      if (this.isEchoRecord(table, remote)) {
-        console.log(`[Sync] mergeRemoteChanges: skipping echo ${remote.id}`)
-        continue
-      }
-
       try {
         const local = await dexieTable.get(remote.id)
         const localSyncRecord: SyncRecord | null = local

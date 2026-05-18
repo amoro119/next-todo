@@ -13,10 +13,12 @@ Object.defineProperty(globalThis, 'window', {
 })
 
 vi.mock('../realtime/InitialSyncManager', () => ({
-  InitialSyncManager: vi.fn().mockImplementation(() => ({
-    performSync: vi.fn().mockResolvedValue({ uploaded: 0, downloaded: 0, deleted: 0, errors: [] }),
-    abort: vi.fn(),
-  })),
+  InitialSyncManager: vi.fn(function () {
+    return {
+      performSync: vi.fn().mockResolvedValue({ uploaded: 0, downloaded: 0, deleted: 0, errors: [] }),
+      abort: vi.fn(),
+    }
+  }),
 }))
 
 vi.mock('../syncOperations', () => ({
