@@ -56,3 +56,4 @@ dist-*
 calendar.yml
 spec/
 supabase/migrations/
+supabase/.temp/

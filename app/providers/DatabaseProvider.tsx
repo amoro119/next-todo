@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { StoreProvider } from '@/lib/stores/createStores'
 import { initializeDatabase, db } from '@/lib/db/dexie'
 import { createDexieDatabaseAPI, type DatabaseAPI } from '@/lib/db/databaseAPI'
 import { supabase } from '@/lib/supabase/client'
@@ -111,7 +112,9 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
 
   return (
     <DatabaseContext.Provider value={{ db, api, isReady, error }}>
-      {children}
+      <StoreProvider api={api}>
+        {children}
+      </StoreProvider>
     </DatabaseContext.Provider>
   )
 }
