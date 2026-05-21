@@ -37,6 +37,8 @@ import type { DatabaseAPI } from "@/lib/db/databaseAPI";
 import { useTodosQuery, useListsQuery, useGoalsQuery } from "@/lib/hooks/useDexieQuery";
 import type { Todo as DbTodo } from "@/lib/db/types";
 import { useStores } from '@/lib/stores/createStores';
+import { supabase } from '@/lib/supabase/client';
+import { deleteRecordsFromSupabase } from '@/lib/supabase/syncOperations';
 
 /**
  * 清理 UUID 字段，确保只有有效的 UUID 字符串被保留
@@ -833,11 +835,17 @@ export default function TodoListPage() {
         `确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`
       );
       if (confirmed) {
-        await todoStore.getState().deleteTodo(todoId);
+        await api.hardDeleteTodo(todoId);
+        todoStore.setState((s) => ({
+          todos: s.todos.filter((t) => t.id !== todoId),
+        }));
+        if (supabase) {
+          await deleteRecordsFromSupabase(supabase, 'todos', [todoId]);
+        }
         if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null);
       }
     },
-    [recycledTodos, selectedTodo, api]
+    [recycledTodos, selectedTodo, api, todoStore]
   );
 
   const handleSaveTodoDetails = useCallback(

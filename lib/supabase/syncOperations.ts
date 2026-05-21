@@ -116,6 +116,25 @@ export async function markRecordsAsDeleted(
   return { success: true }
 }
 
+export async function deleteRecordsFromSupabase(
+  client: SupabaseClient,
+  table: RealtimeSyncTable,
+  ids: string[],
+): Promise<SyncOperationResult> {
+  console.log(`[SyncOps] deleteRecordsFromSupabase: ${table} ids=${ids.length}`)
+  const { error } = await client
+    .from(table)
+    .delete()
+    .in('id', ids)
+
+  if (error) {
+    console.error(`[SyncOps] deleteRecordsFromSupabase failed for ${table}:`, error.message)
+    return { success: false, error: error.message }
+  }
+  console.log(`[SyncOps] deleteRecordsFromSupabase: ${table} succeeded`)
+  return { success: true }
+}
+
 export async function uploadLocalChanges(
   client: SupabaseClient,
   table: RealtimeSyncTable,

@@ -10,12 +10,15 @@ export interface DatabaseAPI {
   addTodo(todo: Partial<Todo>): Promise<Todo>
   updateTodo(id: string, updates: Partial<Todo>): Promise<Todo>
   deleteTodo(id: string): Promise<Todo>
+  hardDeleteTodo(id: string): Promise<void>
   addList(list: Partial<List>): Promise<List>
   updateList(id: string, updates: Partial<List>): Promise<List>
   deleteList(id: string): Promise<List>
+  hardDeleteList(id: string): Promise<void>
   addGoal(goal: Partial<Goal>): Promise<Goal>
   updateGoal(id: string, updates: Partial<Goal>): Promise<Goal>
   deleteGoal(id: string): Promise<Goal>
+  hardDeleteGoal(id: string): Promise<void>
   clearLocalData(): Promise<void>
 }
 
@@ -95,6 +98,10 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       return record
     },
 
+    async hardDeleteTodo(id: string): Promise<void> {
+      await database.todos.delete(id)
+    },
+
     async addList(list: Partial<List>): Promise<List> {
       const record: List = {
         id: list.id ?? newId(),
@@ -121,6 +128,10 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       if (!record) throw new Error(`List not found: ${id}`)
       await database.lists.update(id, { deleted_at: now(), updated_at: now() })
       return record
+    },
+
+    async hardDeleteList(id: string): Promise<void> {
+      await database.lists.delete(id)
     },
 
     async addGoal(goal: Partial<Goal>): Promise<Goal> {
@@ -154,6 +165,10 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       if (!record) throw new Error(`Goal not found: ${id}`)
       await database.goals.update(id, { deleted_at: now(), updated_at: now() })
       return record
+    },
+
+    async hardDeleteGoal(id: string): Promise<void> {
+      await database.goals.delete(id)
     },
 
     async clearLocalData(): Promise<void> {

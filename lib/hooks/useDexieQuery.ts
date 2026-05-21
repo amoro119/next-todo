@@ -16,16 +16,16 @@ export function useTodosQuery(listId?: string): QueryResult<Todo> {
       if (listId) {
         return db.todos
           .where({ list_id: listId })
-          .and(t => t.deleted_at == null)
           .toArray()
       }
-      return db.todos.filter(t => t.deleted_at == null).toArray()
+      return db.todos.toArray()
     },
     [listId],
   )
 
   if (data !== undefined) {
-    console.log(`[useDexieQuery] useTodosQuery returned ${data.length} todos (deleted_at == null)`)
+    const deletedCount = data.filter(t => t.deleted_at !== null).length
+    console.log(`[useDexieQuery] useTodosQuery returned ${data.length} todos (${deletedCount} soft-deleted)`)
   }
 
   return {
