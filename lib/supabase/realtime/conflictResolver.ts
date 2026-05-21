@@ -76,6 +76,10 @@ export function batchResolveConflicts(
     remoteMap.set(rec.id, rec)
   }
 
+  // Track records where local wins LWW — used in the second loop to avoid
+  // redundant resolveConflictLWW calls and to re-upload local-wins records.
+  const localWinIds = new Set<string>()
+
   for (const remote of remoteRecords) {
     const local = localMap.get(remote.id)
 
@@ -95,12 +99,17 @@ export function batchResolveConflicts(
     const winner = resolveConflictLWW(local, remote)
     if (winner === remote) {
       toDownload.push(remote)
+    } else {
+      localWinIds.add(local.id)
     }
     merged.push(winner!)
   }
 
   for (const local of localRecords) {
     if (remoteMap.has(local.id)) {
+      if (localWinIds.has(local.id) && extractTimestamp(local) > lastSyncTime) {
+        toUpload.push(local)
+      }
       continue
     }
 
