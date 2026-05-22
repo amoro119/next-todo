@@ -1854,6 +1854,8 @@ export default function TodoListPage() {
             handleDeleteTodo(todoId);
             setSelectedTodo(null);
           }}
+          onRestore={handleRestoreTodo}
+          onPermanentDelete={handlePermanentDeleteTodo}
         />
       )}
 
