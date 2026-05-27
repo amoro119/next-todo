@@ -235,7 +235,7 @@ const TodoItem = memo<TodoItemProps>(({ todo, onClick, onDragStart }) => {
 
   return (
     <li
-      className={`flex items-center gap-2 p-2 rounded-md border border-border bg-background text-sm cursor-pointer overflow-hidden ${todo.completed ? 'line-through opacity-50' : ''}`}
+      className={`flex items-center gap-2 p-2 mb-2 rounded-md border border-border bg-background text-sm cursor-pointer overflow-hidden ${todo.completed ? 'line-through opacity-50' : ''}`}
       onClick={handleClick}
       draggable="true"
       onDragStart={handleDragStart}

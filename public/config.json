@@ -1,0 +1,15 @@
+{
+  "defaultSubscription": "premium",
+  "syncEnabled": true,
+  "showUpgradePrompts": false,
+  "features": [
+    "sync",
+    "export",
+    "themes",
+    "advanced-search"
+  ],
+  "appName": "Todo App - Web",
+  "version": "1.0.0",
+  "buildType": "premium",
+  "platform": "web"
+}

@@ -167,7 +167,7 @@ const TodoItem = memo(
 
             {(currentView === "inbox" || currentView === "today") &&
               todo.list_name && (
-                <span className="text-accent-foreground font-bold mr-1.5">[{todo.list_name}] </span>
+                <span className="text-accent-foreground font-bold mr-1.5 text-sm">[{todo.list_name}] </span>
               )}
 
             {/* 重复任务标识 */}

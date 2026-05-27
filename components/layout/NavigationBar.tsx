@@ -4,6 +4,7 @@ import { Settings } from 'lucide-react'
 import { useNavResize } from '@/lib/hooks/useNavResize'
 import { useSyncStatus } from '@/lib/hooks/useSyncStatus'
 import { useUIStore, type AppSection } from '@/lib/stores/uiStore'
+import { PWAInstallButton } from '@/components/PWAInstallButton'
 
 const NAV_ITEMS = [
   { section: 'todo' as AppSection, label: '待办' },
@@ -29,13 +30,16 @@ export function NavigationBar({ onOpenSettings }: NavigationBarProps) {
       >
         <div className="flex items-center justify-between px-4 py-4">
           <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>
-          <button
-            onClick={onOpenSettings}
-            className="text-[oklch(var(--muted-foreground))] hover:text-[oklch(var(--foreground))] transition-colors"
-            aria-label="设置"
-          >
-            <Settings size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <PWAInstallButton />
+            <button
+              onClick={onOpenSettings}
+              className="text-[oklch(var(--muted-foreground))] hover:text-[oklch(var(--foreground))] transition-colors"
+              aria-label="设置"
+            >
+              <Settings size={16} />
+            </button>
+          </div>
         </div>
 
         <nav className="flex flex-col gap-1 px-2">

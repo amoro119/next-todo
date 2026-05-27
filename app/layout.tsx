@@ -1,5 +1,6 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Inter, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
 import { DatabaseProvider } from "@/app/providers";
@@ -21,14 +22,28 @@ const notoSansSC = Noto_Sans_SC({
 export const metadata: Metadata = {
   title: "Todo List Local-First",
   description: "A simple local-first todo app built with Next.js and a main-process database",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "NEXT TODO",
+    statusBarStyle: "default",
+  },
   icons: {
     icon: "/favicon.png",
+    apple: "/favicon.png",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#1e1e24" },
+  ],
 };
 
 export default function RootLayout({
@@ -44,6 +59,9 @@ export default function RootLayout({
             {children}
           </DatabaseProvider>
         </ThemeProvider>
+        <Script id="pwa-sw-register" strategy="afterInteractive">
+          {`if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js')})}`}
+        </Script>
       </body>
     </html>
   );
