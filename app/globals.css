@@ -104,6 +104,15 @@
     outline: none;
   }
 
+  /* 防止 iOS Safari 在聚焦 input 时自动放大页面（font-size < 16px 会触发缩放） */
+  @media screen and (max-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+
   a {
     color: oklch(var(--foreground));
   }
