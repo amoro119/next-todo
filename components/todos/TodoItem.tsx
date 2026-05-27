@@ -37,7 +37,7 @@ export function TodoItem({ todo, onToggle, onDelete, onOpen }: TodoItemProps) {
       transition={{ duration: 0.15 }}
       className="overflow-hidden"
     >
-    <div className="flex items-center gap-3 px-4 py-2.5 group hover:bg-[oklch(var(--muted)/0.5)] rounded-lg">
+    <div className="flex items-center gap-2 sm:gap-3 px-3 py-2.5 sm:px-4 group hover:bg-[oklch(var(--muted)/0.5)] rounded-lg">
       <button
         onClick={() => onToggle(todo)}
         className={cn(
@@ -61,7 +61,7 @@ export function TodoItem({ todo, onToggle, onDelete, onOpen }: TodoItemProps) {
       >
         <span
           className={cn(
-            'text-sm block truncate',
+            'text-[14px] sm:text-sm block truncate',
             todo.completed
               ? 'line-through text-[oklch(var(--muted-foreground))]'
               : 'text-[oklch(var(--foreground))]'
@@ -92,7 +92,7 @@ export function TodoItem({ todo, onToggle, onDelete, onOpen }: TodoItemProps) {
 
       <button
         onClick={() => onDelete(todo.id)}
-        className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-[oklch(var(--muted-foreground))] hover:text-red-500"
+        className="flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-[oklch(var(--muted-foreground))] hover:text-red-500"
         aria-label="删除"
       >
         <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
