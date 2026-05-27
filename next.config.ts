@@ -1,8 +1,6 @@
 // next.config.ts
 import type { NextConfig } from "next";
 
-const isElectron = process.env.ELECTRON === 'true';
-
 const nextConfig: NextConfig = {
   // 必须使用 standalone 输出模式
   output: 'standalone',
@@ -10,7 +8,7 @@ const nextConfig: NextConfig = {
   // 在开发模式下禁用React严格模式以避免重复初始化
   reactStrictMode: false,
   
-  // 在 Electron 中，图像优化通常是不必要的，并且可能导致问题
+  // 图像优化
   images: {
     unoptimized: true,
   },
@@ -23,25 +21,6 @@ const nextConfig: NextConfig = {
   eslint: {
     // 在构建时忽略 ESLint，以加快流程
     ignoreDuringBuilds: true,
-  },
-  
-  webpack(config, { isServer }) {
-    // 关键：告诉 Webpack，在 Electron 环境中，不要打包 Node.js 的原生模块
-    if (isElectron) {
-      config.externals = [
-        ...config.externals,
-        'fs',
-        'path',
-        'os',
-        'crypto',
-        'stream',
-        'assert',
-        'util',
-        'events',
-      ];
-    }
-    
-    return config;
   },
 };
 
