@@ -98,14 +98,14 @@ export function TodoSection({
             </>
           ) : (
             <div className="flex flex-col flex-1 w-full min-h-0 gap-0">
-              <div className="pt-4 pb-3">
+              <div className="pt-4">
                 <TodoInput
                   value={newTodoTitle}
                   onChange={setNewTodoTitle}
                   onSubmit={handleAddTodo}
                 />
               </div>
-              <div className="pt-4 pb-3">
+              <div className="pt-4">
                 <TodoViewOptions
                   lists={lists}
                   currentView={currentView}

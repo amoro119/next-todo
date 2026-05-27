@@ -147,7 +147,7 @@ export default function Page() {
 
   useEffect(() => {
     if (activeSection === "goals") { todoOps.setCurrentMode("goals"); todoOps.setCurrentView("goals-main") }
-    else if (activeSection === "todo") { todoOps.setCurrentMode("todo") }
+    else if (activeSection === "todo") { todoOps.setCurrentMode("todo"); todoOps.setCurrentView("today") }
     else if (activeSection === "calendar") { todoOps.setCurrentView("calendar") }
   }, [activeSection])
 

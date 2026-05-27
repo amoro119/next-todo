@@ -1404,7 +1404,7 @@ span.shortcut-name {
 
 .slogan-input {
   width: 100%;
-  font-size: 14px;
+  font-size: 16px;
   padding: 8px 12px;
   border: 1px solid oklch(var(--border));
   border-radius: var(--radius);
