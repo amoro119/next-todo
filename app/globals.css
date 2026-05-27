@@ -1,0 +1,2132 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: 0.98 0 0;
+  --foreground: 0.141 0.005 285.823;
+  --primary: 0.21 0.006 285.885;
+  --primary-foreground: 0.985 0 0;
+  --secondary: 0.967 0.001 286.375;
+  --secondary-foreground: 0.21 0.006 285.885;
+  --muted: 0.967 0.001 286.375;
+  --muted-foreground: 0.552 0.016 285.938;
+  --accent: 0.967 0.001 286.375;
+  --accent-foreground: 0.21 0.006 285.885;
+  --destructive: 0.577 0.245 27.325;
+  --destructive-foreground: 0.985 0 0;
+  --border: 0.92 0.004 286.32;
+  --input: 0.92 0.004 286.32;
+  --ring: 0.21 0.006 285.885;
+  --radius: 0.5rem;
+  --nav-panel-width: 220px;
+  --font-scale: 1;
+  --font-sans: var(--font-noto-sans-sc), var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dark {
+  --background: 0.141 0.005 285.823;
+  --foreground: 0.985 0 0;
+  --primary: 0.985 0 0;
+  --primary-foreground: 0.21 0.006 285.885;
+  --secondary: 0.269 0.013 285.805;
+  --secondary-foreground: 0.985 0 0;
+  --muted: 0.269 0.013 285.805;
+  --muted-foreground: 0.705 0.015 286.067;
+  --accent: 0.269 0.013 285.805;
+  --accent-foreground: 0.985 0 0;
+  --destructive: 0.396 0.141 25.723;
+  --destructive-foreground: 0.985 0 0;
+  --border: 0.269 0.013 285.805;
+  --input: 0.269 0.013 285.805;
+  --ring: 0.871 0.006 286.286;
+}
+
+/* ==========================================================================
+   BASE ELEMENT STYLES
+   ========================================================================== */
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    font-family: var(--font-sans);
+    background-color: oklch(var(--background));
+    font-size: 16px;
+    color: oklch(var(--foreground));
+  }
+
+  html::-webkit-scrollbar {
+    display: none;
+  }
+
+  body {
+    background-color: oklch(var(--background));
+    color: oklch(var(--foreground));
+    min-height: 100vh;
+  }
+
+  ::placeholder {
+    color: oklch(var(--muted-foreground));
+    font-weight: 400;
+  }
+
+  button {
+    background: transparent;
+    color: oklch(var(--foreground));
+    cursor: pointer;
+  }
+
+  button:focus {
+    outline: none;
+  }
+
+  input {
+    border-radius: var(--radius);
+    border: 1px solid oklch(var(--border));
+    padding: 8px 16px;
+    display: inline-block;
+    cursor: pointer;
+    background: oklch(var(--background));
+    color: oklch(var(--foreground));
+  }
+
+  input:focus {
+    outline: none;
+  }
+
+  select:focus,
+  textarea:focus {
+    outline: none;
+  }
+
+  a {
+    color: oklch(var(--foreground));
+  }
+
+  ul,
+  li {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  h1 {
+    font-size: 36px;
+    text-align: center;
+  }
+}
+
+/* ==========================================================================
+   LAYOUT
+   ========================================================================== */
+
+.container {
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.todo-app {
+  margin: 0 auto;
+}
+
+.header {
+  margin: 0 auto 24px;
+}
+
+.main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  position: relative;
+  flex-direction: column;
+  gap: 23px;
+}
+
+.main.main-full-width {
+  max-width: 1280px;
+}
+
+/* ==========================================================================
+   BACKGROUND PATTERN
+   ========================================================================== */
+
+.bg-pattern {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100vh;
+  background-color: oklch(var(--background));
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Cdefs%3E%3Cpattern id='p' width='100' height='100' patternUnits='userSpaceOnUse' patternTransform='scale(0.25)'%3E%3Ccircle data-color='outline' fill='none' stroke='%23828D99' stroke-width='25' cx='50' cy='50' r='.5'%3E%3C/circle%3E%3C/pattern%3E%3C/defs%3E%3Crect fill='url(%23p)' width='100%25' height='100%25'%3E%3C/rect%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: center center;
+  background-repeat: repeat;
+  opacity: 0.04;
+}
+
+/* ==========================================================================
+   BUTTON STYLES
+   ========================================================================== */
+
+.btn {
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  padding: 12px 24px;
+  text-align: center;
+  display: block;
+  position: relative;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  transition: background-color 0.15s ease;
+}
+
+.btn-small:disabled {
+  background-color: oklch(var(--muted));
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ==========================================================================
+   TODO WRAPPER & LIST
+   ========================================================================== */
+
+.todo-wrapper {
+  width: 100%;
+  margin: 40px auto;
+}
+
+.todo-list-box {
+  position: relative;
+  background: oklch(var(--background));
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  margin: 0;
+  padding-top: 0;
+  transition: all 0.3s ease;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.todo-list,
+.goal-list {
+  padding: 32px 36px 36px;
+  min-height: 381px;
+  transition: all 0.3s ease;
+}
+
+.todo-list li,
+.goal-list li {
+  position: relative;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  width: 100%;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.todo-list li:last-child,
+.goal-list li:last-child {
+  margin-bottom: 0;
+}
+
+.todo-list-container,
+.goal-list-container {
+  width: 100%;
+}
+
+/* ==========================================================================
+   TODO ITEM
+   ========================================================================== */
+
+.todo-item {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.todo-item.fade-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.todo-item.completed {
+  opacity: 0.7;
+}
+
+.todo-item.deleted {
+  opacity: 0.5;
+  background-color: oklch(var(--muted));
+}
+
+.todo-item:hover {
+  box-shadow: none;
+}
+
+.todo-item .recurring-badge {
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.todo-item:hover .recurring-badge {
+  opacity: 1;
+}
+
+/* Todo content */
+.todo-content {
+  background: oklch(var(--background));
+  border-radius: var(--radius);
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  padding: 20px 24px;
+  min-height: 60px;
+}
+
+.todo-content.completed {
+  background: oklch(var(--muted));
+  opacity: 0.7;
+  text-decoration: line-through;
+  color: oklch(var(--muted-foreground));
+}
+
+/* Todo text elements */
+.todo-list-name,
+.goal-list-name {
+  color: oklch(var(--accent-foreground));
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.todo-title {
+  display: inline;
+}
+
+.recurring-badge {
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.next-due-date {
+  font-size: 12px;
+  color: oklch(var(--muted-foreground));
+  margin-left: 4px;
+}
+
+.todo-due-date {
+  font-size: 12px;
+  color: oklch(var(--muted-foreground));
+}
+
+/* Todo buttons */
+.todo-btn {
+  background: oklch(var(--background));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.todo-btn:hover {
+  background: oklch(var(--accent));
+}
+
+.btn-restore {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-submit {
+  background: oklch(var(--accent));
+}
+
+.btn-finish {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-right: 12px;
+}
+
+.btn-finish:hover {
+  background: oklch(var(--primary));
+  color: oklch(var(--primary-foreground));
+}
+
+.btn-unfinish {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-right: 12px;
+  background: oklch(var(--primary));
+  color: oklch(var(--primary-foreground));
+}
+
+.btn-delete {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  margin-left: 8px;
+}
+
+.btn-delete:hover {
+  background: oklch(var(--destructive));
+  color: oklch(var(--destructive-foreground));
+}
+
+.icon-finish {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-btn.interactive-hover:hover {
+  background: oklch(var(--accent));
+  color: oklch(var(--foreground));
+}
+
+/* State classes - global modifiers */
+.completed {
+  background: oklch(var(--muted));
+  opacity: 0.7;
+}
+
+.deleted {
+  background: oklch(var(--muted));
+  opacity: 0.5;
+}
+
+.empty {
+  animation-duration: 1s;
+  animation-fill-mode: both;
+  animation-name: headShake;
+  animation-timing-function: ease-in-out;
+}
+
+.selected {
+  background: oklch(var(--accent));
+}
+
+/* ==========================================================================
+   TODO FUNCTION LIST (sidebar/quick actions)
+   ========================================================================== */
+
+.todo-func-list {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0;
+  font-size: 14px;
+}
+
+.todo-func-list li {
+  cursor: pointer;
+  margin: 0 auto;
+  transition: all 0.15s;
+  width: 100%;
+  border: 0;
+}
+
+.todo-func-list li:first-child {
+  min-width: 60px;
+  font-weight: 400;
+}
+
+.todo-func-list li:last-child {
+  border: 0;
+  margin-right: 0;
+}
+
+.todo-func-list li input {
+  transition: all 0.15s;
+  width: 100%;
+  border-radius: 0;
+  border: 0;
+  border-top: 1px solid oklch(var(--border));
+}
+
+.todo-func-list.filter li:first-child input {
+  border: 0;
+}
+
+.todo-func-list.mode-switch {
+  border-bottom: 1px solid oklch(var(--border));
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+}
+
+.todo-func-list.goals-actions li {
+  margin-bottom: 8px;
+}
+
+.filter {
+  width: 100%;
+}
+
+/* Action state decorations */
+.action-showAll:hover,
+.action-showAll.selected {
+  background: oklch(var(--accent));
+}
+
+.action-progress:hover,
+.action-progress.selected {
+  background: oklch(var(--accent));
+}
+
+.action-completed:hover,
+.action-completed.selected {
+  background: oklch(var(--muted));
+}
+
+.completed-all:hover {
+  background: oklch(var(--muted));
+}
+
+.action-deleted:hover,
+.action-deleted.selected {
+  background: oklch(var(--destructive));
+}
+
+.completed-clear:hover,
+.clear-all:hover {
+  background: oklch(var(--destructive));
+}
+
+.action-download:hover,
+.action-download.selected {
+  background: oklch(var(--accent));
+}
+
+.action-import:hover,
+.action-import.selected {
+  background: oklch(var(--accent));
+}
+
+.action-undo:hover {
+  background: oklch(var(--accent));
+}
+
+.action-search:hover,
+.action-search.selected {
+  background: oklch(var(--accent));
+}
+
+.action-upgrade:hover,
+.action-upgrade.selected {
+  background: oklch(var(--accent));
+}
+
+/* ==========================================================================
+   MODAL
+   ========================================================================== */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: oklch(var(--background));
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-title {
+  color: oklch(var(--foreground));
+}
+
+.modal-subtitle {
+  color: oklch(var(--muted-foreground));
+}
+
+.modal-input {
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--background));
+  color: oklch(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 16px;
+  padding: 0.5rem 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.modal-input:focus {
+  border-color: oklch(var(--ring));
+}
+
+.modal-input.error {
+  border: 2px solid oklch(var(--destructive));
+}
+
+.modal-error {
+  color: oklch(var(--destructive));
+}
+
+.modal-title-wrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background-color: oklch(var(--background));
+  padding-left: 12px;
+}
+
+.modal-todo-checkbox {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin: 0 12px 0 0;
+  border: none;
+  cursor: pointer;
+}
+
+.modal-todo-title {
+  flex-grow: 1;
+  width: 100%;
+  padding: 10px !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.modal-todo-title:focus {
+  outline: 0;
+}
+
+.modal-todo-title.completed {
+  text-decoration: line-through;
+  color: oklch(var(--muted-foreground));
+}
+
+/* ==========================================================================
+   EDIT TODO
+   ========================================================================== */
+
+.edit-todo-wrapper {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.edit-todo {
+  padding: 20px 24px;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  display: block;
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  padding-left: 56px;
+  padding-right: 56px;
+  transition: all 0.2s;
+  border: 0;
+}
+
+.submit-btn {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  box-sizing: border-box;
+  height: 60px;
+  line-height: 60px;
+  width: 96px;
+  padding: 0;
+  text-align: center;
+  border: 0;
+  border-left: 1px solid oklch(var(--border));
+  background: oklch(var(--accent));
+  border-radius: 0 var(--radius) var(--radius) 0;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   REACT TRANSITION GROUP ANIMATIONS
+   ========================================================================== */
+
+.todo-fade-appear,
+.todo-fade-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.todo-fade-appear-active,
+.todo-fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.todo-fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.todo-fade-exit-active {
+  opacity: 0;
+  transform: translateY(-12px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+/* Drag & drop visual feedback */
+.drag-enter {
+  border-color: oklch(var(--ring));
+}
+
+.drag-enter-active {
+  border-color: oklch(var(--ring));
+  background: oklch(var(--accent));
+  transition: background 200ms ease, border-color 200ms ease;
+}
+
+/* ==========================================================================
+   CALENDAR
+   ========================================================================== */
+
+.calendar-view {
+  background: oklch(var(--background));
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  padding: 20px;
+  width: 100%;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.calendar-header button {
+  background: oklch(var(--accent));
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.calendar-header button:hover {
+  background: oklch(var(--muted));
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.day-name-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 5px;
+}
+
+.day-name {
+  text-align: center;
+  padding: 5px;
+  border-radius: var(--radius);
+  font-weight: 700;
+  background: oklch(var(--accent));
+}
+
+.day-cell {
+  border: 1px solid oklch(var(--border));
+  min-height: 120px;
+  position: relative;
+  background-color: oklch(var(--background));
+  text-align: center;
+  padding: 5px;
+  border-radius: var(--radius);
+}
+
+.day-cell.not-current-month {
+  background-color: oklch(var(--muted));
+  color: oklch(var(--muted-foreground));
+}
+
+.day-cell.is-today .day-number {
+  background-color: oklch(var(--primary));
+  color: oklch(var(--primary-foreground));
+  border-radius: 12px;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  display: inline-block;
+}
+
+.day-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.day-number {
+  display: inline-block;
+  font-weight: 600;
+}
+
+.day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-event {
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: oklch(var(--accent));
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.month-year-header {
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.calendar-todo-list-name {
+  color: oklch(var(--accent-foreground));
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* ==========================================================================
+   SEARCH MODAL
+   ========================================================================== */
+
+.search-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.search-type-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 16px;
+}
+
+.search-type-tab {
+  padding: 8px 16px;
+  font-size: 14px;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  background: oklch(var(--background));
+}
+
+.search-type-tab:hover,
+.search-type-tab.active {
+  background: oklch(var(--accent));
+}
+
+.search-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 16px;
+  margin-bottom: 8px;
+  color: oklch(var(--muted-foreground));
+}
+
+/* Search todo items */
+.search-todo-item {
+  position: relative;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  width: 100%;
+  transition: all 0.3s ease;
+  display: block;
+  margin-bottom: 16px;
+  animation: searchItemFadeIn 0.3s ease-out forwards;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.search-todo-item:last-child {
+  margin-bottom: 0;
+}
+
+.search-todo-item.completed {
+  opacity: 0.7;
+}
+
+.search-todo-item.deleted {
+  opacity: 0.5;
+  background-color: oklch(var(--muted));
+}
+
+.search-todo-content {
+  padding: 20px 24px;
+  background: oklch(var(--background));
+  border-radius: var(--radius);
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  padding-left: 56px;
+  padding-right: 56px;
+  cursor: pointer;
+  min-height: 60px;
+}
+
+.search-todo-btn {
+  position: absolute;
+  background: oklch(var(--background));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  transition: all 0.2s;
+}
+
+.search-todo-btn.btn-finish {
+  left: 14px;
+  top: 16px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.search-todo-btn.btn-finish:hover {
+  background: oklch(var(--primary));
+  color: oklch(var(--primary-foreground));
+}
+
+.search-todo-btn.btn-unfinish {
+  left: 14px;
+  top: 16px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: oklch(var(--primary));
+  color: oklch(var(--primary-foreground));
+}
+
+.search-todo-btn.btn-delete {
+  right: 12px;
+  top: 16px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+}
+
+.search-todo-btn.btn-delete:hover {
+  background: oklch(var(--destructive));
+  color: oklch(var(--destructive-foreground));
+}
+
+/* Search text elements */
+.search-todo-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.search-todo-content-text {
+  font-size: 13px;
+  color: oklch(var(--muted-foreground));
+}
+
+.search-todo-due-date {
+  position: absolute;
+  right: 56px;
+  font-size: 11px;
+  color: oklch(var(--muted-foreground));
+  padding: 2px 8px;
+}
+
+.search-todo-next-due {
+  font-size: 11px;
+  color: oklch(var(--muted-foreground));
+  padding: 2px 4px;
+}
+
+.search-todo-tag {
+  background-color: oklch(var(--muted));
+  color: oklch(var(--foreground));
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Search highlighting */
+.search-highlight {
+  background-color: oklch(var(--accent));
+  color: oklch(var(--accent-foreground));
+  font-weight: 600;
+  padding: 1px 2px;
+  border-radius: 2px;
+  animation: highlightGlow 0.5s ease-out;
+}
+
+/* Search placeholder (hidden by default) */
+.search-results-placeholder,
+.search-result-item-placeholder,
+.search-result-title,
+.search-result-content,
+.search-result-list {
+  display: none;
+}
+
+/* Search todo list item */
+.search-todo-li {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* ==========================================================================
+   SEARCH GOAL ITEMS
+   ========================================================================== */
+
+.search-goal-list {
+  padding: 0 24px;
+}
+
+.search-goal-item {
+  animation: goalItemFadeIn 0.4s ease-out forwards;
+}
+
+.search-goal-content {
+  display: flex;
+  align-items: center;
+  padding: 16px 24px;
+  gap: 10px;
+  min-height: 56px;
+  background: oklch(var(--background));
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+}
+
+.search-goal-icon {
+  font-size: 20px;
+}
+
+.search-goal-title {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.search-goal-description {
+  padding: 0 24px 12px;
+  font-size: 13px;
+  color: oklch(var(--muted-foreground));
+}
+
+.search-goal-list-name,
+.search-goal-due-date,
+.search-goal-archived {
+  font-size: 12px;
+  color: oklch(var(--muted-foreground));
+  padding: 2px 6px;
+  background: oklch(var(--muted));
+  border-radius: 4px;
+}
+
+.search-goal-priority {
+  font-size: 11px;
+  color: oklch(var(--muted-foreground));
+}
+
+/* Enhanced highlight styles for goals */
+.search-goal-title .search-highlight,
+.search-goal-description .search-highlight {
+  background-color: oklch(var(--accent));
+  color: oklch(var(--accent-foreground));
+  font-weight: 700;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+
+/* ==========================================================================
+   GOALS
+   ========================================================================== */
+
+.goals-container {
+  width: 100%;
+}
+
+.goals-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+}
+
+.placeholder-content {
+  text-align: center;
+  padding: 3rem;
+  background: oklch(var(--background));
+  border-radius: var(--radius);
+  border: 1px solid oklch(var(--border));
+}
+
+.placeholder-content h3 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.placeholder-content p {
+  color: oklch(var(--muted-foreground));
+}
+
+.goal-item {
+  animation: goalItemFadeIn 0.4s ease-out forwards;
+}
+
+.goal-skeleton {
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--background));
+  animation: popIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.progress-track {
+  background: oklch(var(--muted));
+  border-radius: var(--radius);
+  border: 1px solid oklch(var(--border));
+  overflow: hidden;
+  height: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: var(--radius);
+  transition: width 0.3s ease;
+  background: oklch(var(--primary));
+  width: var(--progress, 0%);
+}
+
+.pill-priority {
+  background: oklch(var(--accent));
+  color: oklch(var(--foreground));
+}
+
+/* Goals action buttons */
+.goals-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem 1.5rem;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-weight: 500;
+  background: oklch(var(--background));
+}
+
+.goals-action-btn:hover {
+  background: oklch(var(--accent));
+}
+
+.goals-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.goals-main-interface {
+  width: 100%;
+}
+
+.goals-dashboard {
+  width: 100%;
+}
+
+.goal-card {
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--background));
+  transition: all 0.2s ease;
+}
+
+.goal-card:hover {
+  border-color: oklch(var(--ring));
+}
+
+/* Step indicators */
+.step-circle {
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+
+.step-line {
+  height: 0.25rem;
+}
+
+.step-completed {
+  background: oklch(var(--primary));
+  color: oklch(var(--primary-foreground));
+  border: 1px solid oklch(var(--border));
+}
+
+.step-pending {
+  background: oklch(var(--muted));
+}
+
+/* ==========================================================================
+   ADD LIST / MANAGE LISTS
+   ========================================================================== */
+
+.add-list-wrapper {
+  display: flex;
+  gap: 10px;
+}
+
+.add-list-wrapper input {
+  flex-grow: 1;
+}
+
+.add-list-wrapper .confirm {
+  width: 80px;
+  height: 60px;
+  border-radius: var(--radius);
+}
+
+.manage-lists-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 10px;
+}
+
+.manage-lists-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  background-color: oklch(var(--background));
+  cursor: grab;
+}
+
+.manage-lists-list li:active {
+  cursor: grabbing;
+}
+
+.manage-lists-list li.list-hidden {
+  opacity: 0.6;
+}
+
+.manage-lists-list li.list-hidden span {
+  color: oklch(var(--muted-foreground));
+  font-style: italic;
+}
+
+.manage-lists-list li.dragging {
+  opacity: 0.5;
+  background: oklch(var(--muted));
+}
+
+.manage-lists-list li input[type="text"] {
+  flex-grow: 1;
+  margin-right: 10px;
+}
+
+.list-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.list-actions button {
+  border-radius: 5px;
+}
+
+.list-actions .delete {
+  background: oklch(var(--destructive));
+  color: oklch(var(--destructive-foreground));
+}
+
+/* ==========================================================================
+   SIDEBAR / SHORTCUT SWITCH
+   ========================================================================== */
+
+.side-bar {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  flex-direction: column;
+  border: 1px solid oklch(var(--border));
+  background: oklch(var(--background));
+  border-radius: var(--radius);
+  text-align: center;
+  transition: all 0.3s;
+  overflow: hidden;
+  user-select: none;
+}
+
+.side-shortcut {
+  display: block;
+  width: 100%;
+}
+
+.shortcut-switch {
+  overflow: hidden;
+  cursor: pointer;
+  width: 100%;
+}
+
+.shortcut-switch span {
+  padding: 10px 14px;
+  display: block;
+}
+
+.shortcut-title {
+  background: oklch(var(--accent));
+  text-align: center;
+  box-sizing: border-box;
+  border-bottom: 1px solid oklch(var(--border));
+  width: 100%;
+  font-weight: 700;
+  user-select: none;
+  white-space: nowrap;
+}
+
+span.shortcut-name {
+  display: none;
+}
+
+/* ==========================================================================
+   ADD TODO / TODO FOOTER
+   ========================================================================== */
+
+.todo-footer-box {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+/* ==========================================================================
+   BAR MESSAGE / SLOGAN
+   ========================================================================== */
+
+.bar-message {
+  display: flex;
+  align-items: center;
+  padding: 12px 24px;
+  border-top: 1px solid oklch(var(--border));
+  font-size: 14px;
+}
+
+.bar-message.flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bar-message-text {
+  color: oklch(var(--muted-foreground));
+  font-size: 14px;
+  cursor: pointer;
+  flex-grow: 1;
+  text-align: center;
+}
+
+.bar-bottom {
+  border-top: 1px solid oklch(var(--border));
+  margin-top: auto;
+}
+
+.slogan-input {
+  width: 100%;
+  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--background));
+  color: oklch(var(--foreground));
+}
+
+.btn-allFinish {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   MODE SWITCHER
+   ========================================================================== */
+
+.mode-switcher {
+  background: oklch(var(--accent));
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.mode-switcher:hover {
+  background: oklch(var(--muted));
+  transform: translateY(-1px);
+}
+
+.mode-switcher.transitioning {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.mode-switcher::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.mode-switcher:hover::before {
+  left: 100%;
+}
+
+/* ==========================================================================
+   MARKDOWN PREVIEW
+   ========================================================================== */
+
+.markdown-preview {
+  min-height: 80px;
+  padding: 10px;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--background));
+  cursor: text;
+  line-height: 1.6;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3,
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  margin-top: 1.2em;
+  margin-bottom: 0.8em;
+  font-weight: 600;
+}
+
+.markdown-preview p {
+  margin-bottom: 1em;
+}
+
+.markdown-preview ul,
+.markdown-preview ol {
+  padding-left: 2em;
+  margin-bottom: 1em;
+}
+
+.markdown-preview li {
+  margin-bottom: 0.4em;
+}
+
+.markdown-preview blockquote {
+  border-left: 4px solid oklch(var(--border));
+  padding-left: 1em;
+  color: oklch(var(--muted-foreground));
+  margin: 1em 0;
+}
+
+.markdown-preview pre {
+  background-color: oklch(var(--muted));
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.markdown-preview pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.markdown-preview code {
+  font-family: monospace;
+  background-color: oklch(var(--muted));
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+/* ==========================================================================
+   SOCIAL / FOOTER
+   ========================================================================== */
+
+.social {
+  margin: 12px 0;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.social-link {
+  opacity: 0.65;
+  outline: 0;
+}
+
+.social-link:hover {
+  opacity: 1;
+}
+
+.social-link img {
+  width: auto;
+  height: 20px;
+}
+
+.ic-social {
+  fill: oklch(var(--foreground));
+  width: auto;
+  height: 20px;
+}
+
+.inspiration {
+  position: relative;
+  text-align: left;
+  font-style: normal;
+  display: block;
+  margin: 6px auto 0;
+  width: 100%;
+  font-size: 14px;
+  letter-spacing: 0.36px;
+  color: oklch(var(--muted-foreground));
+}
+
+.inspiration img {
+  display: inline-block;
+  margin-right: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   BADGE
+   ========================================================================== */
+
+.badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: oklch(var(--destructive));
+  color: oklch(var(--destructive-foreground));
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  height: 18px;
+  min-width: 18px;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   HOTKEY TIP
+   ========================================================================== */
+
+.hotkey-tip {
+  font-size: 12px;
+  color: oklch(var(--muted-foreground));
+  margin-left: auto;
+}
+
+/* ==========================================================================
+   CONFETTI (Premium feature celebration)
+   ========================================================================== */
+
+.confetti-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  animation: confettiFall 3s ease-in-out forwards;
+}
+
+/* ==========================================================================
+   ONLINE/OFFLINE INDICATOR
+   ========================================================================== */
+
+.online {
+  color: oklch(var(--destructive));
+}
+
+.offline {
+  color: oklch(var(--muted-foreground));
+}
+
+/* ==========================================================================
+   PANDA / DECORATIVE ELEMENTS
+   ========================================================================== */
+
+#panda {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  right: -72px;
+  bottom: -2px;
+}
+
+.pendulums {
+  position: absolute;
+  width: 50px;
+  height: 72px;
+  right: -56px;
+  bottom: -2px;
+  perspective: 640px;
+}
+
+.pendulum {
+  position: absolute;
+  width: 50px;
+  height: 70px;
+  right: 44%;
+  bottom: 0;
+  left: 50%;
+  transform: translateZ(-300px) translateX(-50%);
+}
+
+.pendulum:after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background-color: oklch(var(--accent));
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  transform: rotate(45deg);
+  border: 3px solid oklch(var(--foreground));
+}
+
+.pendulum.shadow {
+  display: none;
+  top: 263%;
+  left: -65%;
+  bottom: 0;
+  transform-origin: 50% 0;
+  transform: translateX(-50%) scaleY(-1) scaleZ(2) rotateY(-30deg)
+    rotateX(-75deg) translateZ(300px);
+}
+
+.pendulum.shadow .bar,
+.pendulum.shadow .string,
+.pendulum.shadow .weight {
+  background: oklch(var(--muted));
+}
+
+.pendulum .bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: -5px;
+  display: block;
+  width: 26px;
+  height: 30px;
+  background: oklch(var(--accent));
+  border: 3px solid oklch(var(--foreground));
+  border-radius: 15px;
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}
+
+.pendulum .string {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 72px;
+  background: oklch(var(--foreground));
+}
+
+.pendulum .weight {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: oklch(var(--accent));
+  border: 3px solid oklch(var(--foreground));
+}
+
+.pendulum .motion {
+  position: absolute;
+  height: 90px;
+  width: 50px;
+  transform-origin: 50% 10px;
+  animation: swing 1800ms infinite ease-in-out;
+}
+
+/* ==========================================================================
+   SCROLLBAR HIDE UTILITY
+   ========================================================================== */
+
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==========================================================================
+   COLLAPSIBLE
+   ========================================================================== */
+
+.collapsed {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+/* ==========================================================================
+   UPGRADE PROMPT
+   ========================================================================== */
+
+.action-upgrade {
+  display: none;
+}
+
+.action-upgrade:hover,
+.action-upgrade.selected {
+  background: oklch(var(--accent));
+  color: oklch(var(--accent-foreground));
+}
+
+/* ==========================================================================
+   SYNCT SETTINGS / STORAGE INFO
+   ========================================================================== */
+
+.storage-info {
+  font-size: 13px;
+  color: oklch(var(--muted-foreground));
+  padding: 8px 0;
+}
+
+/* ==========================================================================
+   KEYFRAME ANIMATIONS
+   ========================================================================== */
+
+@keyframes swing {
+  0% {
+    transform: rotate(-20deg);
+  }
+  50% {
+    transform: rotate(20deg);
+  }
+  100% {
+    transform: rotate(-20deg);
+  }
+}
+
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes goalItemFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes searchItemFadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes highlightGlow {
+  0% {
+    background-color: oklch(var(--accent));
+  }
+  100% {
+    background-color: oklch(var(--accent));
+  }
+}
+
+@keyframes headShake {
+  0% {
+    transform: translateX(0);
+  }
+  6.5% {
+    transform: translateX(-6px) rotateY(-9deg);
+  }
+  18.5% {
+    transform: translateX(5px) rotateY(7deg);
+  }
+  31.5% {
+    transform: translateX(-3px) rotateY(-5deg);
+  }
+  43.5% {
+    transform: translateX(2px) rotateY(3deg);
+  }
+  50% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes modeTransition {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+   RESPONSIVE DESIGN
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  .container {
+    max-width: 100%;
+    padding: 0 16px;
+  }
+
+  .todo-list,
+  .goal-list {
+    padding: 16px;
+    min-height: 200px;
+  }
+
+  .todo-list li,
+  .goal-list li {
+    margin-bottom: 6px;
+  }
+
+  .todo-content {
+    padding: 12px 16px;
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+
+  .btn-finish,
+  .btn-unfinish {
+    width: 26px;
+    height: 26px;
+    margin-right: 8px;
+  }
+
+  .btn-delete {
+    width: 26px;
+    height: 26px;
+    margin-left: 4px;
+  }
+
+  .search-type-tabs {
+    margin-bottom: 0;
+  }
+
+  .search-type-tab {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .search-section-title {
+    font-size: 13px;
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+
+  .search-goal-list {
+    padding: 0 16px;
+  }
+
+  .search-goal-content {
+    padding: 12px 16px;
+    gap: 8px;
+    min-height: 50px;
+  }
+
+  .search-goal-icon {
+    font-size: 18px;
+  }
+
+  .search-goal-title {
+    font-size: 14px;
+  }
+
+  .search-goal-description {
+    padding: 0 16px 12px;
+    font-size: 12px;
+  }
+
+  .search-goal-list-name,
+  .search-goal-due-date,
+  .search-goal-archived {
+    font-size: 11px;
+    padding: 1px 4px;
+  }
+
+  .search-goal-priority {
+    font-size: 10px;
+  }
+
+  .search-todo-content {
+    padding: 16px 20px;
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+
+  .search-todo-btn.btn-finish,
+  .search-todo-btn.btn-unfinish {
+    left: 10px;
+    top: 12px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .search-todo-btn.btn-delete {
+    right: 10px;
+    top: 12px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .search-todo-title {
+    font-size: 14px;
+  }
+
+  .search-todo-content-text {
+    font-size: 12px;
+  }
+
+  .search-todo-due-date {
+    right: 50px;
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+
+  .search-todo-next-due {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .goals-main-interface {
+    padding: 0.5rem;
+  }
+
+  .goals-actions {
+    gap: 0.5rem;
+  }
+
+  .goals-action-btn {
+    padding: 1rem 0.5rem;
+    min-width: 120px;
+  }
+
+  .todo-list,
+  .goal-list {
+    padding: 12px;
+  }
+
+  .container {
+    padding: 0 12px;
+  }
+}
+
+/* ==========================================================================
+   ANIMATION SYSTEM — Shared keyframes and utility classes
+   ========================================================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Animation utility classes */
+.animate-fade-in {
+  animation: fadeIn 200ms ease forwards;
+}
+
+.animate-slide-from-bottom {
+  animation: slideFromBottom 350ms ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 200ms ease forwards;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Modal entry/exit animation classes */
+.modal-enter {
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+}
+
+.modal-enter-active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+
+.modal-exit {
+  opacity: 1;
+}
+
+.modal-exit-active {
+  opacity: 0;
+  transform: translateY(8px) scale(0.98);
+  transition: opacity 200ms ease, transform 200ms ease;
+}

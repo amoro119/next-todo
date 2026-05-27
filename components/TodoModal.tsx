@@ -5,8 +5,10 @@ import { useState, useEffect } from 'react';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
+import { Dialog, DialogContent, DialogTitle } from '@/components/common/Dialog';
 
 interface TodoModalProps {
+  isOpen?: boolean;
   mode: 'create' | 'edit';
   initialData?: Partial<Todo>;
   lists: List[];
@@ -110,6 +112,7 @@ const cleanTodoDates = (todo: Todo): Todo => {
 };
 
 export default function TodoModal({ 
+  isOpen = true,
   mode,
   initialData,
   lists, 
@@ -275,19 +278,18 @@ export default function TodoModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{isRecycled ? '回收站任务详情' : (mode === 'create' ? '创建任务' : '任务详情')}</h2>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-        <div className="modal-body">
-            <div className="form-group">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg w-full max-h-[80vh] overflow-y-auto p-6">
+        <DialogTitle className="text-lg font-semibold text-foreground mb-4">
+          {isRecycled ? '回收站任务详情' : (mode === 'create' ? '创建任务' : '任务详情')}
+        </DialogTitle>
+        <div>
+            <div className="mb-4">
                 {mode === 'edit' ? (
-                  <div className="modal-title-wrapper">
+                  <div className="flex items-center border border-border rounded-lg bg-background pl-3">
                       <input 
                           type="checkbox"
-                          className="modal-todo-checkbox"
+                          className="w-5 h-5 flex-shrink-0 mr-3 accent-current"
                           checked={!!editableTodo.completed}
                           onChange={handleToggleComplete}
                           disabled={isRecycled}
@@ -295,7 +297,7 @@ export default function TodoModal({
                       <input
                           type="text"
                           name="title"
-                          className={`modal-todo-title ${editableTodo.completed ? 'completed' : ''}`}
+                          className={`flex-1 w-full py-2.5 pr-3 bg-transparent border-none focus:outline-none text-base ${editableTodo.completed ? 'line-through text-muted-foreground' : ''}`}
                           value={editableTodo.title}
                           onChange={handleInputChange}
                           readOnly={isRecycled}
@@ -304,7 +306,7 @@ export default function TodoModal({
                 ) : (
                   <input
                     type="text"
-                    className="modal-title-wrapper"
+                    className="w-full px-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                     placeholder="请输入要做什么"
                     value={editableTodo.title}
                     onChange={handleInputChange}
@@ -315,11 +317,12 @@ export default function TodoModal({
                 )}
             </div>
             
-            <div className="form-group">
-                <label htmlFor="content">备注</label>
+            <div className="mb-4">
+                <label htmlFor="content" className="text-sm font-medium text-foreground mb-1 block">备注</label>
                 <textarea
                     id="content"
                     name="content"
+                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm resize-y"
                     value={editableTodo.content || ''}
                     onChange={handleInputChange}
                     rows={4}
@@ -327,12 +330,13 @@ export default function TodoModal({
                 />
             </div>
             
-            <div className="form-group-row">
-                <div className="form-group">
-                    <label htmlFor="list_id">清单</label>
+            <div className="flex gap-4">
+                <div className="mb-4 flex-1">
+                    <label htmlFor="list_id" className="text-sm font-medium text-foreground mb-1 block">清单</label>
                     <select
                         id="list_id"
                         name="list_id"
+                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                         value={editableTodo.list_id === null || editableTodo.list_id === undefined ? '' : String(editableTodo.list_id)}
                         onChange={handleInputChange}
                         disabled={isRecycled}
@@ -343,11 +347,12 @@ export default function TodoModal({
                         ))}
                     </select>
                 </div>
-                <div className="form-group">
-                    <label htmlFor="priority">优先级</label>
+                <div className="mb-4 flex-1">
+                    <label htmlFor="priority" className="text-sm font-medium text-foreground mb-1 block">优先级</label>
                     <select
                         id="priority"
                         name="priority"
+                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                         value={editableTodo.priority}
                         onChange={handleInputChange}
                         disabled={isRecycled}
@@ -360,24 +365,26 @@ export default function TodoModal({
                 </div>
             </div>
 
-            <div className="form-group-row">
-                <div className="form-group">
-                    <label htmlFor="start_date">开始日期</label>
+            <div className="flex gap-4">
+                <div className="mb-4 flex-1">
+                    <label htmlFor="start_date" className="text-sm font-medium text-foreground mb-1 block">开始日期</label>
                     <input
                         type="date"
                         id="start_date"
                         name="start_date"
+                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                         value={mode === 'create' ? dbUTCToLocalDate(editableTodo.start_date) : dbUTCToLocalDate(editableTodo.start_date) || ''}
                         onChange={handleInputChange}
                         readOnly={isRecycled}
                     />
                 </div>
-                <div className="form-group">
-                    <label htmlFor="due_date">截止日期</label>
+                <div className="mb-4 flex-1">
+                    <label htmlFor="due_date" className="text-sm font-medium text-foreground mb-1 block">截止日期</label>
                     <input
                         type="date"
                         id="due_date"
                         name="due_date"
+                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                         value={mode === 'create' ? dbUTCToLocalDate(editableTodo.due_date) : dbUTCToLocalDate(editableTodo.due_date)}
                         onChange={handleInputChange}
                         readOnly={isRecycled}
@@ -385,15 +392,15 @@ export default function TodoModal({
                 </div>
             </div>
 
-            <div className="form-group">
-                <label htmlFor="goal_id">所属目标</label>
+            <div className="mb-4">
+                <label htmlFor="goal_id" className="text-sm font-medium text-foreground mb-1 block">所属目标</label>
                 <select
                     id="goal_id"
                     name="goal_id"
                     value={editableTodo.goal_id ?? goalId ?? ''}
                     onChange={handleInputChange}
                     disabled={isRecycled}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                 >
                     <option value="">无目标</option>
                     {goals.map(goal => (
@@ -402,12 +409,13 @@ export default function TodoModal({
                 </select>
             </div>
 
-            <div className="form-group">
-                <label htmlFor="tags">标签</label>
+            <div className="mb-4">
+                <label htmlFor="tags" className="text-sm font-medium text-foreground mb-1 block">标签</label>
                 <input
                     type="text"
                     id="tags"
                     name="tags"
+                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
                     value={editableTodo.tags || ''}
                     onChange={handleInputChange}
                     placeholder="用逗号分隔"
@@ -417,10 +425,10 @@ export default function TodoModal({
 
             {/* 重复任务配置 - 统一处理原始任务和实例 */}
             {!isRecycled && (
-                <div className="form-group">
-                    <label>重复</label>
+                <div className="mb-4">
+                    <label className="text-sm font-medium text-foreground mb-1 block">重复</label>
                     <RecurrenceSelector
-                        value={editableTodo.is_recurring ? editableTodo.repeat : null}
+                        value={editableTodo.is_recurring ? (editableTodo.repeat ?? null) : null}
                         onChange={(rrule) => {
                             if (rrule) {
                                 // 计算下一个到期日期
@@ -428,7 +436,7 @@ export default function TodoModal({
                                 if (editableTodo.due_date) {
                                     try {
                                         const currentDueDate = new Date(editableTodo.due_date);
-                                        nextDueDate = RRuleEngine.calculateNextDueDate(rrule, currentDueDate, currentDueDate);
+                                        nextDueDate = RRuleEngine.calculateNextDueDate(rrule, currentDueDate);
                                     } catch (error) {
                                         console.error('Error calculating next due date:', error);
                                     }
@@ -460,29 +468,29 @@ export default function TodoModal({
                 </div>
             )}
         </div>
-        <div className="modal-footer">
+        <div className="flex gap-3 justify-end pt-4 border-t border-border">
           {mode === 'edit' ? (
             isRecycled ? (
               <>
-                <button className="btn-small delete" onClick={handlePermanentDelete}>永久删除</button>
-                <button className="btn-small" onClick={onClose}>关闭</button>
-                <button className="btn-small confirm" onClick={handleRestore}>恢复</button>
+                <button className="px-4 py-2 rounded-lg border border-red-500/20 text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handlePermanentDelete}>永久删除</button>
+                <button className="px-4 py-2 rounded-lg border text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>关闭</button>
+                <button className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleRestore}>恢复</button>
               </>
             ) : (
               <>
-                <button className="btn-small delete" onClick={handleDelete}>删除</button>
-                <button className="btn-small" onClick={onClose}>取消</button>
-                <button className="btn-small confirm" onClick={handleSave}>保存</button>
+                <button className="px-4 py-2 rounded-lg border border-red-500/20 text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handleDelete}>删除</button>
+                <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>取消</button>
+                <button className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleSave}>保存</button>
               </>
             )
           ) : (
             <>
-              <button className="btn-small" onClick={onClose}>取消</button>
-              <button className="btn-small confirm" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</button>
+              <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>取消</button>
+              <button className="px-4 py-2 rounded-lg bg-foreground border border-border text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</button>
             </>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -249,19 +249,19 @@ const GoalModal: React.FC<GoalModalProps> = ({
 
   return (
     <div
-      className="modal-overlay"
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
       onClick={(e) => e.target === e.currentTarget && handleClose()}
       role="dialog"
       aria-modal="true"
       aria-labelledby="goal-modal-title"
     >
-  <div className="w-full max-w-md mx-4 max-h-[90vh] overflow-hidden modal-content">
+  <div className="bg-background border border-border rounded-lg shadow-sm w-full max-w-md mx-4 max-h-[90vh] overflow-hidden">
         {/* 头部 */}
-  <div className="modal-header">
+  <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
             <h2 
               id="goal-modal-title" 
-              className="text-xl font-semibold modal-title"
+              className="text-lg font-semibold text-foreground"
             >
               {goal ? '编辑目标' : '创建新目标'}
             </h2>
@@ -269,7 +269,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
           <button
             onClick={handleClose}
             disabled={isSubmitting}
-            className="modal-close"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label="关闭"
           >
             ×
@@ -277,11 +277,11 @@ const GoalModal: React.FC<GoalModalProps> = ({
         </div>
 
         {/* 表单内容 */}
-        <div className="modal-body">
+        <div className="p-6 overflow-y-auto">
           <div className="space-y-4">
             {/* 目标名称 */}
-            <div className="form-group">
-              <label htmlFor="goal-name" className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="mb-4">
+              <label htmlFor="goal-name" className="block text-sm font-medium text-foreground mb-1">
                 目标名称 <span className="text-red-500">*</span>
               </label>
               <input
@@ -290,18 +290,18 @@ const GoalModal: React.FC<GoalModalProps> = ({
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="输入目标名称"
-                className="modal-input"
+                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 maxLength={100}
                 autoFocus
               />
               {errors.name && (
-                <p className="text-red-500 text-sm mt-1 modal-error">{errors.name}</p>
+                <p className="text-destructive text-sm mt-1">{errors.name}</p>
               )}
             </div>
 
             {/* 描述 */}
-            <div className="form-group">
-              <label htmlFor="goal-description" className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="mb-4">
+              <label htmlFor="goal-description" className="block text-sm font-medium text-foreground mb-1">
                 描述
               </label>
               <textarea
@@ -310,21 +310,21 @@ const GoalModal: React.FC<GoalModalProps> = ({
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 placeholder="输入目标描述（可选）"
                 rows={3}
-                className="modal-input"
+                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 maxLength={500}
               />
             </div>
 
             {/* 关联列表 */}
-            <div className="form-group">
-              <label htmlFor="goal-list" className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="mb-4">
+              <label htmlFor="goal-list" className="block text-sm font-medium text-foreground mb-1">
                 关联列表
               </label>
               <select
                 id="goal-list"
                 value={formData.list_id}
                 onChange={(e) => handleInputChange('list_id', e.target.value)}
-                className="modal-input"
+                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value="">选择列表（可选）</option>
                 {lists.map((list) => (
@@ -336,9 +336,9 @@ const GoalModal: React.FC<GoalModalProps> = ({
             </div>
 
             {/* 日期范围 */}
-            <div className="form-group-row grid grid-cols-2 gap-4">
-              <div className="form-group">
-                <label htmlFor="goal-start-date" className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="mb-4">
+                <label htmlFor="goal-start-date" className="block text-sm font-medium text-foreground mb-1">
                   开始日期
                 </label>
                 <input
@@ -346,11 +346,11 @@ const GoalModal: React.FC<GoalModalProps> = ({
                   type="date"
                   value={formData.start_date}
                   onChange={(e) => handleInputChange('start_date', e.target.value)}
-                  className="modal-input"
+                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
-              <div className="form-group">
-                <label htmlFor="goal-due-date" className="block text-sm font-medium text-gray-700 mb-1">
+              <div className="mb-4">
+                <label htmlFor="goal-due-date" className="block text-sm font-medium text-foreground mb-1">
                   截止日期
                 </label>
                 <input
@@ -358,24 +358,24 @@ const GoalModal: React.FC<GoalModalProps> = ({
                   type="date"
                   value={formData.due_date}
                   onChange={(e) => handleInputChange('due_date', e.target.value)}
-                  className={`modal-input ${errors.due_date ? 'error' : ''}`}
+                  className={`w-full px-3 py-2 border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${errors.due_date ? 'border-destructive' : 'border-border'}`}
                 />
                 {errors.due_date && (
-                  <p className="text-sm mt-1 modal-error">{errors.due_date}</p>
+                  <p className="text-destructive text-sm mt-1">{errors.due_date}</p>
                 )}
               </div>
             </div>
 
             {/* 优先级 */}
-            <div className="form-group">
-              <label htmlFor="goal-priority" className="block text-sm font-medium text-gray-700 mb-1">
+            <div className="mb-4">
+              <label htmlFor="goal-priority" className="block text-sm font-medium text-foreground mb-1">
                 优先级
               </label>
               <select
                 id="goal-priority"
                 value={formData.priority}
                 onChange={(e) => handleInputChange('priority', parseInt(e.target.value))}
-                className="modal-input"
+                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 <option value={0}>无</option>
                 <option value={1}>低</option>
@@ -394,11 +394,11 @@ const GoalModal: React.FC<GoalModalProps> = ({
         </div>
 
         {/* 底部按钮 */}
-  <div className="modal-footer">
+  <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
           <button
             onClick={handleClose}
             disabled={isSubmitting}
-            className="modal-btn ghost interactive-hover"
+            className="px-4 py-2 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-muted"
           >
           取消
           </button>
@@ -406,7 +406,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
           <button
             onClick={handleSave}
             disabled={isSubmitting}
-            className="modal-btn primary interactive-hover"
+            className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-foreground text-background hover:opacity-90"
           >
             {isSubmitting ? '保存中...' : goal ? '保存' : '创建目标'}
           </button>

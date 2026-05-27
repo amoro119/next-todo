@@ -64,7 +64,7 @@ const GoalsList: React.FC<GoalsListProps> = ({
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return 'var(--deleted)'; // 逾期
-    if (diffDays <= 3) return '#f59e0b'; // 即将到期
+    if (diffDays <= 3) return 'oklch(var(--warning, 0.75 0.15 85))'; // 即将到期
     return 'var(--font-color)';
   };
 
@@ -72,11 +72,11 @@ const GoalsList: React.FC<GoalsListProps> = ({
     return (
       <div className="space-y-4">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="goal-skeleton p-6 animate-pulse">
-            <div className="h-6 bg-gray-200 rounded mb-3"></div>
-            <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
-            <div className="h-2 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div key={i} className="p-6 animate-pulse rounded-lg border border-border bg-background">
+            <div className="h-6 bg-muted rounded mb-3"></div>
+            <div className="h-4 bg-muted rounded mb-4 w-3/4"></div>
+            <div className="h-2 bg-muted rounded mb-2"></div>
+            <div className="h-4 bg-muted rounded w-1/4"></div>
           </div>
         ))}
       </div>
@@ -88,12 +88,12 @@ const GoalsList: React.FC<GoalsListProps> = ({
       {/* 目标列表 */}
       {filteredAndSortedGoals.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-gray-400 text-lg mb-2">📋</div>
-          <p className="text-gray-500">暂无目标</p>
+          <div className="text-muted-foreground text-lg mb-2">📋</div>
+          <p className="text-muted-foreground">暂无目标</p>
         </div>
       ) : (
-        <div className="goal-list-container">
-          <ul className="goal-list">
+        <div className="w-full">
+          <ul className="space-y-3">
             {filteredAndSortedGoals.map((goal) => (
               <GoalCard
                 key={goal.id}
@@ -153,21 +153,21 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
 
   return (
     <li
-      className={`todo-item goal-item`}
+      className={`flex items-start gap-3 p-4 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors duration-150 cursor-pointer`}
     >
       {/* 头部 */}
-      <div className={`goal-content ${progress === 100 ? 'completed' : ''}`} onClick={handleCardClick}>
+      <div className={`flex-1 ${progress === 100 ? 'opacity-75' : ''}`} onClick={handleCardClick}>
         <div className="flex justify-between items-start mb-3">
-          <h3 className="text-lg text-gray-900 line-clamp-2 flex-1">
+          <h3 className="text-base font-medium text-foreground line-clamp-2 flex-1">
           {goal.list_name && (
-            <span className="goal-list-name">
+            <span className="text-accent-foreground font-bold mr-1">
               [{goal.list_name}]
             </span>
           )}
           {goal.name}
         </h3>
         <button 
-          className="todo-btn btn-delete"
+          className="p-1.5 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground shrink-0"
           onClick={handleDeleteClick}
           aria-label="删除目标"
         >
@@ -183,30 +183,25 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
 
       {/* 进度条 */}
       <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium text-gray-700">
+        <span className="text-sm font-medium text-muted-foreground">
           进度
         </span>
-        <span className="text-sm font-semibold text-gray-900">
+        <span className="text-sm font-semibold text-foreground">
           {progress}%
         </span>
       </div>
-      <div className="progress-track w-full rounded-full h-2">
+      <div className="h-1.5 bg-muted w-full rounded-full overflow-hidden">
         <div
-          className="progress-fill"
-          style={{ ['--progress']: `${progress}%`,
-            background: progress === 100 ? 'var(--completed)' : 
-                        progress >= 75 ? 'var(--normal)' : 
-                        progress >= 50 ? '#f5d99e' : 
-                        progress >= 25 ? '#f8d966' : 'var(--deleted)'
-          } as unknown as React.CSSProperties}
+          className="h-full bg-foreground rounded-full transition-all duration-300"
+          style={{ width: `${progress}%` }}
         />
       </div>
       <div className="flex justify-between items-center mt-1">
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted-foreground">
           {completedTasks}/{totalTasks} 任务
         </span>
         {progress === 100 && (
-          <span className="text-xs text-green-600 font-medium">
+          <span className="text-xs text-[oklch(var(--primary))] font-medium">
             ✓ 已完成
           </span>
         )}
@@ -216,7 +211,7 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
         <div className="flex justify-between items-center text-sm mt-2">
           <div className="flex items-center gap-2">
           {goal.priority > 0 && (
-            <span className="goal-priority">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
               优先级 {goal.priority}
             </span>
           )}

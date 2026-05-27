@@ -76,26 +76,22 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
   // Highlight search terms in text
   const highlightText = (text: string) => {
     if (!searchQuery.trim()) return text;
-    return SearchHighlighter.highlight(text, searchQuery, "search-highlight");
+    return SearchHighlighter.highlight(text, searchQuery, "font-semibold text-foreground bg-amber-50 text-amber-800");
   };
 
   return (
     <div
-      className={`search-todo-item ${todo.completed ? "completed" : ""} ${
-        todo.deleted ? "deleted" : ""
-      }`}
+      className={`flex items-center gap-3 px-4 py-3 hover:bg-muted cursor-pointer transition-colors duration-150 ${todo.completed ? "opacity-60" : ""} ${todo.deleted ? "line-through opacity-40" : ""}`}
       onClick={handleSelectTodo}
       style={{ animationDelay: `${index * 50}ms` }}
     >
       <div
-        className={`search-todo-content ${todo.completed ? "completed" : ""}`}
+        className={`flex items-center gap-3 flex-1 min-w-0 ${todo.completed ? "opacity-75" : ""}`}
       >
         {/* Toggle Complete Button */}
         {!todo.deleted && (
           <button
-            className={`search-todo-btn ${
-              todo.completed ? "btn-unfinish" : "btn-finish"
-            }`}
+            className={`flex items-center justify-center w-[30px] h-[30px] rounded-full border border-border shrink-0 bg-background hover:bg-muted transition-colors duration-150 ${todo.completed ? "bg-muted" : ""}`}
             onClick={handleToggleComplete}
             title={todo.completed ? "标为未完成" : "标为完成"}
           >
@@ -103,7 +99,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
               <Image
                 src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
                 alt="标为未完成"
-                className="icon-finish"
+                className="relative left-1 top-0.5"
                 width={24}
                 height={18}
                 draggable={false}
@@ -114,13 +110,13 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
 
         {/* List name badge */}
         {todo.list_name && (
-          <span className="search-todo-list-name">[{todo.list_name}] </span>
+          <span className="text-accent-foreground font-bold mr-1 text-sm">[{todo.list_name}] </span>
         )}
 
         {/* Recurring task badge - unified for both original and instances */}
         {RecurringTaskGenerator.isRecurringTask(todo) && (
           <span
-            className="recurring-badge"
+            className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded ml-1"
             title={RecurringTaskGenerator.getTaskRecurrenceDescription(todo)}
           >
             🔄
@@ -129,7 +125,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
 
         {/* Todo title with highlighting */}
         <span
-          className={`search-todo-title ${todo.completed ? "completed" : ""}`}
+          className={`flex-1 text-sm text-foreground truncate ${todo.completed ? "line-through text-muted-foreground" : ""}`}
           dangerouslySetInnerHTML={{ __html: highlightText(todo.title) }}
         />
 
@@ -137,14 +133,14 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
         {RecurringTaskGenerator.isRecurringTask(todo) &&
           todo.next_due_date &&
           !todo.deleted && (
-            <span className="search-todo-next-due" title="下次到期时间">
+            <span className="text-xs text-muted-foreground ml-2" title="下次到期时间">
               下次: {dbUTCToDisplayDate(todo.next_due_date)}
             </span>
           )}
 
         {/* Due date */}
         {todo.due_date && !todo.deleted && (
-          <span className="search-todo-due-date">
+          <span className="text-xs text-muted-foreground ml-1">
             {dbUTCToDisplayDate(todo.due_date)}
           </span>
         )}
@@ -152,7 +148,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
         {/* Delete button */}
         {!todo.deleted && (
           <button
-            className="search-todo-btn btn-delete"
+            className="p-1.5 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground shrink-0"
             onClick={handleDelete}
             title="删除"
           >
@@ -170,18 +166,18 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
       {/* Todo content with highlighting */}
       {/* {todo.content && (
         <div 
-          className="search-todo-content-text"
+          className="text-muted-foreground text-[13px] leading-relaxed mt-2 max-h-10 overflow-hidden text-ellipsis line-clamp-2"
           dangerouslySetInnerHTML={{ __html: highlightText(todo.content) }}
         />
       )} */}
 
       {/* Tags */}
       {/* {todo.tags && (
-        <div className="search-todo-tags">
+        <div className="flex flex-wrap gap-1 mt-2">
           {todo.tags.split(',').map((tag, idx) => (
             <span 
               key={idx} 
-              className="search-todo-tag"
+              className="bg-muted text-foreground px-1.5 py-0.5 rounded text-[11px] font-medium"
               dangerouslySetInnerHTML={{ __html: highlightText(tag.trim()) }}
             />
           ))}
@@ -501,7 +497,7 @@ export default function TaskSearchModal({
 
   // 监听refreshTrigger变化，重新执行搜索
   useEffect(() => {
-    if (!isOpen || refreshTrigger <= 0 || !state.searchQuery.trim()) return;
+    if (!isOpen || (refreshTrigger ?? 0) <= 0 || !state.searchQuery.trim()) return;
 
     const performRefreshSearch = async () => {
       const query = state.searchQuery.trim();
@@ -600,7 +596,7 @@ export default function TaskSearchModal({
 
   return (
     <div
-      className="search-modal-overlay"
+      className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-16"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
@@ -608,16 +604,16 @@ export default function TaskSearchModal({
     >
       <div
         ref={modalRef}
-        className="search-modal-content"
+        className="bg-background border border-border rounded-lg w-full max-w-xl shadow-sm overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="search-modal-header">
-          <h2 id="search-modal-title" className="search-modal-title">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <h2 id="search-modal-title" className="text-sm font-semibold text-foreground">
             搜索任务
           </h2>
           <button
-            className="search-modal-close"
+            className="p-1.5 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground text-lg leading-none"
             onClick={handleCloseClick}
             aria-label="关闭搜索"
           >
@@ -626,11 +622,11 @@ export default function TaskSearchModal({
         </div>
 
         {/* Search Input */}
-        <div className="search-input-container">
+        <div className="px-4 py-2 border-b border-border">
           <input
             ref={searchInputRef}
             type="text"
-            className="search-input"
+            className="w-full py-2 text-sm text-foreground bg-background placeholder:text-muted-foreground focus:outline-none"
             placeholder="搜索任务标题、内容、标签..."
             value={state.searchQuery}
             onChange={handleSearchChange}
@@ -639,21 +635,21 @@ export default function TaskSearchModal({
         </div>
 
         {/* Search Results Container */}
-        <div className="search-results-container">
+        <div className="max-h-[60vh] overflow-y-auto">
           {/* 加载状态 */}
           {state.isLoading && (
-            <div className="search-loading">
-              <div className="loading-spinner"></div>
+            <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground text-sm">
+              <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
               <span>搜索中...</span>
             </div>
           )}
 
           {/* 搜索错误状态 */}
           {!state.isLoading && state.searchError && (
-            <div className="search-error">
+              <div className="px-4 py-6 text-center text-muted-foreground text-sm">
               <p>{state.searchError}</p>
               <button
-                className="search-retry-btn"
+                className="mt-2 px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors duration-150"
                 onClick={() =>
                   setState((prev) => ({ ...prev, searchError: null }))
                 }
@@ -668,9 +664,9 @@ export default function TaskSearchModal({
             !state.searchError &&
             state.searchQuery &&
             state.searchResults.length === 0 && (
-              <div className="search-no-results">
+              <div className="px-4 py-8 text-center text-muted-foreground text-sm">
                 <p>暂无匹配任务</p>
-                <p className="search-no-results-hint">
+                <p className="text-xs mt-1 text-muted-foreground/70">
                   尝试使用不同的关键词或检查拼写
                 </p>
               </div>
@@ -678,9 +674,9 @@ export default function TaskSearchModal({
 
           {/* 空状态 */}
           {!state.isLoading && !state.searchError && !state.searchQuery && (
-            <div className="search-empty-state">
+            <div className="px-4 py-8 text-center text-muted-foreground text-sm">
               <p>开始输入以搜索任务</p>
-              <p className="search-empty-hint">可以搜索任务标题、内容、标签</p>
+              <p className="text-xs mt-1 text-muted-foreground/70">可以搜索任务标题、内容、标签</p>
             </div>
           )}
 
@@ -688,20 +684,20 @@ export default function TaskSearchModal({
           {!state.isLoading &&
             !state.searchError &&
             state.searchResults.length > 0 && (
-              <div className="search-results">
-                <div className="search-results-header">
-                  <span className="search-results-count">
+              <div className="w-full">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-border">
+                  <span className="text-xs text-muted-foreground">
                     找到 {totalMatches} 个匹配任务
                   </span>
                   {state.lastSearchTime > 0 && (
-                    <span className="search-results-time">
+                     <span className="text-xs text-muted-foreground/60">
                       ({state.lastSearchTime}ms)
                     </span>
                   )}
                 </div>
 
-                <div className="search-results-list" ref={resultsListRef}>
-                  <div className="search-todo-list">
+                <div className="overflow-y-auto" ref={resultsListRef}>
+                  <div className="divide-y divide-border">
                     <SearchResultsList
                       searchResults={state.searchResults}
                       searchQuery={state.searchQuery}
@@ -710,8 +706,8 @@ export default function TaskSearchModal({
                       onSelectTodo={onSelectTodo}
                     />
                     {state.isloadingMore && (
-                      <div className="search-loading-more">
-                        <div className="loading-spinner"></div>
+                      <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground text-sm">
+                        <div className="w-4 h-4 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
                         <span>加载更多...</span>
                       </div>
                     )}

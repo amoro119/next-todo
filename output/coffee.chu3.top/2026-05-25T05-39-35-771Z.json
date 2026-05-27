@@ -1,0 +1,574 @@
+{
+  "url": "https://coffee.chu3.top/",
+  "extractedAt": "2026-05-25T05:39:35.765Z",
+  "siteName": "Brew Guide - Chu3's Coffee Guide",
+  "logo": null,
+  "logoInstances": [],
+  "favicons": [
+    {
+      "type": "apple-touch-icon",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-192x192.png",
+      "sizes": null
+    },
+    {
+      "type": "icon",
+      "url": "https://coffee.chu3.top/images/icons/app/favicon.ico",
+      "sizes": "any"
+    },
+    {
+      "type": "shortcut icon",
+      "url": "https://coffee.chu3.top/images/icons/app/favicon.ico",
+      "sizes": null
+    },
+    {
+      "type": "icon",
+      "url": "https://coffee.chu3.top/images/icons/app/favicon.ico",
+      "sizes": "any"
+    },
+    {
+      "type": "icon",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-192x192.png",
+      "sizes": "192x192"
+    },
+    {
+      "type": "icon",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-512x512.png",
+      "sizes": "512x512"
+    },
+    {
+      "type": "apple-touch-icon",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-192x192.png",
+      "sizes": null
+    },
+    {
+      "type": "apple-touch-icon-precomposed",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-192x192.png",
+      "sizes": null
+    },
+    {
+      "type": "og:image",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-512x512.png",
+      "sizes": null
+    },
+    {
+      "type": "twitter:image",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-512x512.png",
+      "sizes": null
+    },
+    {
+      "type": "pwa",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-192x192.png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "type": "pwa",
+      "url": "https://coffee.chu3.top/images/icons/app/icon-512x512.png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "colors": {
+    "semantic": {},
+    "palette": [
+      {
+        "color": "rgb(255, 255, 255)",
+        "normalized": "#ffffff",
+        "count": 1,
+        "confidence": "high",
+        "sources": [
+          "mt-24"
+        ],
+        "lch": "lch(100% 0 158.2)",
+        "oklch": "oklch(100% 0 89.88)"
+      }
+    ],
+    "cssVariables": {
+      "--custom-shape-color": {
+        "value": "#000",
+        "lch": "lch(0% 0 0)",
+        "oklch": "oklch(0% 0 0)"
+      }
+    },
+    "_raw": []
+  },
+  "typography": {
+    "styles": [
+      {
+        "context": "heading-2",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "20px (1.25rem)",
+        "weight": 700,
+        "lineHeight": "1.40",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "body",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "16px (1.00rem)",
+        "weight": 400,
+        "lineHeight": "1.50",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "heading-1",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "16px (1.00rem)",
+        "weight": 400,
+        "lineHeight": "1.50",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "heading-3",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "16px (1.00rem)",
+        "weight": 600,
+        "lineHeight": "1.50",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "caption",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "14px (0.88rem)",
+        "weight": 400,
+        "lineHeight": "1.63",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "button",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "14px (0.88rem)",
+        "weight": 600,
+        "lineHeight": "1.43",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "caption",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 400,
+        "lineHeight": "1.50",
+        "spacing": "1.2px",
+        "transform": null
+      },
+      {
+        "context": "caption",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 500,
+        "lineHeight": "1.33",
+        "spacing": "1.2px",
+        "transform": null
+      },
+      {
+        "context": "button",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 500,
+        "lineHeight": "1.33",
+        "spacing": "1.2px",
+        "transform": null
+      },
+      {
+        "context": "heading-3",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 500,
+        "lineHeight": "1.33",
+        "spacing": "0.6px",
+        "transform": null
+      },
+      {
+        "context": "button",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 400,
+        "lineHeight": "1.33",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "caption",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 400,
+        "lineHeight": "1.33",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "caption",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 500,
+        "lineHeight": "1.33",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "button",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "12px (0.75rem)",
+        "weight": 500,
+        "lineHeight": "1.33",
+        "spacing": null,
+        "transform": null
+      },
+      {
+        "context": "caption",
+        "family": "-apple-system",
+        "fallbacks": "system-ui, Segoe UI, Helvetica Neue, PingFang SC, Hiragino Sans GB, Microsoft YaHei, Arial",
+        "size": "10px (0.63rem)",
+        "weight": 400,
+        "lineHeight": "1.50",
+        "spacing": "1px",
+        "transform": null
+      }
+    ],
+    "sources": {
+      "googleFonts": [],
+      "adobeFonts": false,
+      "variableFonts": false
+    }
+  },
+  "spacing": {
+    "scaleType": "8px",
+    "commonValues": [
+      {
+        "px": "4px",
+        "rem": "0.25rem",
+        "count": 16,
+        "numericValue": 4
+      },
+      {
+        "px": "6px",
+        "rem": "0.38rem",
+        "count": 3,
+        "numericValue": 6
+      },
+      {
+        "px": "8px",
+        "rem": "0.50rem",
+        "count": 9,
+        "numericValue": 8
+      },
+      {
+        "px": "12px",
+        "rem": "0.75rem",
+        "count": 4,
+        "numericValue": 12
+      },
+      {
+        "px": "16px",
+        "rem": "1.00rem",
+        "count": 9,
+        "numericValue": 16
+      },
+      {
+        "px": "24px",
+        "rem": "1.50rem",
+        "count": 1,
+        "numericValue": 24
+      },
+      {
+        "px": "28px",
+        "rem": "1.75rem",
+        "count": 1,
+        "numericValue": 28
+      },
+      {
+        "px": "32px",
+        "rem": "2.00rem",
+        "count": 1,
+        "numericValue": 32
+      },
+      {
+        "px": "38px",
+        "rem": "2.38rem",
+        "count": 6,
+        "numericValue": 38
+      },
+      {
+        "px": "96px",
+        "rem": "6.00rem",
+        "count": 2,
+        "numericValue": 96
+      },
+      {
+        "px": "138px",
+        "rem": "8.63rem",
+        "count": 2,
+        "numericValue": 138
+      }
+    ]
+  },
+  "borderRadius": {
+    "values": [
+      {
+        "value": "18px",
+        "count": 1,
+        "elements": [
+          "div"
+        ],
+        "confidence": "low",
+        "numericValue": 18
+      },
+      {
+        "value": "24px 24px 0px 0px",
+        "count": 1,
+        "elements": [
+          "dialog"
+        ],
+        "confidence": "low",
+        "numericValue": 24
+      },
+      {
+        "value": "3.35544e+07px",
+        "count": 2,
+        "elements": [
+          "div",
+          "button"
+        ],
+        "confidence": "low",
+        "numericValue": 33554400
+      }
+    ]
+  },
+  "borders": {
+    "combinations": [
+      {
+        "width": "0px 0px 0px 1px",
+        "style": "solid",
+        "color": "oklab(0.922 0 0 / 0.5)",
+        "count": 8,
+        "elements": [
+          "div"
+        ],
+        "confidence": "medium"
+      },
+      {
+        "width": "1px 0px 0px",
+        "style": "solid",
+        "color": "oklab(0.922 0 0 / 0.5)",
+        "count": 8,
+        "elements": [
+          "div"
+        ],
+        "confidence": "medium"
+      },
+      {
+        "width": "0px 1px 0px 0px",
+        "style": "solid",
+        "color": "oklab(0.922 0 0 / 0.5)",
+        "count": 1,
+        "elements": [
+          "div"
+        ],
+        "confidence": "low"
+      }
+    ]
+  },
+  "shadows": [],
+  "gradients": [
+    {
+      "gradient": "linear-gradient(oklab(0.985 0 0 / 0.95) 0%, rgba(0, 0, 0, 0) 100%)",
+      "type": "linear",
+      "stopColors": [
+        "oklab(0.985 0 0 / 0.95)",
+        "rgba(0, 0, 0, 0)"
+      ],
+      "count": 1
+    },
+    {
+      "gradient": "linear-gradient(to top, oklab(0.985 0 0 / 0.95) 0%, rgba(0, 0, 0, 0) 100%)",
+      "type": "linear",
+      "stopColors": [
+        "oklab(0.985 0 0 / 0.95)",
+        "rgba(0, 0, 0, 0)"
+      ],
+      "count": 1
+    },
+    {
+      "gradient": "linear-gradient(to top, oklch(0.985 0 0) 0%, rgba(0, 0, 0, 0) 100%)",
+      "type": "linear",
+      "stopColors": [
+        "oklch(0.985 0 0)",
+        "rgba(0, 0, 0, 0)"
+      ],
+      "count": 1
+    }
+  ],
+  "motion": {
+    "durations": [
+      {
+        "value": "0.1s",
+        "ms": 100,
+        "count": 1
+      },
+      {
+        "value": "0.15s",
+        "ms": 150,
+        "count": 7
+      },
+      {
+        "value": "0.2s",
+        "ms": 200,
+        "count": 3
+      },
+      {
+        "value": "0.35s",
+        "ms": 350,
+        "count": 5
+      },
+      {
+        "value": "0.5s",
+        "ms": 500,
+        "count": 1
+      }
+    ],
+    "easings": [
+      {
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "type": "custom",
+        "count": 14
+      },
+      {
+        "value": "cubic-bezier(0, 0, 0.2, 1)",
+        "type": "ease-out",
+        "count": 2
+      },
+      {
+        "value": "ease",
+        "type": "ease",
+        "count": 1
+      },
+      {
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "type": "custom",
+        "count": 1
+      }
+    ],
+    "animations": [
+      {
+        "name": "fadeIn",
+        "duration": "0.5s",
+        "easing": "cubic-bezier(0.32",
+        "count": 1,
+        "contexts": [
+          "other"
+        ]
+      },
+      {
+        "name": "slideFromBottom",
+        "duration": "0.5s",
+        "easing": "cubic-bezier(0.32",
+        "count": 1,
+        "contexts": [
+          "modal"
+        ]
+      }
+    ],
+    "contexts": {
+      "card": {
+        "count": 1,
+        "durations": [
+          "0.1s"
+        ],
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "easingType": "custom",
+        "props": [
+          "opacity"
+        ]
+      },
+      "button": {
+        "count": 7,
+        "durations": [
+          "0.15s"
+        ],
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "easingType": "custom",
+        "props": [
+          "color",
+          "background-color",
+          "border-color",
+          "outline-color"
+        ]
+      },
+      "modal": {
+        "count": 1,
+        "durations": [
+          "0.5s"
+        ],
+        "easing": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "easingType": "custom",
+        "props": [
+          "transform"
+        ]
+      }
+    },
+    "interactiveDeltas": []
+  },
+  "components": {
+    "buttons": [],
+    "inputs": {
+      "text": [],
+      "checkbox": [],
+      "radio": [],
+      "select": []
+    },
+    "links": [],
+    "badges": {
+      "all": [],
+      "byVariant": {
+        "error": [],
+        "warning": [],
+        "success": [],
+        "info": [],
+        "neutral": []
+      }
+    }
+  },
+  "breakpoints": [
+    {
+      "px": "768px"
+    }
+  ],
+  "iconSystem": [],
+  "frameworks": [
+    {
+      "name": "Tailwind CSS",
+      "confidence": "high",
+      "evidence": "arbitrary values (e.g., top-[117px]), responsive/state modifiers"
+    },
+    {
+      "name": "PrimeReact/Vue/NG",
+      "confidence": "high",
+      "evidence": "25 Prime components"
+    },
+    {
+      "name": "Fluent UI",
+      "confidence": "high",
+      "evidence": "77 Fluent components"
+    }
+  ]
+}

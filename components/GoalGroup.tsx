@@ -49,16 +49,16 @@ const GoalGroupComponent: React.FC<GoalGroupProps> = ({
   };
 
   return (
-    <li className="goal-group" data-goal-id={goal.id}>
-      <div className="goal-group-header">
+    <li className="mb-4" data-goal-id={goal.id}>
+      <div className="flex items-center gap-2">
         <h3 
-          className="goal-group-title text-lg font-semibold text-gray-900 mb-3 cursor-pointer transition-colors"
+          className="text-lg font-semibold text-gray-900 mb-3 cursor-pointer transition-colors"
           onClick={handleTitleClick}
         >
           {goal.name}
         </h3>
       </div>
-      <ul className="goal-group-todos">
+      <ul className="space-y-1">
         {todos.map((todo, idx) => {
           // 确保每个todo都有ref
           if (!todoItemRefs.current[todo.id]) {

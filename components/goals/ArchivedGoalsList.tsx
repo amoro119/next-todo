@@ -67,11 +67,11 @@ const ArchivedGoalsList: React.FC<ArchivedGoalsListProps> = ({
   };
 
   const getProgressColor = (progress: number) => {
-    if (progress === 100) return 'bg-green-500';
-    if (progress >= 75) return 'bg-blue-500';
-    if (progress >= 50) return 'bg-yellow-500';
-    if (progress >= 25) return 'bg-orange-500';
-    return 'bg-red-500';
+    if (progress === 100) return 'bg-[oklch(var(--primary))]';
+    if (progress >= 75) return 'bg-[oklch(var(--primary)/0.8)]';
+    if (progress >= 50) return 'bg-[oklch(var(--primary)/0.6)]';
+    if (progress >= 25) return 'bg-[oklch(var(--primary)/0.4)]';
+    return 'bg-[oklch(var(--primary)/0.2)]';
   };
 
   const formatDate = (dateString: string) => {
@@ -87,11 +87,11 @@ const ArchivedGoalsList: React.FC<ArchivedGoalsListProps> = ({
     return (
       <div className="space-y-4">
         {[...Array(3)].map((_, i) => (
-          <div key={i} className="bg-gray-50 rounded-lg border p-6 animate-pulse">
-            <div className="h-6 bg-gray-200 rounded mb-3"></div>
-            <div className="h-4 bg-gray-200 rounded mb-4 w-3/4"></div>
-            <div className="h-2 bg-gray-200 rounded mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div key={i} className="bg-card rounded-lg border p-6 animate-pulse">
+            <div className="h-6 bg-muted rounded mb-3"></div>
+            <div className="h-4 bg-muted rounded mb-4 w-3/4"></div>
+            <div className="h-2 bg-muted rounded mb-2"></div>
+            <div className="h-4 bg-muted rounded w-1/4"></div>
           </div>
         ))}
       </div>
@@ -108,13 +108,13 @@ const ArchivedGoalsList: React.FC<ArchivedGoalsListProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="搜索已存档的目标..."
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+            className="px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[oklch(var(--primary))] min-w-[200px]"
           />
           
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[oklch(var(--primary))]"
           >
             <option value="archivedDate">按存档时间排序</option>
             <option value="name">按名称排序</option>
@@ -123,7 +123,7 @@ const ArchivedGoalsList: React.FC<ArchivedGoalsListProps> = ({
           </select>
         </div>
 
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-muted-foreground">
           共 {filteredAndSortedGoals.length} 个已存档目标
         </div>
       </div>
@@ -131,11 +131,11 @@ const ArchivedGoalsList: React.FC<ArchivedGoalsListProps> = ({
       {/* 目标列表 */}
       {filteredAndSortedGoals.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-gray-400 text-6xl mb-4">📦</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <div className="text-muted-foreground text-6xl mb-4">📦</div>
+          <h3 className="text-lg font-medium text-foreground mb-2">
             {searchTerm ? '未找到匹配的目标' : '暂无已存档目标'}
           </h3>
-          <p className="text-gray-500">
+          <p className="text-muted-foreground">
             {searchTerm 
               ? '尝试使用不同的搜索词' 
               : '存档的目标将出现在这里，您可以随时恢复它们'
@@ -202,18 +202,18 @@ const ArchivedGoalCard: React.FC<ArchivedGoalCardProps> = React.memo(({
 
   return (
     <div
-      className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow cursor-pointer p-6 opacity-75 hover:opacity-100"
+      className="bg-card rounded-lg shadow-sm border border-border hover:shadow-md transition-shadow cursor-pointer p-6 opacity-75 hover:opacity-100"
       onClick={handleCardClick}
     >
       {/* 存档标识 */}
       <div className="flex items-center justify-between mb-3">
-        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-foreground">
           📦 已存档
         </span>
         <div className="flex gap-1">
           <button
             onClick={handleRestoreClick}
-            className="p-1 text-gray-400 hover:text-green-600 transition-colors"
+            className="p-1 text-muted-foreground hover:text-[oklch(var(--primary))] transition-colors"
             title="恢复目标"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,7 +222,7 @@ const ArchivedGoalCard: React.FC<ArchivedGoalCardProps> = React.memo(({
           </button>
           <button
             onClick={handleDeleteClick}
-            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+            className="p-1 text-muted-foreground hover:text-destructive transition-colors"
             title="永久删除"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -233,13 +233,13 @@ const ArchivedGoalCard: React.FC<ArchivedGoalCardProps> = React.memo(({
       </div>
 
       {/* 目标标题 */}
-      <h3 className="font-semibold text-lg text-gray-700 line-clamp-2 mb-2">
+      <h3 className="font-semibold text-lg text-foreground line-clamp-2 mb-2">
         {goal.name}
       </h3>
 
       {/* 描述 */}
       {goal.description && (
-        <p className="text-gray-500 text-sm mb-4 line-clamp-2">
+        <p className="text-muted-foreground text-sm mb-4 line-clamp-2">
           {goal.description}
         </p>
       )}
@@ -247,25 +247,25 @@ const ArchivedGoalCard: React.FC<ArchivedGoalCardProps> = React.memo(({
       {/* 进度条 */}
       <div className="mb-4">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-gray-600">
+          <span className="text-sm font-medium text-muted-foreground">
             进度
           </span>
-          <span className="text-sm font-semibold text-gray-700">
+          <span className="text-sm font-semibold text-foreground">
             {progress}%
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className="w-full bg-muted rounded-full h-2">
           <div
             className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(progress)} opacity-75`}
             style={{ width: `${progress}%` }}
           />
         </div>
         <div className="flex justify-between items-center mt-1">
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-muted-foreground">
             {completedTasks}/{totalTasks} 任务
           </span>
           {progress === 100 && (
-            <span className="text-xs text-green-600 font-medium">
+            <span className="text-xs text-[oklch(var(--primary))] font-medium">
               ✓ 已完成
             </span>
           )}
@@ -276,18 +276,18 @@ const ArchivedGoalCard: React.FC<ArchivedGoalCardProps> = React.memo(({
       <div className="flex justify-between items-center text-sm">
         <div className="flex items-center gap-2">
           {goal.priority > 0 && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-destructive/10 text-destructive">
               优先级 {goal.priority}
             </span>
           )}
           {goal.list_name && (
-            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
               {goal.list_name}
             </span>
           )}
         </div>
         
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-muted-foreground">
           存档于 {formatDate(goal.created_time)}
         </span>
       </div>
