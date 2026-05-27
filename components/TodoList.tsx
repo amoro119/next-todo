@@ -147,20 +147,21 @@ const TodoItem = memo(
               </button>
             ) : (
               <button
-                className={`flex items-center justify-center cursor-pointer border border-border rounded-full transition-all duration-200 shrink-0 bg-background hover:bg-accent w-[30px] h-[30px] mr-3 ${
-                  todo.completed ? "bg-primary text-primary-foreground" : "hover:bg-primary hover:text-primary-foreground"
+                className={`flex items-center justify-center cursor-pointer border-2 rounded-full transition-all duration-200 shrink-0 w-[22px] h-[22px] mr-3 ${
+                  todo.completed
+                    ? "border-primary bg-primary"
+                    : "border-border bg-background hover:border-primary"
                 }`}
                 onClick={handleToggleComplete}
+                title={todo.completed ? "标为未完成" : "标为完成"}
+                aria-label={todo.completed ? "标为未完成" : "标为完成"}
+                aria-checked={todo.completed}
+                role="checkbox"
               >
                 {todo.completed && (
-                  <Image
-                    src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
-                    alt="标为未完成"
-                    className="inline-flex items-center justify-center w-6 h-auto"
-                    draggable={false}
-                    width={24}
-                    height={18}
-                  />
+                  <svg viewBox="0 0 12 10" fill="none" className="w-3 h-auto" aria-hidden="true">
+                    <path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary-foreground" />
+                  </svg>
                 )}
               </button>
             )}
@@ -169,13 +170,6 @@ const TodoItem = memo(
               todo.list_name && (
                 <span className="text-accent-foreground font-bold mr-1.5 text-sm">[{todo.list_name}] </span>
               )}
-
-            {/* 重复任务标识 */}
-            {isRecurringTask && (
-              <span className="text-xs bg-muted text-muted-foreground px-1.5 py-0.5 rounded ml-1" title={recurringDescription}>
-                🔄
-              </span>
-            )}
 
             <div className="flex-1 text-sm text-foreground leading-relaxed">{todo.title}</div>
 
