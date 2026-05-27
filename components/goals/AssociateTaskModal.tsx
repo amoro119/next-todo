@@ -57,36 +57,38 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
   // Highlight search terms in text
   const highlightText = (text: string) => {
     if (!searchQuery.trim()) return text;
-    return SearchHighlighter.highlight(text, searchQuery, "search-highlight");
+    return SearchHighlighter.highlight(text, searchQuery, "bg-yellow-200 text-foreground");
   };
 
   return (
     <div
-      className={`search-todo-item ${todo.completed ? "completed" : ""} ${
-        todo.deleted ? "deleted" : ""
-      } ${isSelected ? "selected" : ""}`} // 添加 selected 类
-      onClick={handleToggleSelect} // 点击整行切换选择
+      className={`flex items-start gap-3 p-3 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors duration-150 cursor-pointer ${
+        todo.completed ? "opacity-75" : ""
+      } ${todo.deleted ? "opacity-50" : ""} ${isSelected ? "border-foreground bg-muted/30" : ""}`}
+      onClick={handleToggleSelect}
       style={{ animationDelay: `${index * 50}ms` }}
     >
       <div
-        className={`search-todo-content ${todo.completed ? "completed" : ""}`}
+        className={`flex items-start gap-2 flex-1 ${todo.completed ? "opacity-75" : ""}`}
       >
         {/* 复选框 */}
-        <div className={`search-todo-checkbox ${isSelected ? "checked" : ""}`}>
+        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+          isSelected ? "bg-foreground border-foreground" : "border-border"
+        }`}>
           {isSelected && (
-            <span className="search-todo-checkbox-check">✓</span>
+            <span className="text-background text-xs font-bold">✓</span>
           )}
         </div>
 
         {/* List name badge */}
         {todo.list_name && (
-          <span className="search-todo-list-name">[{todo.list_name}] </span>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">[{todo.list_name}] </span>
         )}
 
         {/* Recurring task badge - unified for both original and instances */}
         {RecurringTaskGenerator.isRecurringTask(todo) && (
           <span
-            className="recurring-badge"
+            className="inline-flex items-center text-xs"
             title={RecurringTaskGenerator.getTaskRecurrenceDescription(todo)}
           >
             🔄
@@ -95,7 +97,7 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
 
         {/* Todo title with highlighting */}
         <span
-          className={`search-todo-title ${todo.completed ? "completed" : ""}`}
+          className={`flex-1 text-sm ${todo.completed ? "opacity-75 line-through" : "text-foreground"}`}
           dangerouslySetInnerHTML={{ __html: highlightText(todo.title) }}
         />
 
@@ -103,14 +105,14 @@ const SearchTodoItem = React.memo(function SearchTodoItem({
         {RecurringTaskGenerator.isRecurringTask(todo) &&
           todo.next_due_date &&
           !todo.deleted && (
-            <span className="search-todo-next-due" title="下次到期时间">
+            <span className="text-xs text-muted-foreground" title="下次到期时间">
               下次: {dbUTCToDisplayDate(todo.next_due_date)}
             </span>
           )}
 
         {/* Due date */}
         {todo.due_date && !todo.deleted && (
-          <span className="search-todo-due-date">
+          <span className="text-xs text-muted-foreground">
             {dbUTCToDisplayDate(todo.due_date)}
           </span>
         )}
@@ -377,7 +379,7 @@ export default function AssociateTaskModal({
 
   // 监听refreshTrigger变化，重新执行搜索
   useEffect(() => {
-    if (!isOpen || refreshTrigger <= 0 || !state.searchQuery.trim()) return;
+    if (!isOpen || (refreshTrigger ?? 0) <= 0 || !state.searchQuery.trim()) return;
 
     const performRefreshSearch = async () => {
       const query = state.searchQuery.trim();
@@ -505,7 +507,7 @@ export default function AssociateTaskModal({
 
   return (
     <div
-      className="search-modal-overlay"
+      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
@@ -513,16 +515,16 @@ export default function AssociateTaskModal({
     >
       <div
         ref={modalRef}
-        className="search-modal-content"
+        className="bg-background border border-border rounded-lg shadow-sm w-full max-w-md mx-4 max-h-[80vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="search-modal-header">
-          <h2 id="search-modal-title" className="search-modal-title">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 id="search-modal-title" className="text-lg font-semibold text-foreground">
             关联任务
           </h2>
           <button
-            className="search-modal-close"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             onClick={handleCloseClick}
             aria-label="关闭搜索"
           >
@@ -531,11 +533,11 @@ export default function AssociateTaskModal({
         </div>
 
         {/* Search Input */}
-        <div className="search-input-container">
+        <div className="p-4 border-b border-border">
           <input
             ref={searchInputRef}
             type="text"
-            className="search-input"
+            className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="搜索任务标题、内容、标签..."
             value={state.searchQuery}
             onChange={handleSearchChange}
@@ -544,21 +546,21 @@ export default function AssociateTaskModal({
         </div>
 
         {/* Search Results Container */}
-        <div className="search-results-container">
+        <div className="flex-1 overflow-y-auto p-4">
           {/* 加载状态 */}
           {state.isLoading && (
-            <div className="search-loading">
-              <div className="loading-spinner"></div>
+            <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+              <div className="w-5 h-5 border-2 border-border border-t-foreground rounded-full animate-spin"></div>
               <span>搜索中...</span>
             </div>
           )}
 
           {/* 搜索错误状态 */}
           {!state.isLoading && state.searchError && (
-            <div className="search-error">
-              <p>{state.searchError}</p>
+            <div className="text-center py-8">
+              <p className="text-destructive text-sm mb-2">{state.searchError}</p>
               <button
-                className="search-retry-btn"
+                className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors"
                 onClick={() =>
                   setState((prev) => ({ ...prev, searchError: null }))
                 }
@@ -573,9 +575,9 @@ export default function AssociateTaskModal({
             !state.searchError &&
             state.searchQuery &&
             state.searchResults.length === 0 && (
-              <div className="search-no-results">
-                <p>暂无匹配任务</p>
-                <p className="search-no-results-hint">
+              <div className="text-center py-8">
+                <p className="text-muted-foreground mb-1">暂无匹配任务</p>
+                <p className="text-xs text-muted-foreground">
                   尝试使用不同的关键词或检查拼写
                 </p>
               </div>
@@ -583,9 +585,9 @@ export default function AssociateTaskModal({
 
           {/* 空状态 */}
           {!state.isLoading && !state.searchError && !state.searchQuery && (
-            <div className="search-empty-state">
-              <p>开始输入以搜索任务</p>
-              <p className="search-empty-hint">可以搜索任务标题、内容、标签</p>
+            <div className="text-center py-8">
+              <p className="text-muted-foreground mb-1">开始输入以搜索任务</p>
+              <p className="text-xs text-muted-foreground">可以搜索任务标题、内容、标签</p>
             </div>
           )}
 
@@ -593,20 +595,20 @@ export default function AssociateTaskModal({
           {!state.isLoading &&
             !state.searchError &&
             state.searchResults.length > 0 && (
-              <div className="search-results">
-                <div className="search-results-header">
-                  <span className="search-results-count">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>
                     找到 {state.searchResults.length} 个匹配任务
                   </span>
                   {state.lastSearchTime > 0 && (
-                    <span className="search-results-time">
+                    <span className="text-xs">
                       ({state.lastSearchTime}ms)
                     </span>
                   )}
                 </div>
 
-                <div className="search-results-list">
-                  <div className="search-todo-list">
+                <div>
+                  <div className="space-y-2">
                     <SearchResultsList
                       searchResults={state.searchResults}
                       selectedTaskIds={state.selectedTaskIds}
@@ -620,9 +622,9 @@ export default function AssociateTaskModal({
         </div>
 
         {/* Modal Footer with Confirm Button */}
-        <div className="modal-footer">
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
           <button
-            className="btn-small confirm"
+            className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-foreground text-background hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={handleConfirmClick}
             disabled={state.selectedTaskIds.length === 0}
           >

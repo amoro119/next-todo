@@ -1,16 +1,18 @@
 // components/goals/GoalsMainInterface.tsx
 import { useState, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Goal, Todo } from '@/lib/types';
+import { Goal, Todo, List } from '@/lib/types';
 import GoalsList from './GoalsList';
 import GoalDetails from './GoalDetails';
 import GoalHeader from './GoalHeader';
+import GoalViewOptions, { type GoalView } from './GoalViewOptions';
+import ArchivedGoalsList from './ArchivedGoalsList';
 
 interface GoalsMainInterfaceProps {
   goals: Goal[];
   todos: Todo[];
   lists: List[];
   onUpdateGoal: (goal: Goal) => void;
-  onUpdateTodo: (todo: Todo) => void;
+  onUpdateTodo: (todoId: string, updates: Partial<Todo>) => void;
   onDeleteTodo: (todoId: string) => void;
   onDeleteGoal: (goalId: string) => void;
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void;
@@ -41,6 +43,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
   onSelectGoal
 }, ref) => {
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [goalView, setGoalView] = useState<GoalView>('active');
 
   const handleGoalClick = useCallback((goal: Goal) => {
     setSelectedGoal(goal);
@@ -88,10 +91,10 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
   }, []);
 
   return (
-    <div className="goals-main-interface goals-container mode-transition">
+    <div className="w-full">
 
       {/* 在此区域内切换 GoalsList 和 GoalDetails */}
-      <div className="goals-list-container">
+      <div className="w-full">
         {selectedGoal ? (
           <>
             <GoalHeader 
@@ -100,7 +103,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
               onBackToList={handleBackToList}
               onEditGoal={onEditGoal}
             />
-            <div className="view-transition">
+            <div>
               <GoalDetails
                 goal={selectedGoal}
                 todos={todos.filter(todo => todo.goal_id === selectedGoal.id && !todo.deleted)}
@@ -117,23 +120,41 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
           </>
         ) : (
           <>
-            <div className="bar-message">
-              <div className="bar-message-text">我的目标</div>
+            <div className="w-full px-4 py-3 bg-muted/50 border-b border-border">
+              <div className="text-sm font-medium text-foreground mb-1">我的目标</div>
+              <GoalViewOptions currentView={goalView} onViewChange={setGoalView} />
             </div>
-            <div className="view-transition">
-              <GoalsList 
-                goals={goals}
-                onGoalClick={handleGoalClick}
-                onEditGoal={onEditGoal}
-                onArchiveGoal={onArchiveGoal}
-                onDeleteGoal={onDeleteGoal}
-              />
-              <div className="bar-message bar-bottom">
-                <div className="bar-message-text">
-                  {goals.length > 0 ? (
-                    <span>{goals.length} 项目标</span>
+            <div>
+              {goalView === 'active' ? (
+                <GoalsList
+                  goals={goals.filter((g) => !g.is_archived)}
+                  onGoalClick={handleGoalClick}
+                  onEditGoal={onEditGoal}
+                  onArchiveGoal={onArchiveGoal}
+                  onDeleteGoal={onDeleteGoal}
+                />
+              ) : (
+                <ArchivedGoalsList
+                  goals={goals.filter((g) => g.is_archived)}
+                  onRestoreGoal={(id) => onArchiveGoal(id)}
+                  onDeleteGoal={onDeleteGoal}
+                  onViewGoal={handleGoalClick}
+                />
+              )}
+              <div className="w-full px-4 py-3 bg-muted/50 border-t border-border mt-auto">
+                <div className="text-sm font-medium text-foreground">
+                  {goalView === 'active' ? (
+                    goals.filter((g) => !g.is_archived).length > 0 ? (
+                      <span>{goals.filter((g) => !g.is_archived).length} 项目标</span>
+                    ) : (
+                      <span>暂无目标</span>
+                    )
                   ) : (
-                    <span>暂无目标</span>
+                    goals.filter((g) => g.is_archived).length > 0 ? (
+                      <span>{goals.filter((g) => g.is_archived).length} 项已存档目标</span>
+                    ) : (
+                      <span>暂无已存档目标</span>
+                    )
                   )}
                 </div>
               </div>

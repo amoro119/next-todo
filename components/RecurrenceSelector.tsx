@@ -127,45 +127,41 @@ export default function RecurrenceSelector({
 
   return (
     <>
-      <div className="recurrence-selector" ref={dropdownRef}>
+      <div className="relative inline-block w-full" ref={dropdownRef}>
         <div
-          className={`recurrence-field ${hasValue ? "has-value" : ""} ${
-            disabled ? "disabled" : ""
-          }`}
+          className={`w-full px-2.5 py-2.5 border border-border rounded-lg bg-background text-sm cursor-pointer flex items-center justify-between min-h-[44px] transition-all duration-200 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
           onClick={handleTriggerClick}
         >
-          <span className="recurrence-text">{displayText}</span>
-          <div className="recurrence-controls">
+          <span className="flex-1 text-left text-foreground">{displayText}</span>
+          <div className="flex items-center justify-center w-6 h-6 shrink-0">
             {hasValue && isHovered ? (
               <button
                 type="button"
-                className="recurrence-clear-btn"
+                className="bg-destructive border-none rounded-full w-5 h-5 flex items-center justify-center cursor-pointer text-sm font-bold text-white leading-none hover:scale-110 transition-transform"
                 onClick={handleClearRecurrence}
                 title="停止重复"
               >
                 ×
               </button>
             ) : (
-              <span className="recurrence-arrow">▼</span>
+              <span className="text-xs text-muted-foreground select-none">▼</span>
             )}
           </div>
         </div>
 
         {isOpen && !disabled && (
-          <div className="recurrence-dropdown">
+          <div className="absolute top-full left-0 right-0 z-[1000] bg-background border border-border rounded-lg mt-1 max-h-[300px] overflow-y-auto">
             {recurrenceOptions.map((option, index) => (
               <div
                 key={index}
-                className={`recurrence-option ${
-                  option.value === value && value !== null && !option.isCustom ? "selected" : ""
-                }`}
+                className={`px-4 py-3 cursor-pointer border-b border-border last:border-b-0 transition-colors duration-200 flex flex-col items-start hover:bg-muted ${option.value === value && value !== null && !option.isCustom ? "bg-foreground text-background" : ""}`}
                 onClick={() => handleOptionClick(option)}
               >
-                <span className="option-label">{option.label}</span>
+                <span className="text-sm font-medium">{option.label}</span>
                 {option.description && (
-                  <span className="option-description">
+                  <span className="text-xs text-muted-foreground mt-0.5">
                     {option.description}
                   </span>
                 )}
@@ -435,16 +431,14 @@ function CustomRecurrenceModal({
     switch (frequency) {
       case "WEEKLY":
         return (
-          <div className="frequency-options">
-            <div className="option-label">选择星期</div>
-            <div className="weekdays-grid">
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-foreground mb-3">选择星期</div>
+            <div className="flex gap-2 justify-between">
               {weekDays.map((day) => (
                 <button
                   key={day.value}
                   type="button"
-                  className={`weekday-btn ${
-                    selectedDays.includes(day.value) ? "selected" : ""
-                  }`}
+                  className={`w-[44px] h-[44px] rounded-xl border border-border bg-background cursor-pointer text-sm font-semibold flex items-center justify-center transition-all duration-200 hover:shadow-sm hover:-translate-x-0.5 hover:-translate-y-0.5 ${selectedDays.includes(day.value) ? "bg-green-400 text-foreground border-foreground scale-100 shadow-none" : ""}`}
                   onClick={() => toggleDay(day.value)}
                 >
                   {day.label}
@@ -456,44 +450,44 @@ function CustomRecurrenceModal({
 
       case "MONTHLY":
         return (
-          <div className="frequency-options">
-            <div className="monthly-tabs">
+          <div className="space-y-3">
+            <div className="flex gap-1 mb-3">
               <button
                 type="button"
-                className={`tab-btn ${monthlyMode === "date" ? "active" : ""}`}
+                className={`px-3 py-1.5 rounded-md border text-sm transition-colors duration-150 ${monthlyMode === "date" ? "bg-foreground text-background border-foreground" : "border-border hover:bg-muted"}`}
                 onClick={() => setMonthlyMode("date")}
               >
                 按日期
               </button>
               <button
                 type="button"
-                className={`tab-btn ${monthlyMode === "weekday" ? "active" : ""}`}
+                className={`px-3 py-1.5 rounded-md border text-sm transition-colors duration-150 ${monthlyMode === "weekday" ? "bg-foreground text-background border-foreground" : "border-border hover:bg-muted"}`}
                 onClick={() => setMonthlyMode("weekday")}
               >
                 按星期
               </button>
               <button
                 type="button"
-                className={`tab-btn ${monthlyMode === "workday" ? "active" : ""}`}
+                className={`px-3 py-1.5 rounded-md border text-sm transition-colors duration-150 ${monthlyMode === "workday" ? "bg-foreground text-background border-foreground" : "border-border hover:bg-muted"}`}
                 onClick={() => setMonthlyMode("workday")}
               >
                 按工作日
               </button>
             </div>
 
-            <div className="monthly-content">
+            <div>
               {monthlyMode === "date" && (
-                <div className="date-picker">
-                  <div className="calendar-mini">
-                    <div className="calendar-header">
+                <div>
+                  <div className="bg-background border border-border rounded-lg p-3">
+                    <div className="text-center py-2 text-sm font-medium text-foreground">
                       <span>{monthNames[new Date().getMonth()]}</span>
                     </div>
-                    <div className="dates-grid">
+                    <div className="grid grid-cols-7 gap-1">
                       {Array.from({ length: 31 }, (_, i) => i + 1).map((date) => (
                         <button
                           key={date}
                           type="button"
-                          className={`date-btn ${selectedDate === date ? "selected" : ""}`}
+                          className={`w-8 h-8 rounded-md border text-xs font-medium transition-all duration-200 cursor-pointer flex items-center justify-center hover:shadow-sm hover:-translate-x-0.5 hover:-translate-y-0.5 ${selectedDate === date ? "bg-foreground text-background border-foreground scale-100 shadow-none" : "border-border bg-background"}`}
                           onClick={() => setSelectedDate(date)}
                         >
                           {date}
@@ -501,7 +495,7 @@ function CustomRecurrenceModal({
                       ))}
                       <button
                         type="button"
-                        className={`date-btn last-day ${selectedDate === -1 ? "selected" : ""}`}
+                        className={`col-span-2 w-auto h-8 rounded-md border text-xs font-medium transition-all duration-200 cursor-pointer flex items-center justify-center hover:shadow-sm hover:-translate-x-0.5 hover:-translate-y-0.5 ${selectedDate === -1 ? "bg-foreground text-background border-foreground scale-100 shadow-none" : "border-border bg-background"}`}
                         onClick={() => setSelectedDate(-1)}
                       >
                         最后一天
@@ -512,12 +506,12 @@ function CustomRecurrenceModal({
               )}
 
               {monthlyMode === "weekday" && (
-                <div className="weekday-picker">
-                  <div className="picker-row">
+                <div>
+                  <div className="flex items-center gap-2">
                     <select
                       value={weekPosition}
                       onChange={(e) => setWeekPosition(e.target.value as "first" | "last")}
-                      className="position-select"
+                      className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
                     >
                       {positionOptions.map((pos) => (
                         <option key={pos.value} value={pos.value}>
@@ -528,7 +522,7 @@ function CustomRecurrenceModal({
                     <select
                       value={selectedWeekday}
                       onChange={(e) => setSelectedWeekday(parseInt(e.target.value))}
-                      className="weekday-select"
+                      className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
                     >
                       {weekdayNames.map((day) => (
                         <option key={day.value} value={day.value}>
@@ -541,11 +535,11 @@ function CustomRecurrenceModal({
               )}
 
               {monthlyMode === "workday" && (
-                <div className="workday-picker">
+                <div>
                   <select
                     value={workdayPosition}
                     onChange={(e) => setWorkdayPosition(e.target.value as "first" | "last")}
-                    className="workday-select"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
                   >
                     <option value="first">第一个工作日</option>
                     <option value="last">最后一个工作日</option>
@@ -558,13 +552,13 @@ function CustomRecurrenceModal({
 
       case "YEARLY":
         return (
-          <div className="frequency-options">
-            <div className="yearly-picker">
-              <div className="picker-row">
+          <div className="space-y-3">
+            <div>
+              <div className="flex items-center gap-2">
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                  className="month-select"
+                  className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
                 >
                   {monthNames.map((month, index) => (
                     <option key={index + 1} value={index + 1}>
@@ -592,9 +586,9 @@ function CustomRecurrenceModal({
                       setDateError(false);
                     }
                   }}
-                  className={`date-input ${dateError ? 'error' : ''}`}
+                  className={`w-20 px-3 py-3 rounded-lg border bg-background text-center text-sm font-semibold ${dateError ? 'border-red-500' : 'border-border'}`}
                 />
-                <span>日</span>
+                <span className="text-sm text-foreground">日</span>
               </div>
             </div>
           </div>
@@ -606,26 +600,26 @@ function CustomRecurrenceModal({
   };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content custom-recurrence-modal">
-        <div className="modal-header">
-          <h2>自定义重复</h2>
-          <button className="modal-close" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+      <div className="bg-background border border-border rounded-lg w-full max-w-lg shadow-sm max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-lg font-bold text-foreground">自定义重复</h2>
+          <button className="bg-transparent border-0 text-2xl cursor-pointer p-0 leading-none text-foreground" onClick={onCancel}>
             ×
           </button>
         </div>
 
-        <div className="modal-body">
+        <div className="px-6 py-6 overflow-y-auto flex flex-col gap-6">
           {/* 重复基础设置 */}
-          <div className="recurrence-basic">
-            <div className="basic-row">
-              <select className="base-type-select" disabled>
+          <div className="flex flex-col gap-4">
+            <div>
+              <select className="w-full px-3 py-3 rounded-lg border border-border bg-muted/50 text-muted-foreground text-sm" disabled>
                 <option value="按到期日期">按到期日期</option>
               </select>
             </div>
             
-            <div className="frequency-row">
-              <span className="frequency-prefix">每</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-foreground font-medium">每</span>
               <input
                 type="number"
                 min="1"
@@ -646,12 +640,12 @@ function CustomRecurrenceModal({
                     setIntervalError(false);
                   }
                 }}
-                className={`interval-input ${intervalError ? 'error' : ''}`}
+                className={`w-20 px-3 py-3 rounded-lg border bg-background text-center text-sm font-semibold ${intervalError ? 'border-red-500' : 'border-border'}`}
               />
               <select
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value)}
-                className="frequency-select"
+                className="flex-1 px-3 py-3 rounded-lg border border-border bg-background text-foreground text-sm"
               >
                 {frequencyOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -666,8 +660,8 @@ function CustomRecurrenceModal({
           {renderFrequencyOptions()}
 
           {/* 跳过选项 */}
-          <div className="skip-options">
-            <label className="skip-option">
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
               <input
                 type="checkbox"
                 checked={skipHolidays}
@@ -677,7 +671,7 @@ function CustomRecurrenceModal({
             </label>
 
             {frequency === "DAILY" && (
-              <label className="skip-option">
+              <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
                 <input
                   type="checkbox"
                   checked={skipWeekends}
@@ -689,11 +683,11 @@ function CustomRecurrenceModal({
           </div>
         </div>
 
-        <div className="modal-footer">
-          <button className="btn-small" onClick={onCancel}>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
+          <button className="px-4 py-2 rounded-lg border border-border text-sm font-semibold cursor-pointer hover:shadow-sm hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all duration-300" onClick={onCancel}>
             取消
           </button>
-          <button className="btn-small confirm" onClick={() => {
+          <button className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity" onClick={() => {
             // 重置错误状态
             setIntervalError(false);
             setDateError(false);

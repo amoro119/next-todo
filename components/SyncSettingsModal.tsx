@@ -56,7 +56,7 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
 
   return (
     <div
-      className="modal-overlay fixed inset-0 flex items-center justify-center z-50"
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
       onClick={onClose}
     >
       <div

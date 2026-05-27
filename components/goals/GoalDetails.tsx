@@ -56,14 +56,14 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
     const activeTodos = localTodos.filter(todo => !todo.deleted);
     
     return [...activeTodos].sort((a, b) => {
-      if (a.completed_at && !b.completed_at) {
+      if (a.completed && !b.completed) {
         return 1
       }
-      if (!a.completed_at && b.completed_at) {
+      if (!a.completed && b.completed) {
         return -1
       }
-      if (a.completed_at && b.completed_at) {
-        return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime()
+      if (a.completed && b.completed && a.completed_time && b.completed_time) {
+        return new Date(b.completed_time).getTime() - new Date(a.completed_time).getTime()
       }
       return (a.sort_order || 0) - (b.sort_order || 0)
     })
@@ -165,11 +165,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
 
   const getProgressColor = (progress: number) => {
-    if (progress === 100) return 'bg-Progress';
-    if (progress >= 75) return 'bg-Progress';
-    if (progress >= 50) return 'bg-Progress';
-    if (progress >= 25) return 'bg-Progress';
-    return 'bg-Progress';
+    if (progress === 100) return 'bg-foreground';
+    if (progress >= 75) return 'bg-foreground';
+    if (progress >= 50) return 'bg-foreground';
+    if (progress >= 25) return 'bg-foreground';
+    return 'bg-foreground';
   };
 
   const formatDate = (dateString: string | null) => {
@@ -232,8 +232,8 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
           {/* 目标信息 */}
           <div className="mb-8">
             {goal.description && (
-              <div className="mb-6 goal-description">
-                <p className="leading-relaxed">📌  {goal.description}</p>
+              <div className="mb-6">
+                <p className="leading-relaxed text-muted-foreground">📌  {goal.description}</p>
               </div>
             )}
 
@@ -301,11 +301,11 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                     onDrop={(e) => handleDrop(e, index)}
                     onClick={() => setEditingTask(todo)}
                     className={`
-                      goals-todo-item flex items-center gap-3 p-4 border rounded-lg transition-all duration-200 cursor-pointer
+                      flex items-center gap-3 p-4 border rounded-lg transition-all duration-200 cursor-pointer
                       ${dragState.draggedIndex === index ? 'opacity-50 scale-95 shadow-lg' : ''}
-                      ${dragState.dragOverIndex === index ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 bg-white'}
-                      hover:shadow-md hover:border-gray-300
-                      ${todo.completed ? 'completed bg-gray-50' : ''}
+                      ${dragState.dragOverIndex === index ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-border bg-background'}
+                      hover:shadow-md hover:border-border
+                      ${todo.completed ? 'opacity-75 bg-muted/30' : ''}
                     `}
                   >
                     {/* 拖拽区域 - 只有这个区域可以拖拽 */}
@@ -316,7 +316,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                       className="flex items-center gap-3 flex-1"
                     >
                       {/* 拖拽手柄 */}
-                      <div className="text-gray-400 cursor-move p-1 hover:text-gray-600">
+                      <div className="text-muted-foreground cursor-move p-1 hover:text-foreground">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
                         </svg>
@@ -324,8 +324,8 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
 
                       {/* 完成状态按钮 */}
                       <button
-                        className={`todo-btn goals-todo-btn ${
-                          todo.completed ? "btn-unfinish" : "btn-finish"
+                        className={`p-1 rounded-md ${
+                          todo.completed ? "text-muted-foreground" : "text-foreground"
                         }`}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -337,7 +337,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                           <Image
                             src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAyNCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTIuMzYzMTcgOS42NzUwNkMxLjU1OTM5IDkuNDc0NDkgMC43NDUyMDQgOS45NjM0OCAwLjU0NDYyOSAxMC43NjczQzAuMzQ0MDU0IDExLjU3MSAwLjgzMzA0NyAxMi4zODUyIDEuNjM2ODMgMTIuNTg1OEwyLjM2MzE3IDkuNjc1MDZaTTguMTU4NzMgMTZMNi43ODA0MSAxNi41OTE4QzcuMDMwOTggMTcuMTc1NCA3LjYyMTk1IDE3LjU1NzkgOC4yNTU3NSAxNy40OTY5QzguODg5NTQgMTcuNDU1OCA5LjQyODc3IDE3LjAyIDkuNjAxOTEgMTYuNDA4OUw4LjE1ODczIDE2Wk0yMi4zMjYxIDMuNDY0MTNDMjMuMTM0NyAzLjI4NDA2IDIzLjY0NDIgMi40ODI1NyAyMy40NjQxIDEuNjczOTVDMjMuMjg0MSAwLjg2NTMyOCAyMi40ODI2IDAuMzU1NzkxIDIxLjY3MzkgMC41MzU4NjZMMjIuMzI2MSAzLjQ2NDEzWk0xLjYzNjgzIDEyLjU4NThDMi4wMjc2NCAxMi42ODMzIDMuMTIyOTkgMTMuMTUxIDQuMjc3OCAxMy45NDI2QzUuNDM5ODggMTQuNzM5MyA2LjM4OTA2IDE1LjY4MDMgNi43ODA0MSAxNi41OTE4TDkuNTM3MDUgMTUuNDA4MkM4LjgxMDk0IDEzLjcxNzEgNy4zMDE1NyAxMi4zNzgzIDUuOTc0MDYgMTEuNDY4MkM0LjYzOTI3IDEwLjU1MzIgMy4yMTM5OSA5Ljg4NzM4IDIuMzYzMTcgOS42NzUwNkwxLjYzNjgzIDEyLjU4NThaTTkuNjAxOTEgMTYuNDA4OUMxMC4xMzU5IDE0LjUyNDQgMTEuNDk0OCAxMS42NTg1IDEzLjY3MjcgOS4wNjM5NUMxNS44NDQ1IDYuNDc2NzUgMTguNzQxNyA0LjI2MjM1IDIyLjMyNjEgMy40NjQxM0wyMS42NzM5IDAuNTM1ODY2QzE3LjI1ODMgMS41MTkyIDEzLjgyNzUgNC4yMTM0MiAxMS4zNzQ5IDcuMTM1MTRDOC45Mjg1MiAxMC4wNDk1IDcuMzY2NzQgMTMuMjkyOSA2LjcxNTU1IDE1LjU5MTFMOS42MDE5MSAxNi40MDg5WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
                             alt="标为未完成"
-                            className="icon-finish"
+                            className="w-6 h-[18px]"
                             draggable={false}
                             width={24}
                             height={18}
@@ -350,7 +350,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
                         <div className={`flex justify-between`}>
                           {todo.title}
                           {todo.due_date && (
-                            <span className="text-xs text-gray-500 mt-1 due-date">
+                            <span className="text-xs text-muted-foreground mt-1">
                               {formatDate(todo.due_date)}
                             </span>
                           )}
@@ -390,6 +390,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       {/* 任务表单模态框 */}
       {showAddTask && (
         <TodoModal
+          isOpen={showAddTask}
           mode="create"
           lists={lists}
           goals={goals} // 传入所有目标
@@ -436,6 +437,7 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
       
       {editingTask && (
         <TodoModal
+          isOpen={!!editingTask}
           mode="edit"
           lists={lists}
           goals={goals} // 传入所有目标
