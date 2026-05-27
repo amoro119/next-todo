@@ -28,7 +28,7 @@ export function NavigationBar({ onOpenSettings }: NavigationBarProps) {
         style={{ width: `${navWidth}px` }}
       >
         <div className="flex items-center justify-between px-4 py-4">
-          <span className="text-sm font-semibold text-[oklch(var(--foreground))]">待办清单</span>
+          <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>
           <button
             onClick={onOpenSettings}
             className="text-[oklch(var(--muted-foreground))] hover:text-[oklch(var(--foreground))] transition-colors"
@@ -70,7 +70,7 @@ export function NavigationBar({ onOpenSettings }: NavigationBarProps) {
 
       <div className="md:hidden sticky top-0 z-40 w-full border-b border-[oklch(var(--border))] bg-[oklch(var(--background))]">
         <div className="flex items-center justify-between px-4 py-2">
-          <span className="text-sm font-semibold text-[oklch(var(--foreground))]">待办清单</span>
+          <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>
           <button
             onClick={onOpenSettings}
             className="text-[oklch(var(--muted-foreground))] hover:text-[oklch(var(--foreground))] transition-colors"

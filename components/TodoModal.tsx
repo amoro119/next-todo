@@ -472,15 +472,15 @@ export default function TodoModal({
           {mode === 'edit' ? (
             isRecycled ? (
               <>
-                <button className="px-4 py-2 rounded-lg border border-red-500/20 text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handlePermanentDelete}>永久删除</button>
-                <button className="px-4 py-2 rounded-lg border text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>关闭</button>
-                <button className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleRestore}>恢复</button>
+                <button className="px-4 py-2 rounded-lg text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handlePermanentDelete}>永久删除</button>
+                <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>关闭</button>
+                <button className="px-4 py-2 rounded-lg bg-foreground border-border text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleRestore}>恢复</button>
               </>
             ) : (
               <>
-                <button className="px-4 py-2 rounded-lg border border-red-500/20 text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handleDelete}>删除</button>
+                <button className="px-4 py-2 rounded-lg text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handleDelete}>删除</button>
                 <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>取消</button>
-                <button className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleSave}>保存</button>
+                <button className="px-4 py-2 rounded-lg bg-foreground border border-border text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleSave}>保存</button>
               </>
             )
           ) : (
