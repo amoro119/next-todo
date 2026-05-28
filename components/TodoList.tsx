@@ -132,7 +132,7 @@ const TodoItem = memo(
           onClick={handleSelectTodo}
           style={{ opacity: show ? 1 : 0 }}
         >
-          <div className={`flex-1 flex items-center gap-2 sm:gap-3 px-3 py-3 sm:px-6 sm:py-5 w-full relative box-border min-h-[48px] sm:min-h-[60px] select-none${
+          <div className={`flex-1 flex items-center gap-3 px-6 py-5 w-full relative box-border min-h-[60px] select-none${
             todo.completed ? " line-through bg-muted opacity-70 text-muted-foreground" : ""
           }`}>
             {todo.deleted ? (

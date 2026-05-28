@@ -72,7 +72,7 @@ export function TodoSection({
   const { filterInboxTodos } = useOptimizedInboxFilter()
 
   return (
-    <div className="flex flex-col h-full w-full mx-auto px-2 sm:px-4">
+    <div className="flex flex-col h-full w-full mx-auto px-4">
       <div className="flex flex-col flex-1 w-full min-h-0">
         <div className="flex flex-col flex-1 w-full min-h-0">
           {selectedGoal ? (
@@ -98,14 +98,14 @@ export function TodoSection({
             </>
           ) : (
             <div className="flex flex-col flex-1 w-full min-h-0 gap-0">
-              <div className="pt-3 sm:pt-4">
+              <div className="pt-4">
                 <TodoInput
                   value={newTodoTitle}
                   onChange={setNewTodoTitle}
                   onSubmit={handleAddTodo}
                 />
               </div>
-              <div className="pt-3 sm:pt-4">
+              <div className="pt-4">
                 <TodoViewOptions
                   lists={lists}
                   currentView={currentView}
