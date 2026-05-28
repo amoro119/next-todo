@@ -34,13 +34,13 @@ export function TodoViewOptions({
   ]
 
   return (
-    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-none">
+    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
       {pills.map(({ label, view, count }) => (
         <button
           key={view}
           onClick={() => setCurrentView(view)}
           className={cn(
-            'flex shrink-0 items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-xs sm:text-sm whitespace-nowrap cursor-pointer transition-colors',
+            'flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap cursor-pointer transition-colors',
             currentView === view
               ? 'bg-[oklch(var(--primary))] text-white'
               : 'bg-[oklch(var(--muted))] text-[oklch(var(--muted-foreground))]'
