@@ -4,9 +4,9 @@ import type { Todo, List, Goal } from '@/lib/types'
 import { GoalFormData } from '@/components/goals/GoalModal'
 import TodoModal from '@/components/TodoModal'
 import ManageListsModal from '@/components/ManageListsModal'
-import TaskSearchModal from '@/components/TaskSearchModal'
 import GoalModal from '@/components/goals/GoalModal'
 import SettingsModal from '@/components/layout/SettingsModal'
+import { CommandPalette } from '@/components/command/CommandPalette'
 
 export interface AppModalsProps {
   lists: List[]
@@ -28,9 +28,10 @@ export interface AppModalsProps {
   onCloseTodoModal: () => void
 
   isSearchModalOpen: boolean
-  searchRefreshTrigger: number
   onSelectTodo: (todo: Todo) => void
+  onSelectGoal: (goal: Goal) => void
   onToggleTodoComplete: (todo: Todo) => Promise<void>
+  onOpenSearchModal: () => void
   onCloseSearchModal: () => void
 
   isCalendarCreateModalOpen: boolean
@@ -63,7 +64,7 @@ export function AppModals(props: AppModalsProps) {
     isManageListsModalOpen,
     onAddList, onUpdateList, onDeleteList, onUpdateListsOrder, onCloseManageListsModal,
     isTodoModalOpen, newTodoTitle, newTodoDate, onCreateTodo, onCloseTodoModal,
-    isSearchModalOpen, searchRefreshTrigger, onSelectTodo, onToggleTodoComplete, onCloseSearchModal,
+    isSearchModalOpen, onSelectTodo, onSelectGoal, onOpenSearchModal, onCloseSearchModal,
     isCalendarCreateModalOpen, calendarSelectedDate, onCalendarCreateTodo, onCloseCalendarCreateModal,
     selectedTodo, onSaveTodoDetails, onUpdateTodo, onCloseSelectedTodo,
     onDeleteTodo, onRestoreTodo, onPermanentDeleteTodo,
@@ -96,15 +97,17 @@ export function AppModals(props: AppModalsProps) {
         />
       )}
 
-      {isSearchModalOpen && (
-        <TaskSearchModal
-          isOpen={isSearchModalOpen}
-          refreshTrigger={searchRefreshTrigger}
-          onSelectTodo={onSelectTodo}
-          onToggleComplete={onToggleTodoComplete}
-          onClose={onCloseSearchModal}
-        />
-      )}
+      <CommandPalette
+        open={isSearchModalOpen}
+        todos={todos}
+        goals={goals}
+        onOpenChange={(open) => {
+          if (open) onOpenSearchModal()
+          else onCloseSearchModal()
+        }}
+        onSelectTodo={onSelectTodo}
+        onSelectGoal={onSelectGoal}
+      />
 
       {isCalendarCreateModalOpen && (
         <TodoModal

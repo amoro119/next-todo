@@ -1,11 +1,17 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
-import { Dialog, DialogContent, DialogTitle } from '@/components/common/Dialog';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Textarea } from '@/components/ui/textarea';
 
 interface TodoModalProps {
   isOpen?: boolean;
@@ -190,6 +196,7 @@ export default function TodoModal({
   
   const [editableTodo, setEditableTodo] = useState<Todo>(mergedInitialTodo);
   const isRecycled = !!editableTodo.deleted;
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
     
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
@@ -208,25 +215,55 @@ export default function TodoModal({
     }
   }, [initialData, mode, context]);
 
-  const handleSave = () => {
-    onSubmit(cleanTodoDates(editableTodo));
+  useEffect(() => {
+    if (isOpen) {
+      window.requestAnimationFrame(() => titleInputRef.current?.focus());
+    }
+  }, [isOpen]);
+
+  const handleSave = async () => {
+    try {
+      await Promise.resolve(onSubmit(cleanTodoDates(editableTodo)));
+      toast.success(mode === 'create' ? '任务已创建' : '任务已保存');
+    } catch (error) {
+      toast.error(mode === 'create' ? '创建任务失败' : '保存任务失败');
+      throw error;
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (onDelete && editableTodo.id) {
-      onDelete(editableTodo.id);
+      try {
+        await Promise.resolve(onDelete(editableTodo.id));
+        toast.success('任务已删除');
+      } catch (error) {
+        toast.error('删除任务失败');
+        throw error;
+      }
     }
   };
 
-  const handlePermanentDelete = () => {
+  const handlePermanentDelete = async () => {
     if (onPermanentDelete && editableTodo.id) {
-      onPermanentDelete(editableTodo.id);
+      try {
+        await Promise.resolve(onPermanentDelete(editableTodo.id));
+        toast.success('任务已永久删除');
+      } catch (error) {
+        toast.error('永久删除失败');
+        throw error;
+      }
     }
   };
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     if (onRestore && editableTodo.id) {
-      onRestore(editableTodo.id);
+      try {
+        await Promise.resolve(onRestore(editableTodo.id));
+        toast.success('任务已恢复');
+      } catch (error) {
+        toast.error('恢复任务失败');
+        throw error;
+      }
     }
   };
 
@@ -279,217 +316,246 @@ export default function TodoModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-lg w-full max-h-[80vh] overflow-y-auto p-6">
-        <DialogTitle className="text-lg font-semibold text-foreground mb-4">
-          {isRecycled ? '回收站任务详情' : (mode === 'create' ? '创建任务' : '任务详情')}
-        </DialogTitle>
-        <div>
-            <div className="mb-4">
-                {mode === 'edit' ? (
-                  <div className="flex items-center border border-border rounded-lg bg-background pl-3">
-                      <input 
-                          type="checkbox"
-                          className="w-5 h-5 flex-shrink-0 mr-3 accent-current"
-                          checked={!!editableTodo.completed}
-                          onChange={handleToggleComplete}
-                          disabled={isRecycled}
-                      />
-                      <input
-                          type="text"
-                          name="title"
-                          className={`flex-1 w-full py-2.5 pr-3 bg-transparent border-none focus:outline-none text-base ${editableTodo.completed ? 'line-through text-muted-foreground' : ''}`}
-                          value={editableTodo.title}
-                          onChange={handleInputChange}
-                          readOnly={isRecycled}
-                      />
-                  </div>
-                ) : (
+      <DialogContent
+        className="flex h-dvh w-full max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:h-[min(86vh,760px)] sm:max-w-2xl sm:rounded-lg"
+        onKeyDown={handleKeyDown}
+      >
+        <DialogHeader className="shrink-0 border-b border-[oklch(var(--border))] px-5 py-4 text-left">
+          <DialogTitle className="text-base">
+            {isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <ScrollArea className="min-h-0">
+          <div className="space-y-4 px-5 py-4">
+            <div>
+              {mode === 'edit' ? (
+                <div className="flex items-center rounded-md border border-[oklch(var(--border))] bg-[oklch(var(--background))] pl-3">
                   <input
+                    type="checkbox"
+                    className="mr-3 h-5 w-5 shrink-0 accent-current"
+                    checked={!!editableTodo.completed}
+                    onChange={handleToggleComplete}
+                    disabled={isRecycled}
+                    aria-label="标记完成"
+                  />
+                  <Input
+                    ref={titleInputRef}
                     type="text"
-                    className="w-full px-4 py-2 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
-                    placeholder="请输入要做什么"
+                    name="title"
+                    className={`h-11 flex-1 border-0 shadow-none focus-visible:ring-0 ${editableTodo.completed ? 'line-through text-[oklch(var(--muted-foreground))]' : ''}`}
                     value={editableTodo.title}
                     onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    name="title"
-                    autoFocus
+                    readOnly={isRecycled}
                   />
-                )}
-            </div>
-            
-            <div className="mb-4">
-                <label htmlFor="content" className="text-sm font-medium text-foreground mb-1 block">备注</label>
-                <textarea
-                    id="content"
-                    name="content"
-                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm resize-y"
-                    value={editableTodo.content || ''}
-                    onChange={handleInputChange}
-                    rows={4}
-                    readOnly={isRecycled}
+                </div>
+              ) : (
+                <Input
+                  ref={titleInputRef}
+                  type="text"
+                  placeholder="请输入要做什么"
+                  value={editableTodo.title}
+                  onChange={handleInputChange}
+                  name="title"
                 />
-            </div>
-            
-            <div className="flex gap-4">
-                <div className="mb-4 flex-1">
-                    <label htmlFor="list_id" className="text-sm font-medium text-foreground mb-1 block">清单</label>
-                    <select
-                        id="list_id"
-                        name="list_id"
-                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
-                        value={editableTodo.list_id === null || editableTodo.list_id === undefined ? '' : String(editableTodo.list_id)}
-                        onChange={handleInputChange}
-                        disabled={isRecycled}
-                    >
-                        <option value="">无清单</option>
-                        {lists.map(list => (
-                            <option key={list.id} value={String(list.id)}>{list.name}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="mb-4 flex-1">
-                    <label htmlFor="priority" className="text-sm font-medium text-foreground mb-1 block">优先级</label>
-                    <select
-                        id="priority"
-                        name="priority"
-                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
-                        value={editableTodo.priority}
-                        onChange={handleInputChange}
-                        disabled={isRecycled}
-                    >
-                        <option value="0">无</option>
-                        <option value="1">低</option>
-                        <option value="2">中</option>
-                        <option value="3">高</option>
-                    </select>
-                </div>
+              )}
             </div>
 
-            <div className="flex gap-4">
-                <div className="mb-4 flex-1">
-                    <label htmlFor="start_date" className="text-sm font-medium text-foreground mb-1 block">开始日期</label>
-                    <input
-                        type="date"
-                        id="start_date"
-                        name="start_date"
-                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
-                        value={mode === 'create' ? dbUTCToLocalDate(editableTodo.start_date) : dbUTCToLocalDate(editableTodo.start_date) || ''}
-                        onChange={handleInputChange}
-                        readOnly={isRecycled}
-                    />
-                </div>
-                <div className="mb-4 flex-1">
-                    <label htmlFor="due_date" className="text-sm font-medium text-foreground mb-1 block">截止日期</label>
-                    <input
-                        type="date"
-                        id="due_date"
-                        name="due_date"
-                        className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
-                        value={mode === 'create' ? dbUTCToLocalDate(editableTodo.due_date) : dbUTCToLocalDate(editableTodo.due_date)}
-                        onChange={handleInputChange}
-                        readOnly={isRecycled}
-                    />
-                </div>
+            <div>
+              <label htmlFor="content" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">备注</label>
+              <Textarea
+                id="content"
+                name="content"
+                value={editableTodo.content || ''}
+                onChange={handleInputChange}
+                rows={4}
+                readOnly={isRecycled}
+              />
             </div>
 
-            <div className="mb-4">
-                <label htmlFor="goal_id" className="text-sm font-medium text-foreground mb-1 block">所属目标</label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="list_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">清单</label>
                 <select
-                    id="goal_id"
-                    name="goal_id"
-                    value={editableTodo.goal_id ?? goalId ?? ''}
-                    onChange={handleInputChange}
-                    disabled={isRecycled}
-                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
+                  id="list_id"
+                  name="list_id"
+                  className="h-9 w-full rounded-md border border-[oklch(var(--input))] bg-[oklch(var(--background))] px-3 text-sm text-[oklch(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[oklch(var(--ring))]"
+                  value={editableTodo.list_id === null || editableTodo.list_id === undefined ? '' : String(editableTodo.list_id)}
+                  onChange={handleInputChange}
+                  disabled={isRecycled}
                 >
-                    <option value="">无目标</option>
-                    {goals.map(goal => (
-                        <option key={goal.id} value={goal.id}>{goal.name}</option>
-                    ))}
+                  <option value="">无清单</option>
+                  {lists.map(list => (
+                    <option key={list.id} value={String(list.id)}>{list.name}</option>
+                  ))}
                 </select>
+              </div>
+              <div>
+                <label htmlFor="priority" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">优先级</label>
+                <select
+                  id="priority"
+                  name="priority"
+                  className="h-9 w-full rounded-md border border-[oklch(var(--input))] bg-[oklch(var(--background))] px-3 text-sm text-[oklch(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[oklch(var(--ring))]"
+                  value={editableTodo.priority}
+                  onChange={handleInputChange}
+                  disabled={isRecycled}
+                >
+                  <option value="0">无</option>
+                  <option value="1">低</option>
+                  <option value="2">中</option>
+                  <option value="3">高</option>
+                </select>
+              </div>
             </div>
 
-            <div className="mb-4">
-                <label htmlFor="tags" className="text-sm font-medium text-foreground mb-1 block">标签</label>
-                <input
-                    type="text"
-                    id="tags"
-                    name="tags"
-                    className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring text-sm"
-                    value={editableTodo.tags || ''}
-                    onChange={handleInputChange}
-                    placeholder="用逗号分隔"
-                    readOnly={isRecycled}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="start_date" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">开始日期</label>
+                <Input
+                  type="date"
+                  id="start_date"
+                  name="start_date"
+                  value={mode === 'create' ? dbUTCToLocalDate(editableTodo.start_date) : dbUTCToLocalDate(editableTodo.start_date) || ''}
+                  onChange={handleInputChange}
+                  readOnly={isRecycled}
                 />
+              </div>
+              <div>
+                <label htmlFor="due_date" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">截止日期</label>
+                <Input
+                  type="date"
+                  id="due_date"
+                  name="due_date"
+                  value={mode === 'create' ? dbUTCToLocalDate(editableTodo.due_date) : dbUTCToLocalDate(editableTodo.due_date)}
+                  onChange={handleInputChange}
+                  readOnly={isRecycled}
+                />
+              </div>
             </div>
 
-            {/* 重复任务配置 - 统一处理原始任务和实例 */}
+            <div>
+              <label htmlFor="goal_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">所属目标</label>
+              <select
+                id="goal_id"
+                name="goal_id"
+                value={editableTodo.goal_id ?? goalId ?? ''}
+                onChange={handleInputChange}
+                disabled={isRecycled}
+                className="h-9 w-full rounded-md border border-[oklch(var(--input))] bg-[oklch(var(--background))] px-3 text-sm text-[oklch(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[oklch(var(--ring))]"
+              >
+                <option value="">无目标</option>
+                {goals.map(goal => (
+                  <option key={goal.id} value={goal.id}>{goal.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="tags" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">标签</label>
+              <Input
+                type="text"
+                id="tags"
+                name="tags"
+                value={editableTodo.tags || ''}
+                onChange={handleInputChange}
+                placeholder="用逗号分隔"
+                readOnly={isRecycled}
+              />
+            </div>
+
             {!isRecycled && (
-                <div className="mb-4">
-                    <label className="text-sm font-medium text-foreground mb-1 block">重复</label>
-                    <RecurrenceSelector
-                        value={editableTodo.is_recurring ? (editableTodo.repeat ?? null) : null}
-                        onChange={(rrule) => {
-                            if (rrule) {
-                                // 计算下一个到期日期
-                                let nextDueDate = null;
-                                if (editableTodo.due_date) {
-                                    try {
-                                        const currentDueDate = new Date(editableTodo.due_date);
-                                        nextDueDate = RRuleEngine.calculateNextDueDate(rrule, currentDueDate);
-                                    } catch (error) {
-                                        console.error('Error calculating next due date:', error);
-                                    }
-                                }
-                                
-                                setEditableTodo(prev => ({
-                                    ...prev,
-                                    is_recurring: true,
-                                    repeat: rrule,
-                                    next_due_date: nextDueDate ? nextDueDate.toISOString() : null,
-                                    // 如果是重复任务实例，转换为原始重复任务
-                                    recurring_parent_id: null,
-                                    instance_number: null
-                                }));
-                            } else {
-                                setEditableTodo(prev => ({
-                                    ...prev,
-                                    is_recurring: false,
-                                    repeat: null,
-                                    next_due_date: null,
-                                    // 清除重复任务相关字段
-                                    recurring_parent_id: null,
-                                    instance_number: null
-                                }));
-                            }
-                        }}
-                        disabled={isRecycled}
-                    />
-                </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">重复</label>
+                <RecurrenceSelector
+                  value={editableTodo.is_recurring ? (editableTodo.repeat ?? null) : null}
+                  onChange={(rrule) => {
+                    if (rrule) {
+                      let nextDueDate = null;
+                      if (editableTodo.due_date) {
+                        try {
+                          const currentDueDate = new Date(editableTodo.due_date);
+                          nextDueDate = RRuleEngine.calculateNextDueDate(rrule, currentDueDate);
+                        } catch (error) {
+                          console.error('Error calculating next due date:', error);
+                        }
+                      }
+
+                      setEditableTodo(prev => ({
+                        ...prev,
+                        is_recurring: true,
+                        repeat: rrule,
+                        next_due_date: nextDueDate ? nextDueDate.toISOString() : null,
+                        recurring_parent_id: null,
+                        instance_number: null
+                      }));
+                    } else {
+                      setEditableTodo(prev => ({
+                        ...prev,
+                        is_recurring: false,
+                        repeat: null,
+                        next_due_date: null,
+                        recurring_parent_id: null,
+                        instance_number: null
+                      }));
+                    }
+                  }}
+                  disabled={isRecycled}
+                />
+              </div>
             )}
-        </div>
-        <div className="flex gap-3 justify-end pt-4 border-t border-border">
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="shrink-0 gap-2 border-t border-[oklch(var(--border))] px-5 py-4 sm:space-x-0">
           {mode === 'edit' ? (
             isRecycled ? (
               <>
-                <button className="px-4 py-2 rounded-lg text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handlePermanentDelete}>永久删除</button>
-                <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>关闭</button>
-                <button className="px-4 py-2 rounded-lg bg-foreground border-border text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleRestore}>恢复</button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="destructive">永久删除</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>永久删除任务？</AlertDialogTitle>
+                      <AlertDialogDescription>此操作无法撤销，任务会从回收站中彻底移除。</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]" onClick={handlePermanentDelete}>永久删除</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
+                <Button type="button" onClick={handleRestore}>恢复</Button>
               </>
             ) : (
               <>
-                <button className="px-4 py-2 rounded-lg text-red-500 text-sm font-medium hover:bg-red-500/10 transition-colors duration-150" onClick={handleDelete}>删除</button>
-                <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>取消</button>
-                <button className="px-4 py-2 rounded-lg bg-foreground border border-border text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleSave}>保存</button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant="destructive">删除</Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>删除任务？</AlertDialogTitle>
+                      <AlertDialogDescription>任务会移入回收站，你可以稍后恢复。</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]" onClick={handleDelete}>删除</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+                <Button type="button" onClick={handleSave}>保存</Button>
               </>
             )
           ) : (
             <>
-              <button className="px-4 py-2 rounded-lg text-sm hover:bg-muted transition-colors duration-150" onClick={onClose}>取消</button>
-              <button className="px-4 py-2 rounded-lg bg-foreground border border-border text-background text-sm font-medium hover:opacity-90 transition-opacity duration-150" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</button>
+              <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+              <Button type="button" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</Button>
             </>
           )}
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -2,6 +2,7 @@
 "use client";
 
 import { useMemo, useCallback, memo, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import type { Todo } from '../../lib/types';
 import { useOptimizedClick, useOptimizedDrag, useINPMonitoring } from '../INPOptimizer';
 import {
@@ -17,7 +18,8 @@ import {
   addMonths,
   subMonths
 } from 'date-fns';
-import { localDateToDbUTC, dbUTCToDisplayDate } from '../../lib/utils/dateUtils';
+import { localDateToDbUTC } from '../../lib/utils/dateUtils';
+import { Button } from '@/components/ui/button';
 
 interface CalendarViewProps {
   todos: Todo[];
@@ -306,7 +308,16 @@ const DayCell = memo<DayCellProps>(({
       <div className="flex justify-between items-center px-1 py-0.5">
         <span className={`text-xs font-medium mb-1 ${day.isToday ? 'bg-accent text-accent-foreground rounded-full w-6 h-6 inline-flex items-center justify-center' : 'text-foreground'}`}>{day.dayOfMonth}</span>
         {day.isCurrentMonth && (
-          <button className="bg-transparent border-0 text-lg font-bold text-foreground cursor-pointer px-1 hover:scale-110 transition-transform duration-100" onClick={handleAddTodo}>+</button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="mobileIcon"
+            className="h-8 w-8 sm:h-9 sm:w-9"
+            onClick={handleAddTodo}
+            aria-label={`在 ${day.date} 创建任务`}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         )}
       </div>
       <ul className="list-none px-1.5 m-0 text-left text-xs">
@@ -339,11 +350,22 @@ const CalendarHeader = memo<CalendarHeaderProps>(({ currentDate, onDateChange })
     onDateChange(addMonths(currentDate, 1));
   }, { priority: 'high' });
 
+  const handleToday = useOptimizedClick(() => {
+    onDateChange(new Date());
+  }, { priority: 'high' });
+
   return (
-    <div className="flex items-center justify-between mb-4 px-2">
-      <button className="p-2 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground" onClick={handlePrevMonth}>{'<'}</button>
+    <div className="flex items-center justify-between gap-2 mb-4 px-2">
+      <Button type="button" variant="ghost" size="mobileIcon" onClick={handlePrevMonth} aria-label="上个月">
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
       <span className="text-base font-semibold text-foreground">{format(currentDate, 'yyyy 年 MM 月')}</span>
-      <button className="p-2 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground" onClick={handleNextMonth}>{'>'}</button>
+      <div className="flex items-center gap-1">
+        <Button type="button" variant="outline" size="sm" onClick={handleToday}>今天</Button>
+        <Button type="button" variant="ghost" size="mobileIcon" onClick={handleNextMonth} aria-label="下个月">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 });

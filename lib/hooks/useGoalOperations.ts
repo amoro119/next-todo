@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react"
 import { v4 as uuid } from "uuid"
+import { toast } from "sonner"
 import { db } from "@/lib/db/dexie"
 import { createDexieDatabaseAPI } from "@/lib/db/databaseAPI"
 import type { DatabaseAPI } from "@/lib/db/databaseAPI"
@@ -184,12 +185,15 @@ export function useGoalOperations(
     async (goalId: string) => {
       const goalToDelete = goals.find((g: Goal) => g.id === goalId)
       if (!goalToDelete) return
-      const confirmed = window.confirm(`确认要删除目标 "${goalToDelete.name}" 吗？此操作无法撤销。`)
-      if (confirmed) {
+      try {
         await goalStore.getState().deleteGoal(goalId)
         const allTodos = await memoApi.getTodos()
         const todosToUpdate = allTodos.filter((t) => t.goal_id === goalId)
         for (const todo of todosToUpdate) await todoStore.getState().updateTodo(todo.id, { goal_id: null })
+        toast.success('目标已删除')
+      } catch (error) {
+        toast.error('删除目标失败')
+        throw error
       }
     },
     [goals, memoApi]

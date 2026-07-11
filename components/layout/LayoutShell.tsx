@@ -1,8 +1,8 @@
 'use client'
 import React from 'react'
 import { NavigationBar } from './NavigationBar'
-import { KeyboardManager } from './KeyboardManager'
 import { Toaster } from '@/components/common/Toaster'
+import { Toaster as SonnerToaster } from '@/components/ui/sonner'
 import { ToastProvider } from '@/lib/hooks/useToast'
 
 interface LayoutShellProps {
@@ -21,8 +21,8 @@ export function LayoutShell({ children, onOpenSettings }: LayoutShellProps) {
       </div>
 
       {/* Global overlays */}
-      <KeyboardManager />
       <Toaster />
+      <SonnerToaster richColors position="bottom-right" />
     </ToastProvider>
   )
 }

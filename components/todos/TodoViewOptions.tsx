@@ -42,7 +42,7 @@ export function TodoViewOptions({
           className={cn(
             'flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap cursor-pointer transition-colors',
             currentView === view
-              ? 'bg-[oklch(var(--primary))] text-white'
+              ? 'bg-[oklch(var(--primary))] text-[oklch(var(--primary-foreground))]'
               : 'bg-[oklch(var(--muted))] text-[oklch(var(--muted-foreground))]'
           )}
         >

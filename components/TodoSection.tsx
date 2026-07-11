@@ -139,6 +139,7 @@ export function TodoSection({
                   onCreateTodo={handleCreateTodoForGoal}
                   onAssociateTasks={handleAssociateTasks}
                   onEditGoal={handleEditGoal}
+                  onOpenCreateTodo={handleAddTodo}
                 />
               </div>
 

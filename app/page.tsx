@@ -224,6 +224,7 @@ export default function Page() {
           handleCreateTodoForGoal={todoOps.handleCreateTodoForGoal}
           handleAssociateTasks={goalOps.handleAssociateTasks}
           handleEditGoal={goalOps.handleEditGoal}
+          handleCreateGoal={goalOps.handleCreateGoal}
           handleUpdateGoal={goalOps.handleUpdateGoal}
           handleDeleteGoal={goalOps.handleDeleteGoal}
           goalsMainInterfaceRef={goalOps.goalsMainInterfaceRef}
@@ -275,9 +276,13 @@ export default function Page() {
         onCreateTodo={todoOps.handleCreateTodo as (todoData: Partial<Todo>) => Promise<string | undefined>}
         onCloseTodoModal={() => { todoOps.setIsTodoModalOpen(false); todoOps.setNewTodoTitle("") }}
         isSearchModalOpen={todoOps.isSearchModalOpen}
-        searchRefreshTrigger={todoOps.searchRefreshTrigger}
         onSelectTodo={(t) => todoOps.setSelectedTodo(t)}
+        onSelectGoal={(g) => {
+          setActiveSection("goals")
+          todoOps.setSelectedGoal(g)
+        }}
         onToggleTodoComplete={async (t) => { await todoOps.handleToggleComplete(t) }}
+        onOpenSearchModal={() => todoOps.setIsSearchModalOpen(true)}
         onCloseSearchModal={() => todoOps.setIsSearchModalOpen(false)}
         isCalendarCreateModalOpen={todoOps.isCalendarCreateModalOpen}
         calendarSelectedDate={todoOps.calendarSelectedDate}

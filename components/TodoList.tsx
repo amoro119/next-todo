@@ -15,6 +15,7 @@ import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator"
 import { inboxCache } from "./InboxPerformanceOptimizer";
 import { useINPOptimization, useOptimizedClick, useINPMonitoring } from "./INPOptimizer";
 import { GoalGroup } from "./GoalGroup";
+import { Button } from "@/components/ui/button";
 
 // 优化的日期转换函数 - 使用缓存
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
@@ -207,6 +208,7 @@ interface TodoListProps {
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void; // 添加创建待办的函数
   onAssociateTasks: (taskIds: string[], goalId: string) => void; // 添加关联任务的函数
   onEditGoal: (goal: Goal) => void; // 添加编辑目标的函数
+  onOpenCreateTodo?: () => void;
 }
 
 const TodoListComponent: React.FC<TodoListProps> = ({
@@ -223,6 +225,7 @@ const TodoListComponent: React.FC<TodoListProps> = ({
   onCreateTodo,
   onAssociateTasks,
   onEditGoal,
+  onOpenCreateTodo,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(400);
@@ -329,7 +332,14 @@ const TodoListComponent: React.FC<TodoListProps> = ({
     };
     return (
       <div className="space-y-2">
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-sm">{emptyMessage()}</div>
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-[oklch(var(--muted-foreground))]">
+          {emptyMessage()}
+          {currentView !== "recycle" && onOpenCreateTodo && (
+            <Button type="button" size="sm" onClick={onOpenCreateTodo}>
+              创建第一个任务
+            </Button>
+          )}
+        </div>
       </div>
     );
   }

@@ -2,7 +2,9 @@
 
 import React, { useMemo } from 'react';
 import { Goal } from '@/lib/types';
-import Image from "next/image";
+import { Plus, Trash2 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 
 interface GoalsListProps {
   goals: Goal[];
@@ -10,6 +12,7 @@ interface GoalsListProps {
   onEditGoal: (goal: Goal) => void;
   onArchiveGoal: (goalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
+  onCreateGoal?: () => void;
   loading?: boolean;
 }
 
@@ -18,9 +21,8 @@ interface GoalsListProps {
 const GoalsList: React.FC<GoalsListProps> = ({
   goals,
   onGoalClick,
-  onEditGoal,
-  onArchiveGoal,
   onDeleteGoal,
+  onCreateGoal,
   loading = false
 }) => {
   // removed sort/filter state
@@ -87,9 +89,14 @@ const GoalsList: React.FC<GoalsListProps> = ({
     <div className="space-y-6">
       {/* 目标列表 */}
       {filteredAndSortedGoals.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-muted-foreground text-lg mb-2">📋</div>
-          <p className="text-muted-foreground">暂无目标</p>
+        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+          <p className="text-sm text-[oklch(var(--muted-foreground))]">暂无目标</p>
+          {onCreateGoal && (
+            <Button type="button" size="sm" onClick={onCreateGoal}>
+              <Plus className="h-4 w-4" />
+              创建目标
+            </Button>
+          )}
         </div>
       ) : (
         <div className="w-full">
@@ -99,8 +106,6 @@ const GoalsList: React.FC<GoalsListProps> = ({
                 key={goal.id}
                 goal={goal}
                 onGoalClick={onGoalClick}
-                onEditGoal={onEditGoal}
-                onArchiveGoal={onArchiveGoal}
                 onDeleteGoal={onDeleteGoal}
                 formatDate={formatDate}
                 getDueDateColor={getDueDateColor}
@@ -116,8 +121,6 @@ const GoalsList: React.FC<GoalsListProps> = ({
 interface GoalCardProps {
   goal: Goal;
   onGoalClick: (goal: Goal) => void;
-  onEditGoal: (goal: Goal) => void;
-  onArchiveGoal: (goalId: string) => void;
   onDeleteGoal: (goalId: string) => void;
   formatDate: (dateString: string) => string;
   getDueDateColor: (dueDate?: string, progress?: number) => string;
@@ -126,8 +129,6 @@ interface GoalCardProps {
 const GoalCard: React.FC<GoalCardProps> = React.memo(({
   goal,
   onGoalClick,
-  onEditGoal,
-  onArchiveGoal,
   onDeleteGoal,
   formatDate,
   getDueDateColor
@@ -146,11 +147,6 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
 
   // 编辑与存档操作已移除; 点击卡片将打开目标详情
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDeleteGoal(goal.id);
-  };
-
   return (
     <li
       className={`flex items-start gap-3 p-4 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors duration-150 cursor-pointer`}
@@ -166,19 +162,30 @@ const GoalCard: React.FC<GoalCardProps> = React.memo(({
           )}
           {goal.name}
         </h3>
-        <button 
-          className="p-1.5 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground shrink-0"
-          onClick={handleDeleteClick}
-          aria-label="删除目标"
-        >
-          <Image
-            src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik0xNS4wOTkzIDE3Ljc1OTdDMTUuNzk0OSAxOC4yMDk4IDE2LjcyMzUgMTguMDEwOCAxNy4xNzM2IDE3LjMxNTJDMTcuNjIzNiAxNi42MTk3IDE3LjQyNDYgMTUuNjkxMSAxNi43MjkxIDE1LjI0MUMxMy4zMDc5IDEzLjAyNzMgMTAuODIwOSAxMC45OTU5IDguOTIyNTEgOS4wMzczOUM5LjA5NzQyIDguODQ5ODIgOS4yNzI5MSA4LjY2NTcxIDkuNDQ4ODggOC40ODUzNEMxMS44ODY0IDUuOTg2OTIgMTQuMjQ3MiA0LjM4MDY2IDE2LjI5NDQgMy45NzEyMkMxNy4xMDY3IDMuODA4NzUgMTcuNjMzNSAzLjAxODUyIDE3LjQ3MTEgMi4yMDYxOEMxNy4zMDg2IDEuMzkzODQgMTYuNTE4NCAwLjg2NzAxMyAxNS4wNjYgMS4wMjk0OEMxMi4yNTMyIDEuNjIwMDUgOS44NjQwNiAzLjc2Mzc5IDcuMzAxNTQgNi4zOTA0N0M3LjE4MTUxIDYuNTEzNCA3LjA2MTgxIDYuNjM3ODkgNi45NDI0OSA2Ljc2Mzc1QzUuNDIwMDEgNC44MDQzMyA0LjM3MDU4IDIuODc2MzIgMy40MjU5MSAwLjg2MzE2NEMzLjA3Mzk5IDAuMTEzMjAyIDIuMTgwNzMgLTAuMjA5NDc1IDEuNDMwNzcgMC4xNDI0NDVDMC42ODA4MDkgMC40OTQzNjUgMC4zNTgxMzIgMS4zODc2MiAwLjcxMDA1MSAyLjEzNzU4QzEuODIwODggNC41MDQ4MSAzLjA3ODk5IDYuNzY1MTEgNC45MjkzMiA5LjA1MzA2QzMuMjIyMDYgMTEuMTM0MSAxLjYyNjY5IDEzLjQzMjggMC4yMjI3MjMgMTUuNzE0MkMtMC4yMTE0NTMgMTYuNDE5NyAwLjAwODUyNzUyIDE3LjM0MzcgMC43MTQwNjQgMTcuNzc3OEMxLjQxOTYgMTguMjEyIDIuMzQzNTIgMTcuOTkyIDIuNzc3NyAxNy4yODY1QzQuMDQ4MTkgMTUuMjIyIDUuNDY0MDUgMTMuMTcyNiA2Ljk1NTU5IDExLjMxNjhDOC45ODUgMTMuMzc2NSAxMS41OTU5IDE1LjQ5MjggMTUuMDk5MyAxNy43NTk3WiIgZmlsbD0iIzMzMzIyRSIvPgo8L3N2Zz4K"
-            alt="删除"
-            draggable={false}
-            width={18}
-            height={18}
-          />
-        </button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-[oklch(var(--muted-foreground))]"
+              onClick={(e) => e.stopPropagation()}
+              aria-label="删除目标"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>删除目标？</AlertDialogTitle>
+              <AlertDialogDescription>目标会被删除，已关联任务会保留但解除目标关联。</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>取消</AlertDialogCancel>
+              <AlertDialogAction className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]" onClick={() => onDeleteGoal(goal.id)}>删除</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* 进度条 */}

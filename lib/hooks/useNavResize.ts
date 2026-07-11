@@ -36,6 +36,29 @@ export function useNavResize() {
     startWidthRef.current = currentWidthRef.current
   }, [])
 
+  const commitWidth = useCallback((width: number) => {
+    const nextWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width))
+    currentWidthRef.current = nextWidth
+    setNavWidth(nextWidth)
+    localStorage.setItem(STORAGE_KEY, String(nextWidth))
+  }, [])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      commitWidth(currentWidthRef.current - 8)
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      commitWidth(currentWidthRef.current + 8)
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      commitWidth(MIN_WIDTH)
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      commitWidth(MAX_WIDTH)
+    }
+  }, [commitWidth])
+
   useEffect(() => {
     if (!isResizing) return
 
@@ -64,6 +87,14 @@ export function useNavResize() {
     isResizing,
     resizeHandleProps: {
       onMouseDown: handleMouseDown,
+      onKeyDown: handleKeyDown,
+      role: 'separator',
+      tabIndex: 0,
+      'aria-orientation': 'vertical' as const,
+      'aria-valuemin': MIN_WIDTH,
+      'aria-valuemax': MAX_WIDTH,
+      'aria-valuenow': navWidth,
+      'aria-label': `侧栏宽度 ${navWidth} 像素`,
       style: { cursor: 'col-resize' } as React.CSSProperties,
     },
   }

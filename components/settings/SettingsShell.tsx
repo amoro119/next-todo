@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { cn } from '@/components/common/cn'
+import { Button } from '@/components/ui/button'
 import GeneralSettings from './GeneralSettings'
 import ListsSettings from './ListsSettings'
 import DataBackupSettings from './DataBackupSettings'
@@ -35,37 +36,38 @@ export default function SettingsShell() {
     <div className="flex h-full bg-[oklch(var(--background))]">
       <nav className="hidden md:flex flex-col w-48 shrink-0 border-r border-[oklch(var(--border))] py-4 gap-1">
         {NAV_ITEMS.map((item) => (
-          <button
+          <Button
             key={item.id}
+            type="button"
+            variant="ghost"
             onClick={() => setActivePage(item.id)}
+            aria-current={activePage === item.id ? 'page' : undefined}
             className={cn(
-              'flex items-center gap-2.5 px-4 py-2 text-sm rounded-lg mx-2 transition-colors text-left',
+              'mx-2 justify-start px-4 text-sm',
               activePage === item.id
-                ? 'bg-[oklch(var(--primary)/0.1)] text-[oklch(var(--primary))] font-medium'
-                : 'text-[oklch(var(--muted-foreground))] hover:bg-[oklch(var(--muted))] hover:text-[oklch(var(--foreground))]'
+                ? 'bg-[oklch(var(--accent))] text-[oklch(var(--accent-foreground))] font-medium'
+                : 'text-[oklch(var(--muted-foreground))]'
             )}
           >
-            <span className="text-base">{item.icon}</span>
             {item.label}
-          </button>
+          </Button>
         ))}
       </nav>
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden md:contents">
-        <div className="md:hidden flex gap-2 px-4 py-3 border-b border-[oklch(var(--border))] overflow-x-auto scrollbar-none shrink-0 sticky top-0 bg-[oklch(var(--background))] z-10">
+        <div className="md:hidden flex gap-2 px-4 py-3 pr-12 border-b border-[oklch(var(--border))] overflow-x-auto scrollbar-none shrink-0 sticky top-0 bg-[oklch(var(--background))] z-10 [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-32px),transparent)]">
           {NAV_ITEMS.map((item) => (
-            <button
+            <Button
               key={item.id}
+              type="button"
+              variant={activePage === item.id ? 'default' : 'secondary'}
+              size="sm"
               onClick={() => setActivePage(item.id)}
-              className={cn(
-                'flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap',
-                activePage === item.id
-                  ? 'bg-[oklch(var(--primary))] text-[oklch(var(--primary-foreground))]'
-                  : 'bg-[oklch(var(--muted))] text-[oklch(var(--muted-foreground))]'
-              )}
+              aria-current={activePage === item.id ? 'page' : undefined}
+              className="flex-shrink-0 whitespace-nowrap"
             >
               {item.label}
-            </button>
+            </Button>
           ))}
         </div>
 

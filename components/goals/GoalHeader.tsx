@@ -41,7 +41,7 @@ const GoalHeader: React.FC<GoalHeaderProps> = ({
 
   // 在目标详情页面时显示
   return (
-    <div className="w-full px-4 py-3 bg-muted/50 border-b border-border">
+    <div className="w-full px-4 py-3 bg-muted/50">
       <div className="flex items-center w-full">
             <button
               onClick={onBackToList}

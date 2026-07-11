@@ -18,6 +18,7 @@ interface GoalsSectionProps {
   handleCreateTodoForGoal: (d: Partial<Todo>) => Promise<void>
   handleAssociateTasks: (ids: string[], gid: string) => Promise<void>
   handleEditGoal: (g: Goal) => void
+  handleCreateGoal: () => void
   handleUpdateGoal: (g: Goal) => Promise<void>
   handleDeleteGoal: (id: string) => Promise<void>
   goalsMainInterfaceRef: RefObject<GoalsMainInterfaceRef | null>
@@ -35,14 +36,15 @@ export function GoalsSection({
   handleCreateTodoForGoal,
   handleAssociateTasks,
   handleEditGoal,
+  handleCreateGoal,
   handleUpdateGoal,
   handleDeleteGoal,
   goalsMainInterfaceRef,
 }: GoalsSectionProps) {
   return (
-    <div className="flex flex-col flex-1 w-full mx-auto px-4">
-      <div className="flex flex-col flex-1 w-full goals">
-        <div className="flex flex-col flex-1 w-full">
+    <div className="flex h-full min-h-0 w-full flex-col px-4">
+      <div className="flex min-h-0 flex-1 w-full flex-col goals">
+        <div className="flex min-h-0 flex-1 w-full flex-col">
           {selectedGoal ? (
             <GoalDetails
               goal={selectedGoal}
@@ -57,7 +59,7 @@ export function GoalsSection({
               onClose={() => setSelectedGoal(null)}
             />
           ) : (
-            <div className="w-full">
+            <div className="flex min-h-0 flex-1 w-full flex-col">
               <GoalsMainInterface
                 ref={goalsMainInterfaceRef}
                 goals={
@@ -74,6 +76,7 @@ export function GoalsSection({
                 onCreateTodo={handleCreateTodoForGoal}
                 onAssociateTasks={handleAssociateTasks}
                 onEditGoal={handleEditGoal}
+                onCreateGoal={handleCreateGoal}
                 onArchiveGoal={(goalId) => console.log("Archive goal:", goalId)}
               />
             </div>
