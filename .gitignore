@@ -8,6 +8,12 @@
 
 # testing
 /coverage
+/playwright.config.ts
+/tests/sidebar-navigation.spec.ts
+/tests/smoke.spec.ts
+/lib/supabase/__tests__/bare-min.test.ts
+/lib/supabase/__tests__/bare.test.ts
+/lib/supabase/__tests__/verify-initial-sync.manual.ts
 
 # next.js
 /.next/
@@ -19,6 +25,11 @@
 # misc
 .DS_Store
 *.pem
+*.bak
+*.tsbuildinfo
+/output/
+AGENTS.md
+**/AGENTS.md
 
 # debug
 npm-debug.log*

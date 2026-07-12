@@ -228,7 +228,6 @@ export default function TaskSearchModal({
   onSelectTodo,
   onToggleComplete,
   onDelete,
-  currentView,
   refreshTrigger,
 }: TaskSearchModalProps) {
   const [state, setState] = useState<TaskSearchModalState>({

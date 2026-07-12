@@ -13,7 +13,7 @@ interface TodoState {
 }
 
 export function createTodoStore(api: DatabaseAPI): StoreApi<TodoState> {
-  return createStore<TodoState>((set, get) => ({
+  return createStore<TodoState>((set) => ({
     todos: [],
 
     async addTodo(partial) {

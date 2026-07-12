@@ -14,7 +14,7 @@ interface StartupMetrics {
 class StartupOptimizer {
   private startTime: number = 0;
   private metrics: Partial<StartupMetrics> = {};
-  private preloadPromises: Map<string, Promise<any>> = new Map();
+  private preloadPromises: Map<string, Promise<unknown>> = new Map();
 
   constructor() {
     this.startTime = performance.now();
@@ -46,7 +46,7 @@ class StartupOptimizer {
   async getPreloadedModule<T>(name: string): Promise<T> {
     const promise = this.preloadPromises.get(name);
     if (promise) {
-      return promise;
+      return promise as T;
     }
     throw new Error(`Module ${name} was not preloaded`);
   }
@@ -140,9 +140,9 @@ export function initializeStartupOptimization() {
  * 智能缓存管理
  */
 export class SmartCache {
-  private cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+  private cache = new Map<string, { data: unknown; timestamp: number; ttl: number }>();
   
-  set(key: string, data: any, ttlMs: number = 5 * 60 * 1000) {
+  set(key: string, data: unknown, ttlMs: number = 5 * 60 * 1000) {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -150,7 +150,7 @@ export class SmartCache {
     });
   }
   
-  get(key: string): any | null {
+  get(key: string): unknown | null {
     const item = this.cache.get(key);
     if (!item) return null;
     

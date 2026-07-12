@@ -154,6 +154,7 @@ export class RecurringTaskGenerator {
    * @returns 更新后的任务数据
    */
   static stopRecurrence(task: Todo): Partial<Todo> {
+    void task;
     return {
       repeat: null,
       is_recurring: false,
@@ -171,6 +172,7 @@ export class RecurringTaskGenerator {
     task: Todo,
     count: number = 5
   ): Date[] {
+    void task;
     if (!task.repeat || !task.is_recurring) {
       return [];
     }
@@ -296,6 +298,7 @@ export class RecurringTaskGenerator {
     newInstance?: Omit<Todo, 'id'>;
     parentTaskUpdates?: Partial<Todo>;
   } {
+    void currentDate;
     // 检查是否为重复任务实例
     if (!this.isTaskInstance(completedTask)) {
       return { shouldGenerateNext: false };
@@ -485,6 +488,7 @@ export class RecurringTaskGenerator {
     dueDate: Date,
     instanceNumber: number
   ): Omit<Todo, 'id'> {
+    void instanceNumber;
     return this.generateNextRecurringTask(originalTask, dueDate);
   }
 

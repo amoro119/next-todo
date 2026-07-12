@@ -298,7 +298,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   }, [])
 
   // Optimized filter/sort
-  const { filterInboxTodos, utcToLocalDateString: optimizedUtcToLocalDateString } = useOptimizedInboxFilter()
+  const { filterInboxTodos } = useOptimizedInboxFilter()
   const { sortInboxTodos } = useOptimizedInboxSort()
 
   // ── Slogan handlers ─────────────────────────────────────────────
@@ -307,8 +307,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
     setIsEditingSlogan(true)
   }, [slogan])
 
-  const handleUpdateSlogan = useCallback(
-    debounce(async () => {
+  const handleUpdateSlogan = useMemo(() => debounce(async () => {
       setIsEditingSlogan(false)
       if (slogan === originalSlogan) return
       await db.meta.put({ key: "slogan", value: slogan, updated_at: new Date().toISOString(), deleted_at: null })
@@ -341,7 +340,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       setNewTodoTitle("")
       if (currentView !== "calendar") setNewTodoDate(null)
     },
-    [api, currentView]
+    [currentView, todoStore]
   )
 
   const handleCreateTodoFromCalendar = useCallback(
@@ -353,7 +352,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       await todoStore.getState().addTodo(newTodoData)
       setIsCalendarCreateModalOpen(false)
     },
-    [api]
+    [todoStore]
   )
 
   const handleUpdateTodo = useCallback(
@@ -365,7 +364,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
         catch (error) { console.error('Failed to handle recurring task:', error) }
       }
     },
-    [api]
+    [api, todoStore]
   )
 
   const handleToggleComplete = useCallback(
@@ -393,7 +392,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       await todoStore.getState().updateTodo(todoId, { deleted: true })
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [todos, selectedTodo, api]
+    [todos, selectedTodo, todoStore]
   )
 
   const handleRestoreTodo = useCallback(
@@ -406,7 +405,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       await todoStore.getState().updateTodo(todoId, { deleted: false })
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [todos, selectedTodo, api]
+    [todos, selectedTodo, todoStore]
   )
 
   const handlePermanentDeleteTodo = useCallback(
@@ -449,7 +448,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
         return null
       }
     },
-    [lists, api]
+    [lists, listStore]
   )
 
   const handleDeleteList = useCallback(
@@ -464,7 +463,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       await listStore.getState().deleteList(listId)
       if (currentView === listToDelete.name) setCurrentView("inbox")
     },
-    [lists, currentView, api]
+    [lists, currentView, api, todoStore, listStore]
   )
 
   const handleUpdateList = useCallback(
@@ -472,7 +471,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       if (Object.keys(updates).length === 0) return
       await listStore.getState().updateList(listId, updates)
     },
-    [api]
+    [listStore]
   )
 
   const handleUpdateListsOrder = useCallback(
@@ -481,7 +480,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
         await listStore.getState().updateList(reorderedLists[index].id, { sort_order: index })
       }
     },
-    [api]
+    [listStore]
   )
 
   // ── Calendar handlers ───────────────────────────────────────────
@@ -550,7 +549,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
         alert(`创建待办事项失败: ${error instanceof Error ? error.message : "未知错误"}`)
       }
     },
-    [api]
+    [todoStore]
   )
 
   // ── Return ──────────────────────────────────────────────────────

@@ -4,8 +4,6 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Goal, Todo, List } from '@/lib/types';
 import TodoModal from '@/components/TodoModal';
 import AssociateTaskModal from './AssociateTaskModal';
-import Image from "next/image";
-import { useDebounce } from '@/lib/hooks/useDebounce';
 
 interface GoalDetailsProps {
   goal: Goal;
@@ -31,7 +29,6 @@ const GoalDetails: React.FC<GoalDetailsProps> = ({
   todos,
   goals,
   lists,
-  onUpdateGoal,
   onUpdateTodo,
   onDeleteTodo,
   onCreateTodo,

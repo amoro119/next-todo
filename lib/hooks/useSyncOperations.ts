@@ -2,14 +2,12 @@
 
 import { useCallback } from "react"
 import { v4 as uuid } from "uuid"
-import { db } from "@/lib/db/dexie"
-import { createDexieDatabaseAPI } from "@/lib/db/databaseAPI"
 import { useStores } from "@/lib/stores/createStores"
 import { parseDidaCsv } from "@/lib/csvParser"
+import { RRuleEngine } from "@/lib/recurring/RRuleEngine"
 import type { Todo, List } from "@/lib/types"
 
 export function useSyncOperations(todos: Todo[], lists: List[]) {
-  const api = (() => createDexieDatabaseAPI(db))()
   const { todoStore, listStore } = useStores()
 
   const handleImport = useCallback(
@@ -48,7 +46,7 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
                 .map((task) => {
                   try {
                     const description = task.repeat
-                      ? require("../recurring/RRuleEngine").RRuleEngine.generateHumanReadableDescription(task.repeat)
+                      ? RRuleEngine.generateHumanReadableDescription(task.repeat)
                       : "重复任务"
                     return `• ${task.title}: ${description}`
                   } catch {
@@ -64,7 +62,7 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
           const listNames = new Set(todosToImport.map((t) => t.list_name).filter((s): s is string => !!s))
           const listNameToId = new Map<string, string>()
           for (const listName of listNames) {
-            let list = lists.find((l: List) => l.name === listName)
+            const list = lists.find((l: List) => l.name === listName)
             if (!list) {
               try {
                 const newList = { id: uuid(), name: listName, sort_order: lists.length, is_hidden: false, modified: new Date().toISOString() }
@@ -107,7 +105,7 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
       }
       reader.readAsText(file)
     },
-    [lists, api]
+    [lists, listStore, todoStore]
   )
 
   const handleExport = useCallback(async () => {

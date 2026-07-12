@@ -6,14 +6,13 @@ import React, {
   useState,
   forwardRef,
   useMemo,
-  useCallback,
 } from "react";
 import Image from "next/image";
 import { TransitionGroup, CSSTransition } from "react-transition-group";
-import type { Todo, Goal, List } from "../lib/types";
+import type { Todo, Goal } from "../lib/types";
 import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator";
 import { inboxCache } from "./InboxPerformanceOptimizer";
-import { useINPOptimization, useOptimizedClick, useINPMonitoring } from "./INPOptimizer";
+import { useOptimizedClick } from "./INPOptimizer";
 import { GoalGroup } from "./GoalGroup";
 import { Button } from "@/components/ui/button";
 
@@ -26,7 +25,6 @@ interface TodoItemProps {
   todo: Todo;
   currentView: string;
   onToggleComplete: (todo: Todo) => void;
-  onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
   delay: number;
@@ -40,7 +38,6 @@ const TodoItem = memo(
         todo,
         currentView,
         onToggleComplete,
-        onDelete,
         onRestore,
         onSelectTodo,
         delay,
@@ -78,11 +75,6 @@ const TodoItem = memo(
         { stopPropagation: true, priority: 'high' }
       );
 
-      const handleDelete = useOptimizedClick(
-        () => onDelete(todo.id),
-        { stopPropagation: true, priority: 'high' }
-      );
-
       const handleRestore = useOptimizedClick(
         () => onRestore(todo.id),
         { stopPropagation: true, priority: 'high' }
@@ -99,11 +91,6 @@ const TodoItem = memo(
         [todo]
       );
 
-      const isTaskInstance = useMemo(
-        () => RecurringTaskGenerator.isTaskInstance(todo),
-        [todo]
-      );
-
       const recurringDescription = useMemo(
         () =>
           isRecurringTask
@@ -115,12 +102,6 @@ const TodoItem = memo(
       const formattedDueDate = useMemo(
         () => (todo.due_date ? utcToLocalDateString(todo.due_date) : ""),
         [todo.due_date]
-      );
-
-      const formattedNextDueDate = useMemo(
-        () =>
-          todo.next_due_date ? utcToLocalDateString(todo.next_due_date) : "",
-        [todo.next_due_date]
       );
 
       return (
@@ -197,43 +178,27 @@ TodoItem.displayName = "TodoItem";
 interface TodoListProps {
   todos: Todo[];
   goals: Goal[];
-  lists: List[]; // 添加lists参数
   currentView: string;
   onToggleComplete: (todo: Todo) => void;
   onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
   onViewGoal: (goalId: string) => void;
-  onUpdateGoal: (goal: Goal) => void; // 添加更新目标的函数
-  onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void; // 添加创建待办的函数
-  onAssociateTasks: (taskIds: string[], goalId: string) => void; // 添加关联任务的函数
-  onEditGoal: (goal: Goal) => void; // 添加编辑目标的函数
   onOpenCreateTodo?: () => void;
 }
 
 const TodoListComponent: React.FC<TodoListProps> = ({
   todos,
   goals,
-  lists,
   currentView,
   onToggleComplete,
   onDelete,
   onRestore,
   onSelectTodo,
   onViewGoal,
-  onUpdateGoal,
-  onCreateTodo,
-  onAssociateTasks,
-  onEditGoal,
   onOpenCreateTodo,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [containerHeight, setContainerHeight] = useState(400);
-  
-  // INP优化
-  const { scheduleInteraction, batchDOMUpdates } = useINPOptimization();
-  const { startInteraction, endInteraction } = useINPMonitoring('TodoList');
-
   // 优化ref管理 - 只为当前todos创建ref
   const nodeRefs = useRef<
     Record<string, React.RefObject<HTMLLIElement | null>>
@@ -276,21 +241,6 @@ const TodoListComponent: React.FC<TodoListProps> = ({
       todosLengthRef.current = todos.length;
     }
   }, [todos.length]);
-
-  useEffect(() => {
-    const updateHeight = () => {
-      const container = document.querySelector(".todo-list-box");
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const availableHeight = window.innerHeight - rect.top - 100;
-        setContainerHeight(Math.max(300, availableHeight));
-      }
-    };
-
-    updateHeight();
-    window.addEventListener("resize", updateHeight);
-    return () => window.removeEventListener("resize", updateHeight);
-  }, []);
 
   // 按目标分组待办事项
   const groupedTodos = useMemo(() => {
@@ -376,7 +326,6 @@ const TodoListComponent: React.FC<TodoListProps> = ({
                   todo={todo}
                   currentView={currentView}
                   onToggleComplete={onToggleComplete}
-                  onDelete={onDelete}
                   onRestore={onRestore}
                   onSelectTodo={onSelectTodo}
                   delay={idx * 150}

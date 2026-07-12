@@ -1,4 +1,6 @@
 // lib/user/userState.ts
+import { getDistributionConfig } from '../config/distributionConfig';
+
 export interface UserState {
   subscription: 'free' | 'premium' | 'pro';
   syncEnabled: boolean;
@@ -31,10 +33,9 @@ export const getUserState = (): UserState => {
   let defaultSubscription: UserState['subscription'] = 'premium';
   try {
     // 尝试获取分发配置，如果失败则使用默认值
-    const { getDistributionConfig } = require('../config/distributionConfig');
     const distributionConfig = getDistributionConfig();
     defaultSubscription = distributionConfig.defaultSubscription;
-  } catch (error) {
+  } catch {
     // 如果配置还未加载，使用默认值
   }
 

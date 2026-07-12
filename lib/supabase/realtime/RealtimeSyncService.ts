@@ -8,10 +8,8 @@ import {
   SYNC_TABLES,
   type RealtimeSyncTable,
   type RealtimeSyncState,
-  type RealtimeConnectionStatus,
   type RealtimeSyncConfig,
   type SyncRecord,
-  type PendingOperation,
 } from './types'
 import { downloadRemoteChanges, uploadLocalChanges, fromSupabaseRow } from '../syncOperations'
 import { startLocalChangeListener } from './handlers/localChangeListener'

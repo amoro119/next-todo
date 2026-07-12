@@ -2,7 +2,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useMemo } from 'react';
-import type { Todo } from '../lib/types';
 
 // 高性能时间切片调度器
 class TimeSliceScheduler {
@@ -39,8 +38,8 @@ const scheduler = new TimeSliceScheduler();
 
 // 高性能缓存系统 - 使用WeakMap避免内存泄漏
 class AdvancedCache {
-  private cache = new Map<string, any>();
-  private weakCache = new WeakMap<object, Map<string, any>>();
+  private cache = new Map<string, unknown>();
+  private weakCache = new WeakMap<object, Map<string, unknown>>();
   private hitCount = 0;
   private missCount = 0;
   private maxSize = 100;
@@ -50,9 +49,9 @@ class AdvancedCache {
     
     if (context) {
       const contextCache = this.weakCache.get(context);
-      result = contextCache?.get(key);
+      result = contextCache?.get(key) as T | undefined;
     } else {
-      result = this.cache.get(key);
+      result = this.cache.get(key) as T | undefined;
     }
 
     if (result !== undefined) {
@@ -75,7 +74,7 @@ class AdvancedCache {
     } else {
       if (this.cache.size >= this.maxSize) {
         const firstKey = this.cache.keys().next().value;
-        this.cache.delete(firstKey);
+        if (firstKey !== undefined) this.cache.delete(firstKey);
       }
       this.cache.set(key, value);
     }
@@ -120,11 +119,12 @@ const domUpdater = new BatchDOMUpdater();
 export function useOptimizedDataProcessing<T, R>(
   data: T[],
   processor: (data: T[]) => R,
-  dependencies: any[] = []
+  dependencies: unknown[] = []
 ): R {
+  const dependencyKey = JSON.stringify(dependencies);
   const cacheKey = useMemo(() => 
-    `${data.length}-${JSON.stringify(dependencies)}`, 
-    [data.length, ...dependencies]
+    `${data.length}-${dependencyKey}`,
+    [data.length, dependencyKey]
   );
 
   return useMemo(() => {
@@ -164,11 +164,11 @@ export function useVirtualizedList<T>(
 }
 
 // 防抖Hook优化
-export function useOptimizedDebounce<T extends (...args: any[]) => any>(
+export function useOptimizedDebounce<T extends (...args: never[]) => unknown>(
   callback: T,
   delay: number
 ): T {
-  const timeoutRef = useRef<NodeJS.Timeout>();
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const callbackRef = useRef(callback);
   
   // 更新回调引用但不触发重新创建
@@ -188,11 +188,13 @@ export function useOptimizedDebounce<T extends (...args: any[]) => any>(
 }
 
 // 智能重渲染控制Hook
-export function useSmartRerender(dependencies: any[], threshold: number = 100) {
+export function useSmartRerender(dependencies: unknown[], threshold: number = 100) {
   const lastRenderTime = useRef(0);
   const pendingUpdate = useRef(false);
+  const dependencyKey = JSON.stringify(dependencies);
   
   return useCallback(() => {
+    void dependencyKey;
     const now = performance.now();
     
     if (now - lastRenderTime.current < threshold && !pendingUpdate.current) {
@@ -206,7 +208,7 @@ export function useSmartRerender(dependencies: any[], threshold: number = 100) {
     
     lastRenderTime.current = now;
     return true; // 立即渲染
-  }, dependencies);
+  }, [threshold, dependencyKey]);
 }
 
 // 内存优化的事件处理器工厂
@@ -230,10 +232,12 @@ export function usePerformanceMonitor(componentName: string) {
     renderStart.current = performance.now();
     renderCount.current++;
     
+    const start = renderStart.current;
+    const count = renderCount.current;
     return () => {
-      const renderTime = performance.now() - renderStart.current;
+      const renderTime = performance.now() - start;
       if (renderTime > 16) { // 超过一帧的时间
-        console.warn(`${componentName} render took ${renderTime.toFixed(2)}ms (render #${renderCount.current})`);
+        console.warn(`${componentName} render took ${renderTime.toFixed(2)}ms (render #${count})`);
       }
     };
   });

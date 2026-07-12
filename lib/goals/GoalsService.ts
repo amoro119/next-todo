@@ -4,15 +4,12 @@ import {
   Todo,
   GoalWithProgress,
   GoalFormData,
-  GoalPriority,
   GoalStatus,
   validateGoalData,
   sanitizeGoalData,
   validateGoalFormData,
   createDefaultGoal,
   calculateGoalProgress,
-  getGoalStatus,
-  isGoalOverdue
 } from '@/lib/types';
 import { DatabaseWrapper } from '@/lib/sync/ChangeInterceptor';
 import { db } from '@/lib/db/dexie';
@@ -185,7 +182,6 @@ export class GoalsService {
       includeArchived = false,
       listId,
       priority,
-      status,
       sortBy = 'created_time',
       sortOrder = 'desc',
       limit,

@@ -84,19 +84,6 @@ function makeTodo(overrides: Partial<Todo> = {}): Todo {
   }
 }
 
-function makeList(overrides: Partial<List> = {}): List {
-  return {
-    id: 'list-1',
-    name: 'Test List',
-    sort_order: 0,
-    is_hidden: false,
-    user_id: 'user-1',
-    updated_at: '2024-01-01T00:00:00.000Z',
-    deleted_at: null,
-    ...overrides,
-  }
-}
-
 function createMockDexieTable<T>() {
   return {
     toArray: vi.fn<() => Promise<T[]>>().mockResolvedValue([]),
@@ -129,16 +116,12 @@ describe('performInitialSync', () => {
   let mockClient: SupabaseClient
   let mockDb: TodoDatabase
   let dbTodos: ReturnType<typeof createMockDexieTable<Todo>>
-  let dbLists: ReturnType<typeof createMockDexieTable<List>>
-  let dbGoals: ReturnType<typeof createMockDexieTable<Goal>>
 
   beforeEach(() => {
     vi.clearAllMocks()
     mockClient = createMockSupabaseClient()
     mockDb = createMockDb()
     dbTodos = mockDb.todos as unknown as ReturnType<typeof createMockDexieTable<Todo>>
-    dbLists = mockDb.lists as unknown as ReturnType<typeof createMockDexieTable<List>>
-    dbGoals = mockDb.goals as unknown as ReturnType<typeof createMockDexieTable<Goal>>
 
     // Default: batchResolveConflicts returns empty result (no conflicts)
     mockBatchResolveConflicts.mockReturnValue(emptyBatchResult)

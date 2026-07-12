@@ -1,8 +1,14 @@
 // lib/recurring/RecurringTaskIntegration.ts
 import { Todo } from '../types';
 import { RecurringTaskGenerator } from './RecurringTaskGenerator';
-import { TaskCompletionHandler, taskCompletionHandler } from './TaskCompletionHandler';
+import { taskCompletionHandler } from './TaskCompletionHandler';
 import { performanceMonitor, measureAsync } from '../performance/performanceMonitor';
+
+interface RecurringDatabaseAPI {
+  insert(table: string, record: unknown): Promise<unknown>;
+  query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
+  transaction(queries: Array<{ sql: string; params?: unknown[] }>): Promise<void>;
+}
 
 /**
  * 重复任务集成模块
@@ -27,7 +33,7 @@ export class RecurringTaskIntegration {
    * 初始化重复任务系统
    * @param databaseAPI 数据库API实例
    */
-  static initialize(databaseAPI: any): void {
+  static initialize(databaseAPI: RecurringDatabaseAPI): void {
     if (this.isInitialized) {
       return;
     }
@@ -62,7 +68,7 @@ export class RecurringTaskIntegration {
   static async handleTaskUpdate(
     taskId: string,
     updates: Partial<Todo>,
-    databaseAPI: any
+    databaseAPI: RecurringDatabaseAPI
   ): Promise<void> {
     // 防重复处理检测
     if (this.processingTasks.has(taskId)) {
@@ -104,7 +110,7 @@ export class RecurringTaskIntegration {
             return;
           }
 
-          const completedTask = { ...taskResult.rows[0], ...updates } as Todo;
+          const completedTask = { ...(taskResult.rows[0] as Record<string, unknown>), ...updates } as Todo;
 
           // 检查是否为重复任务
           if (!RecurringTaskGenerator.isRecurringTask(completedTask)) {
@@ -190,7 +196,7 @@ export class RecurringTaskIntegration {
    */
   static async batchHandleTaskUpdates(
     taskUpdates: Array<{ id: string; updates: Partial<Todo> }>,
-    databaseAPI: any
+    databaseAPI: RecurringDatabaseAPI
   ): Promise<void> {
     const completionUpdates = taskUpdates.filter(update => update.updates.completed === true);
     
@@ -237,7 +243,8 @@ export class RecurringTaskIntegration {
             [taskIds]
           );
 
-          const completedTasks = tasksResult.rows.map((task: Todo) => {
+          const completedTasks = tasksResult.rows.map((row) => {
+            const task = row as Todo;
             const update = filteredUpdates.find(u => u.id === task.id);
             return { ...task, ...update?.updates } as Todo;
           });
@@ -351,14 +358,15 @@ export class RecurringTaskIntegration {
    * @param databaseAPI 数据库API实例
    * @returns 原始重复任务映射
    */
-  private static async getOriginalRecurringTasks(databaseAPI: any): Promise<Map<string, Todo>> {
+  private static async getOriginalRecurringTasks(databaseAPI: RecurringDatabaseAPI): Promise<Map<string, Todo>> {
     try {
       const result = await databaseAPI.query(
         'SELECT * FROM todos WHERE is_recurring = true AND recurring_parent_id IS NULL'
       );
 
       const originalTasks = new Map<string, Todo>();
-      result.rows.forEach((task: Todo) => {
+      result.rows.forEach((row) => {
+        const task = row as Todo;
         originalTasks.set(task.id, task);
       });
 
@@ -383,7 +391,7 @@ export class RecurringTaskIntegration {
   /**
    * 记录信息日志
    */
-  private static logInfo(message: string, context?: any): void {
+  private static logInfo(message: string, context?: unknown): void {
     const timestamp = new Date().toISOString();
     console.log(`[RecurringTask] ${timestamp} INFO: ${message}`, context || '');
   }

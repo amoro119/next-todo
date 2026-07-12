@@ -44,11 +44,9 @@ const GoalModal: React.FC<GoalModalProps> = ({
   goalId,
   initialName,
   lists,
-  availableTodos,
   goalTodos = [],
   onSave,
   onClose,
-  onSearchTodos,
   onGoalCreated
 }) => {
   const [formData, setFormData] = useState<GoalFormData>({

@@ -5,6 +5,7 @@ import type { RealtimeSyncTable, SyncRecord, SyncOperationResult } from './realt
 // 上传前需要剥离这些字段，并将 deleted_at 映射为 deleted boolean
 function toSupabaseRecord(record: SyncRecord): Record<string, unknown> {
   const { user_id, deleted_at, updated_at, ...rest } = record as Record<string, unknown>
+  void user_id
   return {
     ...rest,
     deleted: !!deleted_at,

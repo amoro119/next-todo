@@ -12,6 +12,7 @@ import {
   isRemoteSource,
 } from '../events'
 import type { TodoChangePayload, ListChangePayload, GoalChangePayload } from '../events'
+import type { Todo, Goal } from '@/lib/db/types'
 
 // ---------------------------------------------------------------------------
 // Helper: create a minimal valid payload of each type
@@ -73,7 +74,7 @@ describe('events', () => {
         action: 'update',
         id: 'todo-abc',
         table: 'todos',
-        record: { id: 'todo-abc', title: 'Test todo' } as any,
+        record: { id: 'todo-abc', title: 'Test todo' } as unknown as Todo,
       })
 
       dispatchDataChange('todos', payload)
@@ -124,7 +125,7 @@ describe('events', () => {
         action: 'create',
         id: 'goal-456',
         table: 'goals',
-        record: { id: 'goal-456', name: 'My goal' } as any,
+        record: { id: 'goal-456', name: 'My goal' } as unknown as Goal,
       })
 
       dispatchDataChange('goals', payload)

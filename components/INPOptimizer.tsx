@@ -133,8 +133,9 @@ export function useINPOptimization() {
   const optimizerRef = useRef(inpOptimizer);
 
   useEffect(() => {
+    const optimizer = optimizerRef.current;
     return () => {
-      optimizerRef.current.cleanup();
+      optimizer.cleanup();
     };
   }, []);
 
@@ -207,7 +208,7 @@ export function useOptimizedDrag() {
 
   const handleDragStart = useCallback((
     event: React.DragEvent,
-    data: any,
+    data: unknown,
     options: { priority?: 'high' | 'normal' | 'low' } = {}
   ) => {
     const { priority = 'high' } = options;
@@ -218,9 +219,9 @@ export function useOptimizedDrag() {
     }, priority);
   }, [scheduleInteraction]);
 
-  const handleDrop = useCallback((
+  const handleDrop = useCallback(<T,>(
     event: React.DragEvent,
-    processor: (data: any) => void,
+    processor: (data: T) => void,
     options: { priority?: 'high' | 'normal' | 'low' } = {}
   ) => {
     event.preventDefault();
@@ -230,7 +231,7 @@ export function useOptimizedDrag() {
       try {
         const dataString = event.dataTransfer.getData('application/json');
         if (dataString) {
-          const data = JSON.parse(dataString);
+          const data = JSON.parse(dataString) as T;
           processor(data);
         }
       } catch (error) {

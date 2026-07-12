@@ -418,15 +418,6 @@ function CustomRecurrenceModal({
     onSave(rrule);
   };
 
-  const getPreviewText = () => {
-    try {
-      const rrule = generateRRule();
-      return RRuleEngine.generateHumanReadableDescription(rrule);
-    } catch {
-      return "自定义重复";
-    }
-  };
-
   const renderFrequencyOptions = () => {
     switch (frequency) {
       case "WEEKLY":

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useLiveQuery as useDexieLiveQuery } from "dexie-react-hooks"
 import { useUIStore } from "@/lib/stores/uiStore"
@@ -13,12 +13,10 @@ import {
   localDateToEndOfDayUTC,
 } from "@/lib/hooks/useTodoOperations"
 import { useGoalOperations } from "@/lib/hooks/useGoalOperations"
-import { useSyncOperations } from "@/lib/hooks/useSyncOperations"
 import { db } from "@/lib/db/dexie"
 import { LayoutShell } from "@/components/layout/LayoutShell"
 import CalendarView from "@/components/calendar/CalendarView"
 import { AppModals } from "@/components/layout/AppModals"
-import SyncSettingsModal from "@/components/SyncSettingsModal"
 import { ModeIndicator } from "@/components/ModeIndicator"
 import { TodoSection } from "@/components/TodoSection"
 import { GoalsSection } from "@/components/GoalsSection"
@@ -54,12 +52,12 @@ export default function Page() {
   }, [goalsRaw, listsRaw, todosRaw])
 
   const todoOps = useTodoOperations(todos, lists)
+  const { setSlogan, todayStrInUTC8: operationTodayStr, currentView, setCurrentMode, setCurrentView, sortInboxTodos } = todoOps
   const goalOps = useGoalOperations(goals, lists, todos, (goal) => todoOps.setSelectedGoal(goal))
-  const syncOps = useSyncOperations(todos, lists)
 
   useEffect(() => {
-    if (sloganMeta?.value) todoOps.setSlogan(String(sloganMeta.value))
-  }, [sloganMeta])
+    if (sloganMeta?.value) setSlogan(String(sloganMeta.value))
+  }, [sloganMeta, setSlogan])
 
   const todosWithListNames = useMemo(() => {
     const listMap = new Map(lists.map((list) => [list.id, list.name]))
@@ -80,7 +78,6 @@ export default function Page() {
     () => todosWithListNames.filter((t: Todo) => t.deleted),
     [todosWithListNames]
   )
-  const recycleBinCount = recycledTodos.length
 
   const todosByList = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -106,18 +103,17 @@ export default function Page() {
   }, [goals, lists])
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [todayStrInUTC8, setTodayStrInUTC8] = useState(() => todoOps.todayStrInUTC8)
+  const [todayStrInUTC8, setTodayStrInUTC8] = useState(() => operationTodayStr)
 
   useEffect(() => {
-    const interval = setInterval(() => setTodayStrInUTC8(todoOps.todayStrInUTC8), 60000)
+    const interval = setInterval(() => setTodayStrInUTC8(operationTodayStr), 60000)
     return () => clearInterval(interval)
-  }, [todoOps.todayStrInUTC8])
+  }, [operationTodayStr])
 
   const displayTodos = useMemo(() => {
-    const { currentView } = todoOps
     if (currentView === "inbox") {
       const filtered = filterInboxTodos(uncompletedTodos)
-      return todoOps.sortInboxTodos(filtered)
+      return sortInboxTodos(filtered)
     }
     if (currentView === "today") {
       return todosWithListNames.filter((t: Todo) => {
@@ -135,7 +131,7 @@ export default function Page() {
       if (currentView === "all") return true
       return t.list_name === currentView
     })
-  }, [todoOps.currentView, uncompletedTodos, recycledTodos, todosWithListNames, todayStrInUTC8, filterInboxTodos, todoOps.sortInboxTodos])
+  }, [currentView, uncompletedTodos, recycledTodos, todosWithListNames, todayStrInUTC8, filterInboxTodos, sortInboxTodos])
 
   useEffect(() => {
     const handler = (event: CustomEvent) => {
@@ -146,14 +142,10 @@ export default function Page() {
   }, [setActiveSection])
 
   useEffect(() => {
-    if (activeSection === "goals") { todoOps.setCurrentMode("goals"); todoOps.setCurrentView("goals-main") }
-    else if (activeSection === "todo") { todoOps.setCurrentMode("todo"); todoOps.setCurrentView("today") }
-    else if (activeSection === "calendar") { todoOps.setCurrentView("calendar") }
-  }, [activeSection])
-
-  useEffect(() => {
-    if (todoOps.currentView === "calendar" && activeSection !== "calendar") setActiveSection("calendar")
-  }, [todoOps.currentView])
+    if (activeSection === "goals") { setCurrentMode("goals"); setCurrentView("goals-main") }
+    else if (activeSection === "todo") { setCurrentMode("todo"); setCurrentView("today") }
+    else if (activeSection === "calendar") { setCurrentView("calendar") }
+  }, [activeSection, setCurrentMode, setCurrentView])
 
 
   return (

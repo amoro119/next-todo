@@ -38,7 +38,7 @@ vi.mock('../realtime/handlers/localChangeListener', () => ({
 }))
 
 vi.mock('../realtime/offlineQueue', () => ({
-  createOfflineQueue: vi.fn((_db: unknown) => ({
+  createOfflineQueue: vi.fn(() => ({
     enqueue: vi.fn(),
     dequeue: vi.fn(),
     processQueue: vi.fn().mockResolvedValue(undefined),

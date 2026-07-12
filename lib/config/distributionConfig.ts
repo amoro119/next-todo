@@ -47,7 +47,7 @@ export const loadDistributionConfig = async (): Promise<DistributionConfig> => {
       console.log('已加载分发配置:', cachedConfig);
       return cachedConfig;
     }
-  } catch (error) {
+  } catch {
     console.log('未找到分发配置文件，使用默认配置');
   }
   

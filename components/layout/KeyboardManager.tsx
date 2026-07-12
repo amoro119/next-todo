@@ -15,13 +15,13 @@ interface SearchResult {
 export function KeyboardManager() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [results] = useState<SearchResult[]>([])
   const { setActiveSection } = useUIStore()
 
   // Open on Cmd+K / Ctrl+K
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { // eslint-disable-line
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         setOpen((prev) => !prev)
       }

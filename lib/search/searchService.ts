@@ -80,7 +80,7 @@ export class TaskSearchService {
       ]);
 
       // Filter in JavaScript (Dexie doesn't have full-text ILIKE across fields)
-      let filtered = allTodos.filter((todo) => {
+      const filtered = allTodos.filter((todo) => {
         if (!searchOptions.includeCompleted && todo.completed) return false;
         if (!searchOptions.includeDeleted && todo.deleted) return false;
 

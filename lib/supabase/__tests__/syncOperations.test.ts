@@ -4,7 +4,6 @@ import {
   fetchRemoteAllRecords,
   upsertRecords,
   markRecordsAsDeleted,
-  uploadLocalChanges,
   downloadRemoteChanges,
 } from '../syncOperations'
 

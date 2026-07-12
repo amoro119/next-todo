@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { startLocalChangeListener } from '../realtime/handlers/localChangeListener'
-import {
-  TODO_DATA_CHANGED,
-  LIST_DATA_CHANGED,
-  GOAL_DATA_CHANGED,
-  dispatchDataChange,
-} from '@/lib/stores/events'
+import { dispatchDataChange } from '@/lib/stores/events'
+import type { SyncRecord } from '../realtime/types'
 import type { OfflineQueue } from '../realtime/offlineQueue'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Todo, List, Goal } from '@/lib/db/types'
+import type { RealtimeSyncTable, SyncRecord } from '../realtime/types'
 
 vi.mock('@/lib/supabase/syncOperations', () => ({
   uploadLocalChanges: vi.fn().mockResolvedValue(undefined),
@@ -66,12 +64,12 @@ const goalRecord = {
 }
 
 describe('startLocalChangeListener', () => {
-  let onUpload: ReturnType<typeof vi.fn>
+  let onUpload: (table: RealtimeSyncTable, record: SyncRecord) => Promise<void>
   let offlineQueue: OfflineQueue
   let cleanup: () => void
 
   beforeEach(() => {
-    onUpload = vi.fn().mockResolvedValue(undefined)
+    onUpload = vi.fn().mockResolvedValue(undefined) as unknown as typeof onUpload
     offlineQueue = makeOfflineQueue()
     // Default: online
     Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true })
@@ -85,7 +83,7 @@ describe('startLocalChangeListener', () => {
   it('local todo create event → onUpload called with todos and record', async () => {
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'local', action: 'create', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'create', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(onUpload).toHaveBeenCalledWith('todos', todoRecord)
@@ -94,7 +92,7 @@ describe('startLocalChangeListener', () => {
   it('local todo update event → onUpload called', async () => {
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'local', action: 'update', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'update', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(onUpload).toHaveBeenCalledWith('todos', todoRecord)
@@ -103,7 +101,7 @@ describe('startLocalChangeListener', () => {
   it('local todo delete event → onUpload called', async () => {
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'local', action: 'delete', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'delete', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(onUpload).toHaveBeenCalledWith('todos', todoRecord)
@@ -112,7 +110,7 @@ describe('startLocalChangeListener', () => {
   it('remote event → onUpload NOT called (ignored)', async () => {
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'remote', action: 'update', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'remote', action: 'update', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(onUpload).not.toHaveBeenCalled()
@@ -123,7 +121,7 @@ describe('startLocalChangeListener', () => {
     listener()
     cleanup = () => {}
 
-    dispatchDataChange('todos', { source: 'local', action: 'create', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'create', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(onUpload).not.toHaveBeenCalled()
@@ -133,7 +131,7 @@ describe('startLocalChangeListener', () => {
     Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true })
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'local', action: 'create', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'create', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(onUpload).not.toHaveBeenCalled()
@@ -144,7 +142,7 @@ describe('startLocalChangeListener', () => {
     Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true })
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'local', action: 'update', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'update', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(offlineQueue.enqueue).toHaveBeenCalledWith({ table: 'todos', operation: 'update', record: todoRecord })
@@ -154,7 +152,7 @@ describe('startLocalChangeListener', () => {
     Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true })
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('todos', { source: 'local', action: 'delete', id: todoRecord.id, record: todoRecord as any, table: 'todos' })
+    dispatchDataChange('todos', { source: 'local', action: 'delete', id: todoRecord.id, record: todoRecord as unknown as Todo, table: 'todos' })
     await Promise.resolve()
 
     expect(offlineQueue.enqueue).toHaveBeenCalledWith({ table: 'todos', operation: 'delete', record: todoRecord })
@@ -163,7 +161,7 @@ describe('startLocalChangeListener', () => {
   it('lists event → onUpload called with lists table', async () => {
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('lists', { source: 'local', action: 'create', id: listRecord.id, record: listRecord as any, table: 'lists' })
+    dispatchDataChange('lists', { source: 'local', action: 'create', id: listRecord.id, record: listRecord as unknown as List, table: 'lists' })
     await Promise.resolve()
 
     expect(onUpload).toHaveBeenCalledWith('lists', listRecord)
@@ -172,7 +170,7 @@ describe('startLocalChangeListener', () => {
   it('goals event → onUpload called with goals table', async () => {
     cleanup = startLocalChangeListener({ client: mockClient, offlineQueue, onUpload })
 
-    dispatchDataChange('goals', { source: 'local', action: 'update', id: goalRecord.id, record: goalRecord as any, table: 'goals' })
+    dispatchDataChange('goals', { source: 'local', action: 'update', id: goalRecord.id, record: goalRecord as unknown as Goal, table: 'goals' })
     await Promise.resolve()
 
     expect(onUpload).toHaveBeenCalledWith('goals', goalRecord)

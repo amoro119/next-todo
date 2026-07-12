@@ -20,9 +20,12 @@ export const isNetworkError = (error: unknown): boolean => {
     'ETIMEDOUT',
   ];
 
-  const errorMessage = (error as any)?.message || error.toString() || '';
-  const errorCode = (error as any)?.code || '';
-  const errorName = (error as any)?.name || '';
+  const errorRecord = typeof error === 'object' && error !== null
+    ? error as { message?: unknown; code?: unknown; name?: unknown }
+    : undefined;
+  const errorMessage = typeof errorRecord?.message === 'string' ? errorRecord.message : String(error);
+  const errorCode = typeof errorRecord?.code === 'string' ? errorRecord.code : '';
+  const errorName = typeof errorRecord?.name === 'string' ? errorRecord.name : '';
 
   return networkErrorIndicators.some(indicator => 
     errorMessage.includes(indicator) || 

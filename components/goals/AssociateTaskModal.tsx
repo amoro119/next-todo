@@ -11,7 +11,6 @@ import {
 } from "../../lib/search/searchUtils";
 import { RecurringTaskGenerator } from "../../lib/recurring/RecurringTaskGenerator";
 import { dbUTCToDisplayDate } from "../../lib/utils/dateUtils";
-import Image from "next/image";
 import React from "react";
 
 interface AssociateTaskModalProps {
@@ -375,7 +374,7 @@ export default function AssociateTaskModal({
         searchAbortController.current = null;
       }
     };
-  }, [debouncedSearchQuery, isOpen]); // 移除 existingTaskIds 依赖以避免不必要的重新搜索
+  }, [debouncedSearchQuery, isOpen, existingTaskIds]);
 
   // 监听refreshTrigger变化，重新执行搜索
   useEffect(() => {
@@ -447,7 +446,7 @@ export default function AssociateTaskModal({
     };
 
     performRefreshSearch();
-  }, [refreshTrigger, isOpen, state.searchQuery]); // 移除 existingTaskIds 依赖以避免不必要的重新搜索
+  }, [refreshTrigger, isOpen, state.searchQuery, existingTaskIds]);
 
   // Handle search input changes
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {

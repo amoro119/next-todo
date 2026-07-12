@@ -8,21 +8,22 @@ interface PerformanceEntry {
   name: string;
   startTime: number;
   duration: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 class PerformanceMonitor {
   private entries: PerformanceEntry[] = [];
   private activeTimers: Map<string, number> = new Map();
+  private activeMetadata: Map<string, Record<string, unknown>> = new Map();
   private maxEntries = 100; // 限制内存使用
 
   /**
    * 开始性能计时
    */
-  start(name: string, metadata?: Record<string, any>): void {
+  start(name: string, metadata?: Record<string, unknown>): void {
     this.activeTimers.set(name, performance.now());
     if (metadata) {
-      this.activeTimers.set(`${name}_metadata`, metadata as any);
+      this.activeMetadata.set(name, metadata);
     }
   }
 
@@ -38,7 +39,7 @@ class PerformanceMonitor {
 
     const endTime = performance.now();
     const duration = endTime - startTime;
-    const metadata = this.activeTimers.get(`${name}_metadata`) as Record<string, any>;
+    const metadata = this.activeMetadata.get(name);
 
     // 记录性能条目
     this.entries.push({
@@ -50,7 +51,7 @@ class PerformanceMonitor {
 
     // 清理
     this.activeTimers.delete(name);
-    this.activeTimers.delete(`${name}_metadata`);
+    this.activeMetadata.delete(name);
 
     // 限制条目数量
     if (this.entries.length > this.maxEntries) {
@@ -127,6 +128,7 @@ class PerformanceMonitor {
   clear(): void {
     this.entries = [];
     this.activeTimers.clear();
+    this.activeMetadata.clear();
   }
 
   /**
@@ -151,11 +153,12 @@ export const performanceMonitor = new PerformanceMonitor();
  * 性能装饰器
  */
 export function measurePerformance(name?: string) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-    const originalMethod = descriptor.value;
-    const measureName = name || `${target.constructor.name}.${propertyKey}`;
+  return function (target: object, propertyKey: string, descriptor: PropertyDescriptor) {
+    const originalMethod = descriptor.value as (...args: unknown[]) => unknown;
+    const constructorName = (target as { constructor?: { name?: string } }).constructor?.name ?? 'Unknown';
+    const measureName = name || `${constructorName}.${propertyKey}`;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function (this: unknown, ...args: unknown[]) {
       performanceMonitor.start(measureName, { args: args.length });
       try {
         const result = await originalMethod.apply(this, args);
@@ -177,7 +180,7 @@ export function measurePerformance(name?: string) {
 export async function measureAsync<T>(
   name: string,
   fn: () => Promise<T>,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ): Promise<T> {
   performanceMonitor.start(name, metadata);
   try {
@@ -196,7 +199,7 @@ export async function measureAsync<T>(
 export function measure<T>(
   name: string,
   fn: () => T,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ): T {
   performanceMonitor.start(name, metadata);
   try {
@@ -238,7 +241,7 @@ export function initWebVitalsMonitoring() {
     
     const measureFID = (event: Event) => {
       if (firstInputDelay === null) {
-        firstInputDelay = performance.now() - (event as any).timeStamp;
+        firstInputDelay = performance.now() - event.timeStamp;
         console.log(`🎯 FID: ${firstInputDelay.toFixed(2)}ms`);
       }
     };

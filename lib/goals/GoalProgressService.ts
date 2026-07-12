@@ -151,6 +151,8 @@ export class GoalProgressService {
     newCompleted?: boolean
   ): Promise<void> {
     if (!goalId) return;
+    void oldCompleted;
+    void newCompleted;
 
     const oldProgress = this.progressCache.get(goalId) || null;
     const newProgress = await this.calculateGoalProgress(goalId, false); // 强制重新计算
@@ -194,7 +196,7 @@ export class GoalProgressService {
    * 批量更新目标表中的进度字段
    * @deprecated 进度字段应该动态计算，不需要存储到数据库
    */
-  async syncProgressToDatabase(goalIds?: string[]): Promise<void> {
+  async syncProgressToDatabase(): Promise<void> {
     // 移除数据库写操作，进度字段应该动态计算
     console.warn('syncProgressToDatabase 已废弃：进度字段应该动态计算，不需要存储到数据库');
   }

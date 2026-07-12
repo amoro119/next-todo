@@ -1,4 +1,4 @@
-import type { Goal, GoalWithProgress } from '../types';
+import type { Goal } from '../types';
 import { getDbWrapper } from '../sync/initOfflineSync';
 
 export interface GoalSearchOptions {
@@ -89,7 +89,7 @@ export class GoalSearchService {
       }
       
       const result = await dbWrapper.raw.query(sql, params);
-      const goals = result.rows.map((raw: any) => this.normalizeGoal(raw));
+      const goals = result.rows.map((raw: unknown) => this.normalizeGoal(raw as Record<string, unknown>));
       
       const searchResult: GoalSearchResult = {
         goals,

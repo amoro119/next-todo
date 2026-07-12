@@ -1,7 +1,7 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
@@ -133,7 +133,7 @@ export default function TodoModal({
   onPermanentDelete
 }: TodoModalProps) {
   // 初始化表单数据
-  const initialTodo: Todo = {
+  const initialTodo: Todo = useMemo(() => ({
     id: initialData?.id || '',
     title: initialData?.title || '',
     completed: initialData?.completed || false,
@@ -156,10 +156,10 @@ export default function TodoModal({
     recurring_parent_id: initialData?.recurring_parent_id || null,
     instance_number: initialData?.instance_number || null,
     next_due_date: initialData?.next_due_date || null,
-  };
+  }), [initialData, goalId]);
 
   // 根据上下文设置默认值
-  const getContextDefaults = (): Partial<Todo> => {
+  const getContextDefaults = useCallback((): Partial<Todo> => {
     if (mode !== 'create' || !context) return {};
     
     const defaults: Partial<Todo> = {};
@@ -189,7 +189,7 @@ export default function TodoModal({
     }
     
     return defaults;
-  };
+  }, [mode, context]);
 
   const contextDefaults = getContextDefaults();
   const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
@@ -213,7 +213,7 @@ export default function TodoModal({
       const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
       setEditableTodo(mergedInitialTodo);
     }
-  }, [initialData, mode, context]);
+  }, [initialData, initialTodo, mode, getContextDefaults]);
 
   useEffect(() => {
     if (isOpen) {

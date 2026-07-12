@@ -25,7 +25,7 @@ const ArchivedGoalsList: React.FC<ArchivedGoalsListProps> = ({
 
   // 过滤和排序目标
   const filteredAndSortedGoals = useMemo(() => {
-    let filtered = goals.filter(goal => 
+    const filtered = goals.filter(goal =>
       goal.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (goal.description && goal.description.toLowerCase().includes(searchTerm.toLowerCase()))
     );

@@ -33,5 +33,5 @@ export function useRealtimeSync(options: UseRealtimeSyncOptions): void {
       console.log('[useRealtimeSync] Disconnecting realtime sync...')
       service.disconnect()
     }
-  }, [client, db, enabled, JSON.stringify(config)])
+  }, [client, db, config, enabled])
 }

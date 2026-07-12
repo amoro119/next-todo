@@ -1,8 +1,8 @@
 // components/ViewSwitchOptimizer.tsx
 "use client";
 
-import { useCallback, useRef, useEffect } from 'react';
-import { useINPOptimization, useINPMonitoring } from './INPOptimizer';
+import { useCallback, useRef } from 'react';
+import { useINPMonitoring } from './INPOptimizer';
 
 // 视图切换优化器
 class ViewSwitchOptimizer {
@@ -60,7 +60,7 @@ class ViewSwitchOptimizer {
   }
 
   // 预加载视图数据
-  preloadViewData(viewName: string, dataLoader: () => Promise<any>) {
+  preloadViewData(viewName: string, dataLoader: () => Promise<unknown>) {
     const cacheKey = `view_${viewName}`;
     
     // 使用requestIdleCallback在空闲时预加载
@@ -69,8 +69,8 @@ class ViewSwitchOptimizer {
         try {
           const data = await dataLoader();
           // 简单的内存缓存
-          (window as any).__viewCache = (window as any).__viewCache || {};
-          (window as any).__viewCache[cacheKey] = {
+          const viewCache = getViewCache();
+          viewCache[cacheKey] = {
             data,
             timestamp: Date.now()
           };
@@ -82,9 +82,9 @@ class ViewSwitchOptimizer {
   }
 
   // 获取预加载的数据
-  getPreloadedData(viewName: string, maxAge: number = 30000): any | null {
+  getPreloadedData(viewName: string, maxAge: number = 30000): unknown | null {
     const cacheKey = `view_${viewName}`;
-    const cache = (window as any).__viewCache?.[cacheKey];
+    const cache = getViewCache()[cacheKey];
     
     if (cache && (Date.now() - cache.timestamp) < maxAge) {
       return cache.data;
@@ -95,10 +95,27 @@ class ViewSwitchOptimizer {
 
   // 清理缓存
   clearCache() {
-    if ((window as any).__viewCache) {
-      (window as any).__viewCache = {};
-    }
+    setViewCache({});
   }
+}
+
+interface ViewCacheEntry {
+  data: unknown;
+  timestamp: number;
+}
+
+type ViewCache = Record<string, ViewCacheEntry>;
+
+function getViewCache(): ViewCache {
+  const cache = (window as Window & { __viewCache?: unknown }).__viewCache;
+  if (cache && typeof cache === 'object') return cache as ViewCache;
+  const nextCache: ViewCache = {};
+  (window as Window & { __viewCache?: unknown }).__viewCache = nextCache;
+  return nextCache;
+}
+
+function setViewCache(cache: ViewCache): void {
+  (window as Window & { __viewCache?: unknown }).__viewCache = cache;
 }
 
 // 全局视图切换优化器实例
@@ -106,7 +123,6 @@ const viewSwitchOptimizer = new ViewSwitchOptimizer();
 
 // React Hook for optimized view switching
 export function useOptimizedViewSwitch() {
-  const { scheduleInteraction } = useINPOptimization();
   const { startInteraction, endInteraction } = useINPMonitoring('ViewSwitch');
   const lastViewRef = useRef<string>('');
 
@@ -152,9 +168,9 @@ export function useOptimizedViewSwitch() {
     
     // 使用视图切换优化器调度
     viewSwitchOptimizer.scheduleViewSwitch(optimizedSwitch, priority);
-  }, [scheduleInteraction, startInteraction, endInteraction]);
+  }, [startInteraction, endInteraction]);
 
-  const preloadView = useCallback((viewName: string, dataLoader: () => Promise<any>) => {
+  const preloadView = useCallback((viewName: string, dataLoader: () => Promise<unknown>) => {
     viewSwitchOptimizer.preloadViewData(viewName, dataLoader);
   }, []);
 

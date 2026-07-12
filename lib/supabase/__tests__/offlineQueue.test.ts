@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { createOfflineQueue } from '../realtime/offlineQueue'
-import type { OfflineQueue } from '../realtime/offlineQueue'
 import type { PendingOperation } from '../realtime/types'
 import type { TodoDatabase } from '@/lib/db/dexie'
 
@@ -53,7 +52,7 @@ beforeAll(() => {
     addEventListener: (event: string, cb: EventListenerOrEventListenerObject) => {
       if (event === 'online') onlineCallback = cb as () => void
     },
-    removeEventListener: (_event: string, _cb: EventListenerOrEventListenerObject) => {
+    removeEventListener: () => {
       onlineCallback = null
     },
     navigator: {

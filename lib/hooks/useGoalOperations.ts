@@ -84,7 +84,7 @@ export function useGoalOperations(
         }
       })
     },
-    [memoApi]
+    [memoApi, setActiveSection]
   )
 
   const handleSaveGoal = useCallback(
@@ -163,7 +163,7 @@ export function useGoalOperations(
         throw error
       }
     },
-    [goals, memoApi]
+    [goals, goalStore, todoStore, onUpdateSelectedGoal]
   )
 
   const handleUpdateGoal = useCallback(
@@ -178,7 +178,7 @@ export function useGoalOperations(
         alert(`更新目标失败: ${error instanceof Error ? error.message : "未知错误"}`)
       }
     },
-    [memoApi]
+    [goalStore]
   )
 
   const handleDeleteGoal = useCallback(
@@ -196,7 +196,7 @@ export function useGoalOperations(
         throw error
       }
     },
-    [goals, memoApi]
+    [goals, memoApi, goalStore, todoStore]
   )
 
   const handleAssociateTasks = useCallback(
@@ -209,7 +209,7 @@ export function useGoalOperations(
         alert(`关联任务失败: ${error instanceof Error ? error.message : "未知错误"}`)
       }
     },
-    [memoApi]
+    [todoStore]
   )
 
   return {

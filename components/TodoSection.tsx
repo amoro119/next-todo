@@ -3,7 +3,6 @@
 import { TodoList } from "@/components/TodoList"
 import GoalHeader from "@/components/goals/GoalHeader"
 import GoalDetails from "@/components/goals/GoalDetails"
-import { useOptimizedInboxFilter } from "@/components/InboxPerformanceOptimizer"
 import { utcToLocalDateString } from "@/lib/hooks/useTodoOperations"
 import type { Todo, List, Goal } from "@/lib/types"
 import { TodoViewOptions } from "@/components/todos/TodoViewOptions"
@@ -48,14 +47,11 @@ export function TodoSection({
   uncompletedTodos,
   recycledTodos,
   todosByList,
-  goalsByList,
   todayStrInUTC8,
   currentView,
   setCurrentView,
   newTodoTitle,
   setNewTodoTitle,
-  newTodoDate,
-  selectedTodo: _selectedTodo,
   setSelectedTodo,
   selectedGoal,
   setSelectedGoal,
@@ -69,8 +65,6 @@ export function TodoSection({
   handleAssociateTasks,
   handleUpdateGoal,
 }: TodoSectionProps) {
-  const { filterInboxTodos } = useOptimizedInboxFilter()
-
   return (
     <div className="flex flex-col h-full w-full mx-auto px-4">
       <div className="flex flex-col flex-1 w-full min-h-0">
@@ -125,7 +119,6 @@ export function TodoSection({
                 <TodoList
                   todos={displayTodos}
                   goals={goals}
-                  lists={lists}
                   currentView={currentView}
                   onToggleComplete={handleToggleComplete}
                   onDelete={handleDeleteTodo}
@@ -135,10 +128,6 @@ export function TodoSection({
                     const goal = goals.find((g) => g.id === goalId)
                     if (goal) setSelectedGoal(goal)
                   }}
-                  onUpdateGoal={handleUpdateGoal}
-                  onCreateTodo={handleCreateTodoForGoal}
-                  onAssociateTasks={handleAssociateTasks}
-                  onEditGoal={handleEditGoal}
                   onOpenCreateTodo={handleAddTodo}
                 />
               </div>
