@@ -50,8 +50,8 @@ export default function Page() {
   }, [goalsRaw, listsRaw, todosRaw])
 
   const todoOps = useTodoOperations(todos, lists)
-  const { setSlogan, todayStrInUTC8: operationTodayStr, currentView, setCurrentMode, setCurrentView, sortInboxTodos } = todoOps
-  const goalOps = useGoalOperations(goals, lists, todos, (goal) => todoOps.setSelectedGoal(goal))
+  const { setSlogan, todayStrInUTC8: operationTodayStr, currentView, setCurrentMode, setCurrentView, setSelectedGoal, sortInboxTodos } = todoOps
+  const goalOps = useGoalOperations(goals, lists, todos, setSelectedGoal)
 
   useEffect(() => {
     if (sloganMeta?.value) setSlogan(String(sloganMeta.value))
@@ -141,13 +141,21 @@ export default function Page() {
 
   useEffect(() => {
     if (activeSection === "goals") { setCurrentMode("goals"); setCurrentView("goals-main") }
-    else if (activeSection === "todo") { setCurrentMode("todo"); setCurrentView("today") }
+    else if (activeSection === "todo") {
+      setCurrentMode("todo")
+      setCurrentView("today")
+    }
     else if (activeSection === "calendar") { setCurrentView("calendar") }
   }, [activeSection, setCurrentMode, setCurrentView])
 
 
   return (
-    <><LayoutShell onOpenSettings={() => setIsSettingsOpen(true)}>
+    <><LayoutShell
+      onOpenSettings={() => setIsSettingsOpen(true)}
+      onSectionChange={(section) => {
+        if (section !== "goals") setSelectedGoal(null)
+      }}
+    >
       {process.env.NODE_ENV === "development" && <ModeIndicator />}
 
       <AnimatePresence mode="wait">

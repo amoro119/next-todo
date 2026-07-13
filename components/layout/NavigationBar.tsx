@@ -16,9 +16,10 @@ const NAV_ITEMS = [
 
 interface NavigationBarProps {
   onOpenSettings: () => void
+  onSectionChange: (section: AppSection) => void
 }
 
-export function NavigationBar({ onOpenSettings }: NavigationBarProps) {
+export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBarProps) {
   const { navWidth, resizeHandleProps } = useNavResize()
   const { isSyncing } = useSyncStatus()
   const activeSection = useUIStore((s) => s.activeSection)
@@ -53,7 +54,10 @@ export function NavigationBar({ onOpenSettings }: NavigationBarProps) {
               key={section}
               type="button"
               variant="ghost"
-              onClick={() => setActiveSection(section)}
+              onClick={() => {
+                onSectionChange(section)
+                setActiveSection(section)
+              }}
               aria-current={activeSection === section ? 'page' : undefined}
               className={cn(
                 'relative h-9 justify-start px-3 text-xs font-medium tracking-widest uppercase whitespace-nowrap',
@@ -102,7 +106,10 @@ export function NavigationBar({ onOpenSettings }: NavigationBarProps) {
               key={section}
               type="button"
               variant="ghost"
-              onClick={() => setActiveSection(section)}
+              onClick={() => {
+                onSectionChange(section)
+                setActiveSection(section)
+              }}
               aria-current={activeSection === section ? 'page' : undefined}
               className={cn(
                 'h-10 shrink-0 px-3 text-xs font-medium tracking-widest uppercase whitespace-nowrap',
