@@ -115,7 +115,7 @@ function CalendarHeader({
   const navigationLabel = mode === 'month' ? ['上个月', '下个月'] : mode === 'agenda' ? ['前一天', '后一天'] : ['上一周', '下一周']
 
   return (
-    <header className="mb-4 pb-4 sm:mb-5 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:pb-5">
+    <header className="mb-4 sm:flex sm:items-center sm:justify-between sm:gap-6">
       <div className="flex items-center justify-between gap-2 sm:justify-start">
         <Button type="button" variant="ghost" size={isDesktop ? 'icon' : 'mobileIcon'} onClick={() => shift(-1)} aria-label={navigationLabel[0]}>
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
@@ -134,20 +134,6 @@ function CalendarHeader({
         <Button type="button" variant="outline" size="sm" className={isDesktop ? undefined : 'h-11'} onClick={() => onDateChange(new Date())}>
           今天
         </Button>
-        {!isDesktop && (
-          <label className="relative inline-flex h-11 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground focus-within:ring-2 focus-within:ring-ring">
-            <span>选择日期</span>
-            <input
-              type="date"
-              aria-label="选择日历日期"
-              value={format(selectedDate, 'yyyy-MM-dd')}
-              onChange={(event) => {
-                if (event.target.value) onDateChange(parseISO(event.target.value))
-              }}
-              className="absolute inset-0 cursor-pointer opacity-0"
-            />
-          </label>
-        )}
         {isDesktop && (
           <Tabs value={mode} onValueChange={(value) => onModeChange(value as CalendarMode)}>
             <TabsList className="shadow-none" aria-label="日历视图">
@@ -208,7 +194,6 @@ function DayCell({
   onDrop,
 }: DayCellProps) {
   const dateString = format(date, 'yyyy-MM-dd')
-  const visibleTodos = todos.slice(0, 3)
 
   return (
     <div
@@ -255,7 +240,7 @@ function DayCell({
         )}
       </div>
       <div className={`space-y-1 ${isCurrentMonth ? '' : 'opacity-50'}`} aria-label={`${dateString} 的任务`}>
-        {visibleTodos.map((todo) => (
+        {todos.map((todo) => (
           <TodoPill
             key={todo.id}
             todo={todo}
@@ -263,18 +248,6 @@ function DayCell({
             onDragStart={(event, item) => onDragStart(event, item, dateString)}
           />
         ))}
-        {todos.length > visibleTodos.length && (
-          <button
-            type="button"
-            className="px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-            onClick={(event) => {
-              event.stopPropagation()
-              onSelect(date)
-            }}
-          >
-            还有 {todos.length - visibleTodos.length} 项
-          </button>
-        )}
       </div>
     </div>
   )
@@ -503,7 +476,7 @@ export default function CalendarView({
 
         {effectiveMode === 'month' && (
           <>
-            <div className="grid grid-cols-7 border-x border-t border-border bg-muted/30" role="row">
+            <div className="grid grid-cols-7 bg-muted/30" role="row">
               {WEEKDAYS.map((day) => (
                 <div key={day} role="columnheader" className="py-2 text-center text-xs font-medium text-muted-foreground">
                   {day}

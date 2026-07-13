@@ -88,7 +88,7 @@ export default function GoalsList({ goals, onGoalClick, onEditGoal, onArchiveGoa
                   {goal.priority > 0 && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{priorityLabel(goal.priority)}</span>}
                 </div>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`打开目标 ${goal.name} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
+                  <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-8 w-3 shrink-0" aria-label={`打开目标 ${goal.name} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onSelect={() => onEditGoal(goal)}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />编辑</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onArchiveGoal(goal.id)}><Archive className="mr-2 h-4 w-4" aria-hidden="true" />存档</DropdownMenuItem>
