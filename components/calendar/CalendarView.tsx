@@ -1,385 +1,379 @@
-// components/calendar/CalendarView.tsx
-"use client";
+'use client'
 
-import { useMemo, useCallback, memo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import type { Todo } from '../../lib/types';
-import { useOptimizedClick, useOptimizedDrag, useINPMonitoring } from '../INPOptimizer';
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  format,
-  startOfMonth,
+  addDays,
+  addMonths,
+  addWeeks,
+  differenceInCalendarDays,
   endOfMonth,
-  startOfWeek,
   endOfWeek,
-  eachDayOfInterval,
+  format,
+  isSameDay,
   isSameMonth,
   isToday,
   parseISO,
-  addMonths,
-  subMonths
-} from 'date-fns';
-import { localDateToDbUTC } from '../../lib/utils/dateUtils';
-import { Button } from '@/components/ui/button';
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
+import type { Todo } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useIsDesktopLayout } from '@/lib/hooks/useIsDesktopLayout'
+import { dbUTCToDisplayDate, localDateToDbUTC } from '@/lib/utils/dateUtils'
+
+type CalendarMode = 'month' | 'week' | 'agenda'
 
 interface CalendarViewProps {
-  todos: Todo[];
-  currentDate: Date;
-  onDateChange: (newDate: Date) => void;
-  onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>;
-  onOpenModal: (todo: Todo) => void;
-  onAddTodo: (date: string) => void;
-  onOpenCreateModal?: (date: string) => void;
+  todos: Todo[]
+  currentDate: Date
+  onDateChange: (newDate: Date) => void
+  onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>
+  onOpenModal: (todo: Todo) => void
+  onAddTodo: (date: string) => void
+  onOpenCreateModal?: (date: string) => void
 }
 
-// 优化的高性能缓存系统
-class CalendarCache {
-  private dateCache = new Map<string, string>();
-  private utcDateCache = new Map<string, string | null>();
-  private todosByDateCache = new Map<string, Record<string, Todo[]>>();
-  private calendarDaysCache = new Map<string, { calendarDays: Array<{
-    date: string;
-    dayOfMonth: string;
-    isCurrentMonth: boolean;
-    isToday: boolean;
-  }>; visibleInterval: { start: Date; end: Date } }>();
-  private lastTodosHash = '';
-  private lastCurrentDateKey = '';
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六']
 
-  // 优化的缓存键生成 - 使用哈希而不是拼接所有ID
-  private generateTodosHash(todos: Todo[]): string {
-    let hash = 0;
-    const str = `${todos.length}-${todos.map(t => `${t.id}-${t.start_date}-${t.due_date}-${t.completed}-${t.deleted}`).join(',')}`;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
+function todoDates(todo: Todo) {
+  const start = dbUTCToDisplayDate(todo.start_date || todo.due_date)
+  const end = dbUTCToDisplayDate(todo.due_date || todo.start_date) || start
+  return { start, end: end && start && end < start ? start : end }
+}
+
+function datesBetween(start: string, end: string) {
+  if (!start || !end) return []
+  const result: string[] = []
+  let cursor = parseISO(start)
+  const finish = parseISO(end)
+  while (cursor <= finish) {
+    result.push(format(cursor, 'yyyy-MM-dd'))
+    cursor = addDays(cursor, 1)
+  }
+  return result
+}
+
+export function segmentTodosByDate(todos: Todo[], visibleDates: string[]) {
+  const map: Record<string, Todo[]> = Object.fromEntries(visibleDates.map((date) => [date, []]))
+  for (const todo of todos) {
+    if (todo.deleted) continue
+    const { start, end } = todoDates(todo)
+    for (const date of datesBetween(start, end)) {
+      if (map[date]) map[date].push(todo)
     }
-    return hash.toString();
   }
+  Object.values(map).forEach((items) => {
+    items.sort(
+      (a, b) =>
+        Number(a.completed) - Number(b.completed) ||
+        (b.priority ?? 0) - (a.priority ?? 0)
+    )
+  })
+  return map
+}
 
-  private generateDateKey(currentDate: Date): string {
-    return `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
-  }
-
-  getDateCache(utcDate: string | null | undefined): string {
-    if (!utcDate) return '';
-    return this.dateCache.get(utcDate) || '';
-  }
-
-  setDateCache(utcDate: string, result: string): void {
-    // 限制缓存大小
-    if (this.dateCache.size > 1000) {
-      const firstKey = this.dateCache.keys().next().value;
-      if (firstKey) {
-        this.dateCache.delete(firstKey);
-      }
-    }
-    this.dateCache.set(utcDate, result);
-  }
-
-  getUtcDateCache(localDate: string): string | null | undefined {
-    return this.utcDateCache.get(localDate);
-  }
-
-  setUtcDateCache(localDate: string, result: string | null): void {
-    if (this.utcDateCache.size > 100) {
-      const firstKey = this.utcDateCache.keys().next().value;
-      if (firstKey) {
-        this.utcDateCache.delete(firstKey);
-      }
-    }
-    this.utcDateCache.set(localDate, result);
-  }
-
-  getCalendarDaysCache(currentDate: Date): { calendarDays: Array<{
-    date: string;
-    dayOfMonth: string;
-    isCurrentMonth: boolean;
-    isToday: boolean;
-  }>; visibleInterval: { start: Date; end: Date } } | undefined {
-    const key = this.generateDateKey(currentDate);
-    return this.calendarDaysCache.get(key);
-  }
-
-  setCalendarDaysCache(currentDate: Date, result: { calendarDays: Array<{
-    date: string;
-    dayOfMonth: string;
-    isCurrentMonth: boolean;
-    isToday: boolean;
-  }>; visibleInterval: { start: Date; end: Date } }): void {
-    const key = this.generateDateKey(currentDate);
-    // 只保留最近3个月的缓存
-    if (this.calendarDaysCache.size > 3) {
-      const firstKey = this.calendarDaysCache.keys().next().value;
-      if (firstKey) {
-        this.calendarDaysCache.delete(firstKey);
-      }
-    }
-    this.calendarDaysCache.set(key, result);
-  }
-
-  getTodosByDateCache(todos: Todo[], currentDate: Date): Record<string, Todo[]> | null {
-    const todosHash = this.generateTodosHash(todos);
-    const dateKey = this.generateDateKey(currentDate);
-    const cacheKey = `${todosHash}-${dateKey}`;
-    
-    if (todosHash === this.lastTodosHash && dateKey === this.lastCurrentDateKey) {
-      return this.todosByDateCache.get(cacheKey) || null;
-    }
-    return null;
-  }
-
-  setTodosByDateCache(todos: Todo[], currentDate: Date, result: Record<string, Todo[]>): void {
-    const todosHash = this.generateTodosHash(todos);
-    const dateKey = this.generateDateKey(currentDate);
-    const cacheKey = `${todosHash}-${dateKey}`;
-    
-    this.lastTodosHash = todosHash;
-    this.lastCurrentDateKey = dateKey;
-    
-    // 限制缓存大小
-    if (this.todosByDateCache.size > 5) {
-      const firstKey = this.todosByDateCache.keys().next().value;
-      if (firstKey) {
-        this.todosByDateCache.delete(firstKey);
-      }
-    }
-    this.todosByDateCache.set(cacheKey, result);
-  }
-
-  // 智能清除 - 只在必要时清除相关缓存
-  clearDateCaches(): void {
-    this.dateCache.clear();
-    this.utcDateCache.clear();
-  }
-
-  clearTodosCaches(): void {
-    this.todosByDateCache.clear();
-    this.lastTodosHash = '';
-  }
-
-  clearAll(): void {
-    this.dateCache.clear();
-    this.utcDateCache.clear();
-    this.todosByDateCache.clear();
-    this.calendarDaysCache.clear();
-    this.lastTodosHash = '';
-    this.lastCurrentDateKey = '';
+function shiftTodo(todo: Todo, sourceDate: string, targetDate: string) {
+  const delta = differenceInCalendarDays(parseISO(targetDate), parseISO(sourceDate))
+  const { start, end } = todoDates(todo)
+  const nextStart = format(addDays(parseISO(start || targetDate), delta), 'yyyy-MM-dd')
+  const nextEnd = format(addDays(parseISO(end || nextStart), delta), 'yyyy-MM-dd')
+  return {
+    start_date: localDateToDbUTC(nextStart),
+    due_date: localDateToDbUTC(nextEnd),
   }
 }
 
-// 全局缓存实例
-const calendarCache = new CalendarCache();
-
-// 优化的日期转换函数
-const utcToLocalDateString = (utcDate: string | null | undefined): string => {
-  if (!utcDate) return '';
-  
-  // 检查缓存
-  const cached = calendarCache.getDateCache(utcDate);
-  if (cached) return cached;
-  
-  try {
-    const date = new Date(utcDate);
-    if (isNaN(date.getTime())) {
-      const dateOnlyMatch = utcDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (dateOnlyMatch) {
-        calendarCache.setDateCache(utcDate, utcDate);
-        return utcDate;
-      }
-      return '';
-    }
-    const formatter = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-    const result = formatter.format(date);
-    calendarCache.setDateCache(utcDate, result);
-    return result;
-  } catch (e) {
-    console.error("Error formatting date:", utcDate, e);
-    return '';
-  }
-};
-
-const localDateToUTCZeroPoint = (localDate: string | null | undefined): string | null => {
-  if (!localDate || !/^\d{4}-\d{2}-\d{2}$/.test(localDate)) return null;
-  
-  // 检查缓存
-  const cached = calendarCache.getUtcDateCache(localDate);
-  if (cached !== undefined) return cached;
-  
-  // 使用统一的零点对齐转换
-  const result = localDateToDbUTC(localDate);
-  if (result) {
-    calendarCache.setUtcDateCache(localDate, result);
-  }
-  return result;
-};
-
-// 优化的待办事项组件
-interface TodoItemProps {
-  todo: Todo;
-  onClick: (e: React.MouseEvent, todo: Todo) => void;
-  onDragStart: (e: React.DragEvent<HTMLLIElement>, todoId: string) => void;
+interface CalendarHeaderProps {
+  currentDate: Date
+  selectedDate: Date
+  mode: CalendarMode
+  isDesktop: boolean
+  onDateChange: (date: Date) => void
+  onModeChange: (mode: CalendarMode) => void
 }
 
-const TodoItem = memo<TodoItemProps>(({ todo, onClick, onDragStart }) => {
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    onClick(e, todo);
-  }, [onClick, todo]);
+function CalendarHeader({
+  currentDate,
+  selectedDate,
+  mode,
+  isDesktop,
+  onDateChange,
+  onModeChange,
+}: CalendarHeaderProps) {
+  const shift = (amount: number) => {
+    const next =
+      mode === 'month'
+        ? addMonths(currentDate, amount)
+        : mode === 'agenda'
+          ? addDays(selectedDate, amount)
+          : addWeeks(currentDate, amount)
+    onDateChange(next)
+  }
 
-  const handleDragStart = useCallback((e: React.DragEvent<HTMLLIElement>) => {
-    onDragStart(e, todo.id);
-  }, [onDragStart, todo.id]);
+  const navigationLabel = mode === 'month' ? ['上个月', '下个月'] : mode === 'agenda' ? ['前一天', '后一天'] : ['上一周', '下一周']
 
   return (
-    <li
-      className={`flex items-center gap-2 p-2 mb-2 rounded-md border border-border bg-background text-sm cursor-pointer overflow-hidden ${todo.completed ? 'line-through opacity-50' : ''}`}
-      onClick={handleClick}
-      draggable="true"
-      onDragStart={handleDragStart}
+    <header className="mb-4 pb-4 sm:mb-5 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:pb-5">
+      <div className="flex items-center justify-between gap-2 sm:justify-start">
+        <Button type="button" variant="ghost" size={isDesktop ? 'icon' : 'mobileIcon'} onClick={() => shift(-1)} aria-label={navigationLabel[0]}>
+          <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <div className="min-w-[156px] px-2 text-center sm:text-left">
+          <h1 className="text-base font-semibold text-foreground">
+            {format(mode === 'agenda' ? selectedDate : currentDate, 'yyyy 年 MM 月')}
+          </h1>
+        </div>
+        <Button type="button" variant="ghost" size={isDesktop ? 'icon' : 'mobileIcon'} onClick={() => shift(1)} aria-label={navigationLabel[1]}>
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-2 sm:mt-0 sm:justify-end">
+        <Button type="button" variant="outline" size="sm" className={isDesktop ? undefined : 'h-11'} onClick={() => onDateChange(new Date())}>
+          今天
+        </Button>
+        {!isDesktop && (
+          <label className="relative inline-flex h-11 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground focus-within:ring-2 focus-within:ring-ring">
+            <span>选择日期</span>
+            <input
+              type="date"
+              aria-label="选择日历日期"
+              value={format(selectedDate, 'yyyy-MM-dd')}
+              onChange={(event) => {
+                if (event.target.value) onDateChange(parseISO(event.target.value))
+              }}
+              className="absolute inset-0 cursor-pointer opacity-0"
+            />
+          </label>
+        )}
+        {isDesktop && (
+          <Tabs value={mode} onValueChange={(value) => onModeChange(value as CalendarMode)}>
+            <TabsList className="shadow-none" aria-label="日历视图">
+              <TabsTrigger className="text-xs data-[state=active]:shadow-none" value="month">月</TabsTrigger>
+              <TabsTrigger className="text-xs data-[state=active]:shadow-none" value="week">周</TabsTrigger>
+              <TabsTrigger className="text-xs data-[state=active]:shadow-none" value="agenda">日程</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
+    </header>
+  )
+}
+
+interface TodoPillProps {
+  todo: Todo
+  onOpen: (todo: Todo) => void
+  onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo) => void
+}
+
+function TodoPill({ todo, onOpen, onDragStart }: TodoPillProps) {
+  return (
+    <button
+      type="button"
+      draggable
+      onDragStart={(event) => onDragStart(event, todo)}
+      onClick={() => onOpen(todo)}
+      className={`block min-h-7 w-full truncate rounded-[4px] border border-border bg-muted/50 px-2 py-1 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${todo.completed ? 'text-muted-foreground line-through opacity-70' : 'text-foreground'}`}
       title={todo.title}
     >
-      {todo.list_name && <span className="text-xs text-muted-foreground shrink-0">[{todo.list_name}]</span>}
-      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{todo.title}</span>
-    </li>
-  );
-});
-TodoItem.displayName = 'TodoItem';
-
-// 优化的日历单元格组件 - 始终显示所有待办事项
-interface DayCellProps {
-  day: {
-    date: string;
-    dayOfMonth: string;
-    isCurrentMonth: boolean;
-    isToday: boolean;
-  };
-  todos: Todo[];
-  onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>, date: string) => void;
-  onAddTodo: (date: string) => void;
-  onOpenModal: (todo: Todo) => void;
-  onDragStart: (e: React.DragEvent<HTMLLIElement>, todoId: string, sourceDate: string) => void;
-  onOpenCreateModal?: (date: string) => void;
+      {todo.list_name && <span className="mr-1 text-muted-foreground">[{todo.list_name}]</span>}
+      {todo.title}
+    </button>
+  )
 }
 
-const DayCell = memo<DayCellProps>(({ 
-  day, 
-  todos, 
-  onDragOver, 
-  onDrop, 
-  onAddTodo, 
-  onOpenModal, 
+interface DayCellProps {
+  date: Date
+  todos: Todo[]
+  isCurrentMonth?: boolean
+  selected?: boolean
+  onSelect: (date: Date) => void
+  onOpenTodo: (todo: Todo) => void
+  onCreate: (date: string) => void
+  onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo, sourceDate: string) => void
+  onDrop: (event: React.DragEvent<HTMLElement>, targetDate: string) => void
+}
+
+function DayCell({
+  date,
+  todos,
+  isCurrentMonth = true,
+  selected,
+  onSelect,
+  onOpenTodo,
+  onCreate,
   onDragStart,
-  onOpenCreateModal
-}) => {
-  const handleAddTodo = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onOpenCreateModal?.(day.date);
-  }, [day.date, onOpenCreateModal]);
+  onDrop,
+}: DayCellProps) {
+  const dateString = format(date, 'yyyy-MM-dd')
+  const visibleTodos = todos.slice(0, 3)
 
-  const handleCellClick = useCallback(() => {
-    if (day.isCurrentMonth) {
-      onAddTodo(day.date);
-    }
-  }, [day.isCurrentMonth, day.date, onAddTodo]);
-
-  const handleTodoClick = useCallback((e: React.MouseEvent, todo: Todo) => {
-    e.stopPropagation();
-    onOpenModal(todo);
-  }, [onOpenModal]);
-
-  const handleTodoDragStart = useCallback((e: React.DragEvent<HTMLLIElement>, todoId: string) => {
-    onDragStart(e, todoId, day.date);
-  }, [day.date, onDragStart]);
-
-  // 移除虚拟化限制，始终显示所有待办事项
   return (
     <div
-      className={`min-h-[80px] p-1.5 rounded-md border border-transparent hover:border-border transition-colors duration-150 cursor-pointer ${!day.isCurrentMonth ? 'opacity-40' : ''} ${day.isToday ? 'border-ring bg-accent/30' : ''}`}
-      onDragOver={onDragOver}
-      onDrop={(e) => onDrop(e, day.date)}
-      onClick={handleCellClick}
+      role="gridcell"
+      aria-selected={selected}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onSelect(date)
+        }
+      }}
+      onClick={() => onSelect(date)}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => onDrop(event, dateString)}
+      className={`group min-h-[112px] p-2 text-left transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${isCurrentMonth ? 'bg-background' : 'bg-muted/35 text-muted-foreground'} ${selected ? 'z-10 ring-1 ring-inset ring-foreground' : 'hover:bg-muted/30'} ${isToday(date) ? 'bg-accent/60' : ''}`}
     >
-      <div className="flex justify-between items-center px-1 py-0.5">
-        <span className={`text-xs font-medium mb-1 ${day.isToday ? 'bg-accent text-accent-foreground rounded-full w-6 h-6 inline-flex items-center justify-center' : 'text-foreground'}`}>{day.dayOfMonth}</span>
-        {day.isCurrentMonth && (
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-medium ${isToday(date) ? 'bg-foreground text-background' : isCurrentMonth ? 'text-foreground hover:bg-muted' : 'text-muted-foreground'}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onSelect(date)
+          }}
+          aria-label={`选择 ${dateString}`}
+        >
+          {format(date, 'd')}
+        </button>
+        {isCurrentMonth && (
           <Button
             type="button"
             variant="ghost"
-            size="mobileIcon"
-            className="h-8 w-8 sm:h-9 sm:w-9"
-            onClick={handleAddTodo}
-            aria-label={`在 ${day.date} 创建任务`}
+            size="icon"
+            className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            aria-label={`在 ${dateString} 创建任务`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onCreate(dateString)
+            }}
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
         )}
       </div>
-      <ul className="list-none px-1.5 m-0 text-left text-xs">
-        {todos.map((todo) => (
-          <TodoItem
+      <div className={`space-y-1 ${isCurrentMonth ? '' : 'opacity-50'}`} aria-label={`${dateString} 的任务`}>
+        {visibleTodos.map((todo) => (
+          <TodoPill
             key={todo.id}
             todo={todo}
-            onClick={handleTodoClick}
-            onDragStart={handleTodoDragStart}
+            onOpen={onOpenTodo}
+            onDragStart={(event, item) => onDragStart(event, item, dateString)}
           />
         ))}
-      </ul>
-    </div>
-  );
-});
-DayCell.displayName = 'DayCell';
-
-// 优化的日历头部组件
-interface CalendarHeaderProps {
-  currentDate: Date;
-  onDateChange: (newDate: Date) => void;
-}
-
-const CalendarHeader = memo<CalendarHeaderProps>(({ currentDate, onDateChange }) => {
-  const handlePrevMonth = useOptimizedClick(() => {
-    onDateChange(subMonths(currentDate, 1));
-  }, { priority: 'high' });
-
-  const handleNextMonth = useOptimizedClick(() => {
-    onDateChange(addMonths(currentDate, 1));
-  }, { priority: 'high' });
-
-  const handleToday = useOptimizedClick(() => {
-    onDateChange(new Date());
-  }, { priority: 'high' });
-
-  return (
-    <div className="flex items-center justify-between gap-2 mb-4 px-2">
-      <Button type="button" variant="ghost" size="mobileIcon" onClick={handlePrevMonth} aria-label="上个月">
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <span className="text-base font-semibold text-foreground">{format(currentDate, 'yyyy 年 MM 月')}</span>
-      <div className="flex items-center gap-1">
-        <Button type="button" variant="outline" size="sm" onClick={handleToday}>今天</Button>
-        <Button type="button" variant="ghost" size="mobileIcon" onClick={handleNextMonth} aria-label="下个月">
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+        {todos.length > visibleTodos.length && (
+          <button
+            type="button"
+            className="px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            onClick={(event) => {
+              event.stopPropagation()
+              onSelect(date)
+            }}
+          >
+            还有 {todos.length - visibleTodos.length} 项
+          </button>
+        )}
       </div>
     </div>
-  );
-});
-CalendarHeader.displayName = 'CalendarHeader';
+  )
+}
 
-// 优化的星期标题组件
-const WeekDaysHeader = memo(() => (
-  <div className="grid grid-cols-7 gap-1 mb-1">
-    {['日', '一', '二', '三', '四', '五', '六'].map((day) => (
-      <div className="text-center text-xs font-medium text-muted-foreground py-2" key={day}>{day}</div>
-    ))}
-  </div>
-));
-WeekDaysHeader.displayName = 'WeekDaysHeader';
+interface AgendaViewProps {
+  selectedDate: Date
+  todos: Todo[]
+  onOpenTodo: (todo: Todo) => void
+  onCreate: (date: string) => void
+  onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo, sourceDate: string) => void
+  onDrop: (event: React.DragEvent<HTMLElement>, targetDate: string) => void
+}
+
+function AgendaView({ selectedDate, todos, onOpenTodo, onCreate, onDragStart, onDrop }: AgendaViewProps) {
+  const dateString = format(selectedDate, 'yyyy-MM-dd')
+  return (
+    <section
+      className="rounded-lg border border-border bg-card p-4 sm:p-5"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => onDrop(event, dateString)}
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">{format(selectedDate, 'M月d日')} 的日程</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{todos.length ? `${todos.length} 项任务` : '安排今天的下一步'}</p>
+        </div>
+        <Button type="button" size="sm" className="h-11 md:h-8" onClick={() => onCreate(dateString)}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          添加任务
+        </Button>
+      </div>
+      {todos.length ? (
+        <div className="space-y-2">
+          {todos.map((todo) => (
+            <TodoPill
+              key={todo.id}
+              todo={todo}
+              onOpen={onOpenTodo}
+              onDragStart={(event, item) => onDragStart(event, item, dateString)}
+            />
+          ))}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onCreate(dateString)}
+          className="min-h-28 w-full rounded-md border border-dashed border-border px-4 py-8 text-sm text-muted-foreground transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          这一天还没有任务，添加第一项
+        </button>
+      )}
+    </section>
+  )
+}
+
+function WeekView({
+  currentDate,
+  selectedDate,
+  todosByDate,
+  onSelect,
+  onOpenTodo,
+  onCreate,
+  onDragStart,
+  onDrop,
+}: Omit<React.ComponentProps<typeof DayCell>, 'date' | 'todos' | 'isCurrentMonth' | 'selected'> & {
+  currentDate: Date
+  selectedDate: Date
+  todosByDate: Record<string, Todo[]>
+}) {
+  const days = Array.from({ length: 7 }, (_, index) =>
+    addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), index)
+  )
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-7 gap-1 rounded-lg border border-border bg-muted/30 p-1" role="grid" aria-label="周视图">
+        {days.map((day) => (
+          <button
+            type="button"
+            key={day.toISOString()}
+            onClick={() => onSelect(day)}
+            className={`min-h-11 rounded-md px-1 py-2 text-xs transition-colors ${isSameDay(day, selectedDate) ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
+          >
+            <span className="block">{WEEKDAYS[day.getDay()]}</span>
+            <span className="mt-0.5 block font-semibold">{format(day, 'd')}</span>
+          </button>
+        ))}
+      </div>
+      <AgendaView
+        selectedDate={selectedDate}
+        todos={todosByDate[format(selectedDate, 'yyyy-MM-dd')] || []}
+        onOpenTodo={onOpenTodo}
+        onCreate={onCreate}
+        onDragStart={onDragStart}
+        onDrop={onDrop}
+      />
+    </div>
+  )
+}
 
 export default function CalendarView({
   todos,
@@ -390,232 +384,167 @@ export default function CalendarView({
   onAddTodo,
   onOpenCreateModal,
 }: CalendarViewProps) {
-  
-  // INP优化
-  const { handleDragStart, handleDrop, handleDragOver } = useOptimizedDrag();
-  const { startInteraction, endInteraction } = useINPMonitoring('CalendarView');
-  
-  // 为 onOpenCreateModal 提供默认值
-  const handleOpenCreateModal = onOpenCreateModal || (() => {});
-  
-  // 优化的日历天数计算 - 使用缓存
-  const { calendarDays, visibleInterval } = useMemo(() => {
-    const cached = calendarCache.getCalendarDaysCache(currentDate);
-    if (cached) return cached;
-    
-    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 });
-    const days = eachDayOfInterval({ start, end });
-    
-    const result = {
-        calendarDays: days.map((day) => ({
-            date: format(day, 'yyyy-MM-dd'),
-            dayOfMonth: format(day, 'd'),
-            isCurrentMonth: isSameMonth(day, currentDate),
-            isToday: isToday(day),
-        })),
-        visibleInterval: { start, end }
-    };
-    
-    calendarCache.setCalendarDaysCache(currentDate, result);
-    return result;
-  }, [currentDate]);
+  const isDesktop = useIsDesktopLayout()
+  const [mode, setMode] = useState<CalendarMode>('month')
+  const [selectedDate, setSelectedDate] = useState(currentDate)
+  const [dragState, setDragState] = useState<{ todoId: string; sourceDate: string } | null>(null)
+  const effectiveMode = !isDesktop && mode === 'month' ? 'week' : mode
 
-  // 批处理函数 - 提取到外部避免重复创建
-  const processTodoBatch = useCallback((
-    batch: Todo[], 
-    map: Map<string, Todo[]>, 
-    visibleInterval: { start: Date; end: Date }
-  ) => {
-    batch.forEach(todo => {
-      const sDateStr = utcToLocalDateString(todo.start_date);
-      const dDateStr = utcToLocalDateString(todo.due_date);
-      
-      // 优化日期解析 - 避免重复创建Date对象
-      let startDate: Date | null = null;
-      let endDate: Date | null = null;
-      
-      if (sDateStr) startDate = parseISO(sDateStr);
-      if (dDateStr) endDate = parseISO(dDateStr);
-      
-      if (!startDate && !endDate) return;
-      
-      startDate = startDate || endDate!;
-      endDate = endDate || startDate;
+  useEffect(() => setMode(isDesktop ? 'month' : 'week'), [isDesktop])
+  useEffect(() => setSelectedDate(currentDate), [currentDate])
 
-      if (startDate > endDate) {
-        [startDate, endDate] = [endDate, startDate];
-      }
+  const selectDate = useCallback(
+    (date: Date) => {
+      setSelectedDate(date)
+      onDateChange(date)
+    },
+    [onDateChange]
+  )
 
-      // 快速边界检查
-      if (endDate < visibleInterval.start || startDate > visibleInterval.end) {
-        return;
-      }
+  const createTodo = useCallback(
+    (date: string) => {
+      onOpenCreateModal?.(date)
+      if (!onOpenCreateModal) onAddTodo(date)
+    },
+    [onAddTodo, onOpenCreateModal]
+  )
 
-      // 优化日期范围计算
-      const clampedStart = startDate < visibleInterval.start ? visibleInterval.start : startDate;
-      const clampedEnd = endDate > visibleInterval.end ? visibleInterval.end : endDate;
-      
-      const daysInRange = eachDayOfInterval({ start: clampedStart, end: clampedEnd });
-      
-      // 批量添加到对应日期
-      daysInRange.forEach((day: Date) => {
-        const dateStr = format(day, 'yyyy-MM-dd');
-        const dayTodos = map.get(dateStr);
-        if (dayTodos) {
-          dayTodos.push(todo);
-        }
-      });
-    });
+  const monthDays = useMemo(() => {
+    const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 })
+    const end = endOfWeek(endOfMonth(currentDate), { weekStartsOn: 0 })
+    return Array.from({ length: differenceInCalendarDays(end, start) + 1 }, (_, index) => addDays(start, index))
+  }, [currentDate])
 
-    // 批量排序 - 使用稳定排序
-    map.forEach((todos) => {
-      if (todos.length > 1) {
-        todos.sort((a, b) => {
-          // 优化比较逻辑
-          if (a.completed !== b.completed) {
-            return a.completed ? 1 : -1;
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), index)),
+    [currentDate]
+  )
+  const visibleDates = effectiveMode === 'month' ? monthDays : weekDays
+  const todosByDate = useMemo(
+    () => segmentTodosByDate(todos, visibleDates.map((day) => format(day, 'yyyy-MM-dd'))),
+    [todos, visibleDates]
+  )
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent<HTMLElement>, targetDate: string) => {
+      event.preventDefault()
+      const payload =
+        dragState ||
+        (() => {
+          try {
+            return JSON.parse(event.dataTransfer.getData('text/plain'))
+          } catch {
+            return null
           }
-          return (b.priority || 0) - (a.priority || 0);
-        });
-      }
-    });
-  }, []);
+        })()
+      if (!payload?.todoId || !payload?.sourceDate) return
+      const todo = todos.find((item) => item.id === payload.todoId)
+      if (!todo) return
+      void onUpdateTodo(todo.id, shiftTodo(todo, payload.sourceDate, targetDate))
+      setDragState(null)
+    },
+    [dragState, onUpdateTodo, todos]
+  )
 
-  // 高性能待办事项分布计算 - 使用时间切片和批处理
-  const todosByDate = useMemo(() => {
-    // 检查缓存
-    const cached = calendarCache.getTodosByDateCache(todos, currentDate);
-    if (cached) {
-      return cached;
-    }
-    
-    // 使用Map提升性能，避免原型链查找
-    const map = new Map<string, Todo[]>();
-    calendarDays.forEach(day => {
-      map.set(day.date, []);
-    });
+  const handleDragStart = useCallback(
+    (event: React.DragEvent<HTMLButtonElement>, todo: Todo, sourceDate: string) => {
+      const payload = { todoId: todo.id, sourceDate }
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', JSON.stringify(payload))
+      setDragState(payload)
+    },
+    []
+  )
 
-    // 预过滤有效待办事项
-    const validTodos = todos.filter(todo => 
-      !todo.deleted && (todo.start_date || todo.due_date)
-    );
+  const sharedDayProps = {
+    onSelect: selectDate,
+    onOpenTodo: onOpenModal,
+    onCreate: createTodo,
+    onDragStart: handleDragStart,
+    onDrop: handleDrop,
+  }
 
-    // 直接处理所有待办事项，确保立即显示
-    // 对于大数据量，仍然可以考虑优化，但不能影响显示
-    processTodoBatch(validTodos, map, visibleInterval);
-
-    // 转换Map为普通对象以保持兼容性
-    const result: Record<string, Todo[]> = {};
-    map.forEach((todos, date) => {
-      result[date] = todos;
-    });
-
-    // 缓存结果
-    calendarCache.setTodosByDateCache(todos, currentDate, result);
-    
-    return result;
-  }, [todos, calendarDays, visibleInterval, currentDate, processTodoBatch]);
-
-  const getTodosForDate = useCallback((dateStr: string) => {
-    const todosForDate = todosByDate[dateStr] || [];
-    // 在开发环境下添加调试信息
-    if (process.env.NODE_ENV === 'development' && todosForDate.length > 0) {
-      console.log(`日期 ${dateStr} 有 ${todosForDate.length} 个任务:`, todosForDate.map(t => t.title));
-    }
-    return todosForDate;
-  }, [todosByDate]);
-
-  const optimizedHandleDragStart = useCallback((e: React.DragEvent<HTMLLIElement>, todoId: string, sourceDate: string) => {
-    startInteraction();
-    handleDragStart(e, { todoId, sourceDate }, { priority: 'high' });
-    endInteraction();
-  }, [handleDragStart, startInteraction, endInteraction]);
-
-  const optimizedHandleDrop = useCallback((e: React.DragEvent<HTMLDivElement>, dropDateStr: string) => {
-    startInteraction();
-    
-    handleDrop(e, ({ todoId, sourceDate }) => {
-      if (!todoId) return;
-
-      const todoToUpdate = todos.find(t => t.id === todoId);
-      if (!todoToUpdate) return;
-      
-      const dropDateUTC = localDateToUTCZeroPoint(dropDateStr);
-      if (!dropDateUTC) return;
-
-      const isSingleDay = !todoToUpdate.start_date || !todoToUpdate.due_date || 
-                         todoToUpdate.start_date === todoToUpdate.due_date;
-
-      if (isSingleDay) {
-        onUpdateTodo(todoId, { start_date: dropDateUTC, due_date: dropDateUTC });
-      } else {
-        const isDraggingStartDate = sourceDate === utcToLocalDateString(todoToUpdate.start_date);
-        
-        if (isDraggingStartDate) {
-          const newStartDateUTC = dropDateUTC;
-          const dueDateUTC = todoToUpdate.due_date!;
-          if (newStartDateUTC > dueDateUTC) {
-            onUpdateTodo(todoId, { start_date: dueDateUTC, due_date: newStartDateUTC });
-          } else {
-            onUpdateTodo(todoId, { start_date: newStartDateUTC });
-          }
-        } else {
-          const newDueDateUTC = dropDateUTC;
-          const startDateUTC = todoToUpdate.start_date!;
-          if (newDueDateUTC < startDateUTC) {
-            onUpdateTodo(todoId, { start_date: newDueDateUTC, due_date: startDateUTC });
-          } else {
-            onUpdateTodo(todoId, { due_date: newDueDateUTC });
-          }
-        }
-      }
-    }, { priority: 'normal' });
-    
-    endInteraction();
-  }, [handleDrop, todos, onUpdateTodo, startInteraction, endInteraction]);
-
-  // 智能缓存清除策略
-  useEffect(() => {
-    // 只在todos变化时清除todos相关缓存
-    calendarCache.clearTodosCaches();
-    // 在开发环境下添加调试信息
-    if (process.env.NODE_ENV === 'development') {
-      console.log('日历视图: todos变化，清除缓存', { todosCount: todos.length });
-    }
-  }, [todos]);
-
-  useEffect(() => {
-    // 日期变化时不需要清除所有缓存，日期缓存会自动处理
-  }, [currentDate]);
-
-  // 清理资源
-  useEffect(() => {
-    return () => {
-      // 清理缓存等资源
-      calendarCache.clearTodosCaches();
-    };
-  }, []);
+  const selectedDateTodos = segmentTodosByDate(todos, [format(selectedDate, 'yyyy-MM-dd')])[
+    format(selectedDate, 'yyyy-MM-dd')
+  ] || []
 
   return (
-    <div className="w-full bg-background rounded-lg p-5">
-      <CalendarHeader currentDate={currentDate} onDateChange={onDateChange} />
-      <WeekDaysHeader />
-      <div className="grid grid-cols-7 gap-1">
-        {calendarDays.map((day) => (
-          <DayCell
-            key={day.date}
-            day={day}
-            todos={getTodosForDate(day.date)}
-            onDragOver={handleDragOver}
-            onDrop={optimizedHandleDrop}
-            onAddTodo={onAddTodo}
-            onOpenModal={onOpenModal}
-            onDragStart={optimizedHandleDragStart}
-            onOpenCreateModal={handleOpenCreateModal}
+    <main className="min-h-full w-full bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <div className="mx-auto w-full">
+        <CalendarHeader
+          currentDate={currentDate}
+          selectedDate={selectedDate}
+          mode={effectiveMode}
+          isDesktop={isDesktop}
+          onDateChange={selectDate}
+          onModeChange={setMode}
+        />
+
+        {!isDesktop && (
+          <div className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="移动端日历视图">
+            <button
+              type="button"
+              aria-pressed={effectiveMode === 'week'}
+              onClick={() => setMode('week')}
+              className={`h-10 rounded-[4px] text-xs font-medium transition-colors ${effectiveMode === 'week' ? 'border border-border bg-background text-foreground' : 'border border-transparent text-muted-foreground'}`}
+            >
+              本周
+            </button>
+            <button
+              type="button"
+              aria-pressed={effectiveMode === 'agenda'}
+              onClick={() => setMode('agenda')}
+              className={`h-10 rounded-[4px] text-xs font-medium transition-colors ${effectiveMode === 'agenda' ? 'border border-border bg-background text-foreground' : 'border border-transparent text-muted-foreground'}`}
+            >
+              日程
+            </button>
+          </div>
+        )}
+
+        {effectiveMode === 'month' && (
+          <>
+            <div className="grid grid-cols-7 border-x border-t border-border bg-muted/30" role="row">
+              {WEEKDAYS.map((day) => (
+                <div key={day} role="columnheader" className="py-2 text-center text-xs font-medium text-muted-foreground">
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border border-border bg-border" role="grid" aria-label="月视图">
+              {monthDays.map((day) => (
+                <DayCell
+                  key={day.toISOString()}
+                  date={day}
+                  todos={todosByDate[format(day, 'yyyy-MM-dd')] || []}
+                  isCurrentMonth={isSameMonth(day, currentDate)}
+                  selected={isSameDay(day, selectedDate)}
+                  {...sharedDayProps}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {effectiveMode === 'week' && (
+          <WeekView
+            currentDate={currentDate}
+            selectedDate={selectedDate}
+            todosByDate={todosByDate}
+            {...sharedDayProps}
           />
-        ))}
+        )}
+
+        {effectiveMode === 'agenda' && (
+          <AgendaView
+            selectedDate={selectedDate}
+            todos={selectedDateTodos}
+            onOpenTodo={onOpenModal}
+            onCreate={createTodo}
+            onDragStart={handleDragStart}
+            onDrop={handleDrop}
+          />
+        )}
       </div>
-    </div>
-  );
+    </main>
+  )
 }

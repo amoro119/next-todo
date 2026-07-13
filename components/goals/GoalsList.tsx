@@ -1,243 +1,111 @@
-'use client';
+'use client'
 
-import React, { useMemo } from 'react';
-import { Goal } from '@/lib/types';
-import { Plus, Trash2 } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
+import { useMemo, useState } from 'react'
+import { Archive, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react'
+import type { Goal } from '@/lib/types'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 interface GoalsListProps {
-  goals: Goal[];
-  onGoalClick: (goal: Goal) => void;
-  onEditGoal: (goal: Goal) => void;
-  onArchiveGoal: (goalId: string) => void;
-  onDeleteGoal: (goalId: string) => void;
-  onCreateGoal?: () => void;
-  loading?: boolean;
+  goals: Goal[]
+  onGoalClick: (goal: Goal) => void
+  onEditGoal: (goal: Goal) => void
+  onArchiveGoal: (goalId: string) => void
+  onDeleteGoal: (goalId: string) => void
+  onCreateGoal?: () => void
+  loading?: boolean
 }
 
-// control bar (sorting/filtering) removed — keep display simple
+function priorityLabel(priority: number) {
+  return ['无优先级', '低', '中', '高'][priority] ?? '无优先级'
+}
 
-const GoalsList: React.FC<GoalsListProps> = ({
-  goals,
-  onGoalClick,
-  onDeleteGoal,
-  onCreateGoal,
-  loading = false
-}) => {
-  // removed sort/filter state
+function dueInfo(dueDate?: string | null, progress = 0) {
+  if (!dueDate || progress === 100) return null
+  const days = Math.ceil((new Date(dueDate).getTime() - Date.now()) / 86400000)
+  if (days < 0) return { label: `逾期 ${Math.abs(days)} 天`, className: 'text-destructive' }
+  if (days === 0) return { label: '今天到期', className: 'font-medium text-foreground' }
+  if (days <= 3) return { label: `${days} 天后到期`, className: 'font-medium text-foreground' }
+  return { label: new Date(dueDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }), className: 'text-muted-foreground' }
+}
 
-  // 默认在前端按 优先级 降序排序，优先级相同按创建时间倒序
-  const filteredAndSortedGoals = useMemo(() => {
-    if (!Array.isArray(goals)) return [];
-    return [...goals].sort((a, b) => {
-      const pa = a.priority || 0;
-      const pb = b.priority || 0;
-      if (pa !== pb) return pb - pa; // 优先级降序
+export default function GoalsList({ goals, onGoalClick, onEditGoal, onArchiveGoal, onDeleteGoal, onCreateGoal, loading = false }: GoalsListProps) {
+  const [deleteTarget, setDeleteTarget] = useState<Goal | null>(null)
+  const sortedGoals = useMemo(() => [...goals].sort((a, b) => {
+    const aProgress = a.progress ?? 0
+    const bProgress = b.progress ?? 0
+    const aDue = a.due_date ? new Date(a.due_date).getTime() : Number.MAX_SAFE_INTEGER
+    const bDue = b.due_date ? new Date(b.due_date).getTime() : Number.MAX_SAFE_INTEGER
+    const aComplete = aProgress === 100 ? 1 : 0
+    const bComplete = bProgress === 100 ? 1 : 0
+    const aOverdue = aDue < Date.now() && aProgress < 100 ? 0 : 1
+    const bOverdue = bDue < Date.now() && bProgress < 100 ? 0 : 1
+    if (aOverdue !== bOverdue) return aOverdue - bOverdue
+    if (aComplete !== bComplete) return aComplete - bComplete
+    if (a.priority !== b.priority) return b.priority - a.priority
+    if (aDue !== bDue) return aDue - bDue
+    return new Date(b.created_time).getTime() - new Date(a.created_time).getTime()
+  }), [goals])
 
-      // 优先级相同：按创建时间倒序
-      const ta = a.created_time ? new Date(a.created_time).getTime() : 0;
-      const tb = b.created_time ? new Date(b.created_time).getTime() : 0;
-      return tb - ta;
-    });
-  }, [goals]);
+  if (loading) {
+    return <div className="space-y-3" aria-label="正在加载目标"><div className="h-28 animate-pulse rounded-lg bg-muted" /><div className="h-28 animate-pulse rounded-lg bg-muted" /></div>
+  }
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = date.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) return '今天';
-    if (diffDays === 1) return '明天';
-    if (diffDays === -1) return '昨天';
-    if (diffDays > 0) return `${diffDays}天后`;
-    return `逾期${Math.abs(diffDays)}天`;
-  };
-
-  
-
-  const getDueDateColor = (dueDate?: string, progress?: number) => {
-    if (!dueDate || progress === 100) return 'var(--placeholder)';
-    
-    const date = new Date(dueDate);
-    const now = new Date();
-    const diffTime = date.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return 'var(--deleted)'; // 逾期
-    if (diffDays <= 3) return 'oklch(var(--warning, 0.75 0.15 85))'; // 即将到期
-    return 'var(--font-color)';
-  };
-
-    if (loading) {
+  if (!sortedGoals.length) {
     return (
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <div key={i} className="p-6 animate-pulse rounded-lg border border-border bg-background">
-            <div className="h-6 bg-muted rounded mb-3"></div>
-            <div className="h-4 bg-muted rounded mb-4 w-3/4"></div>
-            <div className="h-2 bg-muted rounded mb-2"></div>
-            <div className="h-4 bg-muted rounded w-1/4"></div>
-          </div>
-        ))}
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">还没有进行中的目标</p>
+        {onCreateGoal && <Button type="button" size="sm" onClick={onCreateGoal}><Plus className="h-4 w-4" aria-hidden="true" />创建目标</Button>}
       </div>
-    );
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {/* 目标列表 */}
-      {filteredAndSortedGoals.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-          <p className="text-sm text-[oklch(var(--muted-foreground))]">暂无目标</p>
-          {onCreateGoal && (
-            <Button type="button" size="sm" onClick={onCreateGoal}>
-              <Plus className="h-4 w-4" />
-              创建目标
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="w-full">
-          <ul className="space-y-3">
-            {filteredAndSortedGoals.map((goal) => (
-              <GoalCard
-                key={goal.id}
-                goal={goal}
-                onGoalClick={onGoalClick}
-                onDeleteGoal={onDeleteGoal}
-                formatDate={formatDate}
-                getDueDateColor={getDueDateColor}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-};
-
-interface GoalCardProps {
-  goal: Goal;
-  onGoalClick: (goal: Goal) => void;
-  onDeleteGoal: (goalId: string) => void;
-  formatDate: (dateString: string) => string;
-  getDueDateColor: (dueDate?: string, progress?: number) => string;
+    <>
+      <ul aria-label="目标列表">
+      {sortedGoals.map((goal) => {
+        const progress = Math.max(0, Math.min(100, goal.progress ?? 0))
+        const done = goal.total_tasks ? `${goal.completed_tasks ?? 0}/${goal.total_tasks} 项任务` : '尚未添加任务'
+        const due = dueInfo(goal.due_date, progress)
+        return (
+          <li key={goal.id} className="group mb-2 w-full rounded-lg border border-border bg-card transition-all duration-300">
+            <div className="flex min-h-[88px] w-full items-start gap-3 px-6 py-5">
+              <button type="button" className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => onGoalClick(goal)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-sm font-semibold text-foreground">{goal.name}</h2>
+                    {goal.description && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{goal.description}</p>}
+                  </div>
+                  {goal.priority > 0 && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{priorityLabel(goal.priority)}</span>}
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span>{done}</span><span className="font-medium text-foreground">{progress}%</span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[oklch(var(--border))]" role="progressbar" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${goal.name} 完成度`}>
+                  <div className="h-full rounded-full bg-[oklch(var(--primary))] transition-[width] duration-300" style={{ width: `${progress}%` }} />
+                </div>
+                {due && <p className={`mt-2 text-xs ${due.className}`}>{due.label}</p>}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={`打开目标 ${goal.name} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => onEditGoal(goal)}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />编辑</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onArchiveGoal(goal.id)}><Archive className="mr-2 h-4 w-4" aria-hidden="true" />存档</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(goal)}><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />删除</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </li>
+        )
+      })}
+      </ul>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>删除目标？</AlertDialogTitle><AlertDialogDescription>“{deleteTarget?.name}”会被删除，已关联任务会保留但解除关联。</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction onClick={() => { if (deleteTarget) onDeleteGoal(deleteTarget.id); setDeleteTarget(null) }}>删除</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
 }
-
-const GoalCard: React.FC<GoalCardProps> = React.memo(({
-  goal,
-  onGoalClick,
-  onDeleteGoal,
-  formatDate,
-  getDueDateColor
-}) => {
-  const progress = goal.progress || 0;
-  const totalTasks = goal.total_tasks || 0;
-  const completedTasks = goal.completed_tasks || 0;
-
-  const handleCardClick = (e: React.MouseEvent) => {
-    // 如果点击的是按钮，不触发卡片点击
-    if ((e.target as HTMLElement).closest('button')) {
-      return;
-    }
-    onGoalClick(goal);
-  };
-
-  // 编辑与存档操作已移除; 点击卡片将打开目标详情
-
-  return (
-    <li
-      className={`flex items-start gap-3 p-4 rounded-lg border border-border bg-background hover:bg-muted/50 transition-colors duration-150 cursor-pointer`}
-    >
-      {/* 头部 */}
-      <div className={`flex-1 ${progress === 100 ? 'opacity-75' : ''}`} onClick={handleCardClick}>
-        <div className="flex justify-between items-start mb-3">
-          <h3 className="text-base font-medium text-foreground line-clamp-2 flex-1">
-          {goal.list_name && (
-            <span className="text-accent-foreground font-bold mr-1">
-              [{goal.list_name}]
-            </span>
-          )}
-          {goal.name}
-        </h3>
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="shrink-0 text-[oklch(var(--muted-foreground))]"
-              onClick={(e) => e.stopPropagation()}
-              aria-label="删除目标"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-            <AlertDialogHeader>
-              <AlertDialogTitle>删除目标？</AlertDialogTitle>
-              <AlertDialogDescription>目标会被删除，已关联任务会保留但解除目标关联。</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]" onClick={() => onDeleteGoal(goal.id)}>删除</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-
-      {/* 进度条 */}
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium text-muted-foreground">
-          进度
-        </span>
-        <span className="text-sm font-semibold text-foreground">
-          {progress}%
-        </span>
-      </div>
-      <div className="h-1.5 bg-muted w-full rounded-full overflow-hidden">
-        <div
-          className="h-full bg-foreground rounded-full transition-all duration-300"
-          style={{ width: `${progress}%` }}
-        />
-      </div>
-      <div className="flex justify-between items-center mt-1">
-        <span className="text-xs text-muted-foreground">
-          {completedTasks}/{totalTasks} 任务
-        </span>
-        {progress === 100 && (
-          <span className="text-xs text-[oklch(var(--primary))] font-medium">
-            ✓ 已完成
-          </span>
-        )}
-      </div>
-
-        {/* 底部信息 */}
-        <div className="flex justify-between items-center text-sm mt-2">
-          <div className="flex items-center gap-2">
-          {goal.priority > 0 && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-              优先级 {goal.priority}
-            </span>
-          )}
-        </div>
-        
-          {goal.due_date && (
-            <span 
-              className="text-xs font-medium"
-              style={{ color: getDueDateColor(goal.due_date, progress) }}
-            >
-              {formatDate(goal.due_date)}
-            </span>
-          )}
-        </div>
-      </div>
-    </li>
-  );
-});
-
-GoalCard.displayName = 'GoalCard';
-
-export default GoalsList;

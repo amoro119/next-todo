@@ -68,3 +68,5 @@ calendar.yml
 spec/
 supabase/migrations/
 supabase/.temp/
+.codex-audit/
+.impeccable/

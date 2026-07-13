@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Goal, List, Todo } from '@/lib/types';
+import { Dialog, DialogContent, DialogTitle } from '@/components/common/Dialog';
 
 interface GoalModalProps {
   isOpen: boolean;
@@ -246,28 +247,19 @@ const GoalModal: React.FC<GoalModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
-      onClick={(e) => e.target === e.currentTarget && handleClose()}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="goal-modal-title"
-    >
-  <div className="bg-background border border-border rounded-lg shadow-sm w-full max-w-md mx-4 max-h-[90vh] overflow-hidden">
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
+      <DialogContent showClose={false} className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md flex-col gap-0 overflow-hidden p-0">
         {/* 头部 */}
-  <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4 sm:px-6">
           <div>
-            <h2 
-              id="goal-modal-title" 
-              className="text-lg font-semibold text-foreground"
-            >
+            <DialogTitle className="text-left text-lg font-semibold text-foreground">
               {goal ? '编辑目标' : '创建新目标'}
-            </h2>
+            </DialogTitle>
           </div>
           <button
             onClick={handleClose}
             disabled={isSubmitting}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="关闭"
           >
             ×
@@ -275,7 +267,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
         </div>
 
         {/* 表单内容 */}
-        <div className="p-6 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
           <div className="space-y-4">
             {/* 目标名称 */}
             <div className="mb-4">
@@ -334,7 +326,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
             </div>
 
             {/* 日期范围 */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-0 sm:grid-cols-2 sm:gap-4">
               <div className="mb-4">
                 <label htmlFor="goal-start-date" className="block text-sm font-medium text-foreground mb-1">
                   开始日期
@@ -384,19 +376,19 @@ const GoalModal: React.FC<GoalModalProps> = ({
 
             {/* 通用错误信息 */}
             {errors.general && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                <p className="text-red-600 text-sm">{errors.general}</p>
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3">
+                <p className="text-sm text-destructive">{errors.general}</p>
               </div>
             )}
           </div>
         </div>
 
         {/* 底部按钮 */}
-  <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-4 py-4 sm:px-6">
           <button
             onClick={handleClose}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-muted"
+            className="min-h-10 rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
           取消
           </button>
@@ -404,13 +396,13 @@ const GoalModal: React.FC<GoalModalProps> = ({
           <button
             onClick={handleSave}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-foreground text-background hover:opacity-90"
+            className="min-h-10 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           >
             {isSubmitting ? '保存中...' : goal ? '保存' : '创建目标'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

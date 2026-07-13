@@ -199,6 +199,21 @@ export function useGoalOperations(
     [goals, memoApi, goalStore, todoStore]
   )
 
+  const handleArchiveGoal = useCallback(
+    async (goalId: string) => {
+      const goal = goals.find((item) => item.id === goalId)
+      if (!goal) return
+      try {
+        await goalStore.getState().updateGoal(goalId, { is_archived: !goal.is_archived })
+        toast.success(goal.is_archived ? '目标已恢复' : '目标已存档')
+      } catch (error) {
+        toast.error(goal.is_archived ? '恢复目标失败' : '存档目标失败')
+        throw error
+      }
+    },
+    [goals, goalStore]
+  )
+
   const handleAssociateTasks = useCallback(
     async (taskIds: string[], goalId: string) => {
       try {
@@ -223,6 +238,7 @@ export function useGoalOperations(
     handleSaveGoal,
     handleUpdateGoal,
     handleDeleteGoal,
+    handleArchiveGoal,
     handleAssociateTasks,
   }
 }

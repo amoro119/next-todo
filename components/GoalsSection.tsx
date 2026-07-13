@@ -2,6 +2,7 @@
 
 import GoalsMainInterface from "@/components/goals/GoalsMainInterface"
 import GoalDetails from "@/components/goals/GoalDetails"
+import GoalHeader from "@/components/goals/GoalHeader"
 import type { Todo, List, Goal } from "@/lib/types"
 import type { GoalsMainInterfaceRef } from "@/components/goals/GoalsMainInterface"
 import type { RefObject } from "react"
@@ -21,6 +22,7 @@ interface GoalsSectionProps {
   handleCreateGoal: () => void
   handleUpdateGoal: (g: Goal) => Promise<void>
   handleDeleteGoal: (id: string) => Promise<void>
+  handleArchiveGoal: (id: string) => Promise<void>
   goalsMainInterfaceRef: RefObject<GoalsMainInterfaceRef | null>
 }
 
@@ -39,25 +41,34 @@ export function GoalsSection({
   handleCreateGoal,
   handleUpdateGoal,
   handleDeleteGoal,
+  handleArchiveGoal,
   goalsMainInterfaceRef,
 }: GoalsSectionProps) {
   return (
-    <div className="flex h-full min-h-0 w-full flex-col px-4">
-      <div className="flex min-h-0 flex-1 w-full flex-col goals">
+    <div className="mx-auto flex h-full min-h-0 w-full flex-col px-4">
+      <div className="goals flex min-h-0 w-full flex-1 flex-col">
         <div className="flex min-h-0 flex-1 w-full flex-col">
           {selectedGoal ? (
-            <GoalDetails
-              goal={selectedGoal}
-              todos={todos.filter((t) => t.goal_id === selectedGoal.id)}
-              goals={goals}
-              lists={lists}
-              onUpdateGoal={handleUpdateGoal}
-              onUpdateTodo={handleUpdateTodo}
-              onDeleteTodo={handleDeleteTodo}
-              onCreateTodo={handleCreateTodoForGoal}
-              onAssociateTasks={handleAssociateTasks}
-              onClose={() => setSelectedGoal(null)}
-            />
+            <>
+              <GoalHeader
+                selectedGoal={selectedGoal}
+                goalCount={goals.length}
+                onBackToList={() => setSelectedGoal(null)}
+                onEditGoal={handleEditGoal}
+              />
+              <GoalDetails
+                goal={selectedGoal}
+                todos={todos.filter((t) => t.goal_id === selectedGoal.id)}
+                goals={goals}
+                lists={lists}
+                onUpdateGoal={handleUpdateGoal}
+                onUpdateTodo={handleUpdateTodo}
+                onDeleteTodo={handleDeleteTodo}
+                onCreateTodo={handleCreateTodoForGoal}
+                onAssociateTasks={handleAssociateTasks}
+                onClose={() => setSelectedGoal(null)}
+              />
+            </>
           ) : (
             <div className="flex min-h-0 flex-1 w-full flex-col">
               <GoalsMainInterface
@@ -77,7 +88,9 @@ export function GoalsSection({
                 onAssociateTasks={handleAssociateTasks}
                 onEditGoal={handleEditGoal}
                 onCreateGoal={handleCreateGoal}
-                onArchiveGoal={(goalId) => console.log("Archive goal:", goalId)}
+                onArchiveGoal={handleArchiveGoal}
+                selectedGoal={selectedGoal}
+                onSelectGoal={setSelectedGoal}
               />
             </div>
           )}

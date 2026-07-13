@@ -91,6 +91,7 @@ export function AppModals(props: AppModalsProps) {
           isOpen={isTodoModalOpen}
           mode="create"
           lists={lists}
+          goals={goals}
           initialData={{ title: newTodoTitle, start_date: newTodoDate, due_date: newTodoDate }}
           onSubmit={onCreateTodo}
           onClose={onCloseTodoModal}
@@ -114,6 +115,7 @@ export function AppModals(props: AppModalsProps) {
           isOpen={isCalendarCreateModalOpen}
           mode="create"
           lists={lists}
+          goals={goals}
           initialData={{ title: newTodoTitle, start_date: calendarSelectedDate, due_date: calendarSelectedDate }}
           onSubmit={onCalendarCreateTodo}
           onClose={onCloseCalendarCreateModal}
@@ -125,6 +127,7 @@ export function AppModals(props: AppModalsProps) {
           isOpen={!!selectedTodo}
           mode="edit"
           lists={lists}
+          goals={goals}
           initialData={selectedTodo}
           onSubmit={onSaveTodoDetails}
           onUpdate={onUpdateTodo}

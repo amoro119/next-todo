@@ -35,8 +35,6 @@ export default function Page() {
   const lists = useMemo(() => listsRaw.map(normalizeList), [listsRaw])
 
   const goals = useMemo(() => {
-    if (!goalsRaw.length || !listsRaw.length || !todosRaw.length)
-      return goalsRaw.map((g) => ({ ...g, list_name: null, total_tasks: 0, completed_tasks: 0, progress: 0 } as Goal))
     return goalsRaw.map((goal) => {
       const list = listsRaw.find((l) => l.id === goal.list_id)
       const taskTodos = todosRaw.filter((t) => t.goal_id === goal.id && !t.deleted)
@@ -219,6 +217,7 @@ export default function Page() {
           handleCreateGoal={goalOps.handleCreateGoal}
           handleUpdateGoal={goalOps.handleUpdateGoal}
           handleDeleteGoal={goalOps.handleDeleteGoal}
+          handleArchiveGoal={goalOps.handleArchiveGoal}
           goalsMainInterfaceRef={goalOps.goalsMainInterfaceRef}
         />
         </motion.div>
