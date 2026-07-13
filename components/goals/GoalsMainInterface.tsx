@@ -70,7 +70,7 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
       <div className="pt-4">
-        <header className="flex min-h-[49px] items-center justify-between gap-3 px-4 py-2">
+        <header className="flex min-h-[49px] items-center justify-between gap-3 py-2">
           <div className="min-w-0">
             <h1 className="text-left text-sm font-semibold text-foreground">我的目标</h1>
           </div>
@@ -81,11 +81,11 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
         </header>
       </div>
 
-      <div className="pt-4 px-4">
+      <div className="pt-4">
         <GoalViewOptions currentView={goalView} onViewChange={setGoalView} counts={goalCounts} />
       </div>
 
-      <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-4">
+      <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
         {goalView === 'active' ? (
           <GoalsList
             goals={visibleGoals}

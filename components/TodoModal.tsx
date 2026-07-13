@@ -317,16 +317,16 @@ export default function TodoModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
-        className="flex h-dvh w-full max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:h-[min(86vh,760px)] sm:max-w-2xl sm:rounded-lg"
+        className="grid h-[100dvh] w-full max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:h-[min(86dvh,760px)] sm:max-w-2xl sm:rounded-lg"
         onKeyDown={handleKeyDown}
       >
-        <DialogHeader className="shrink-0 border-b border-[oklch(var(--border))] px-5 py-4 text-left">
+        <DialogHeader className="shrink-0 border-b border-[oklch(var(--border))] px-5 py-4 pr-12 text-left">
           <DialogTitle className="text-base">
             {isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情'}
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="min-h-0">
+        <ScrollArea className="min-h-0 w-full">
           <div className="space-y-4 px-5 py-4">
             <div>
               {mode === 'edit' ? (
@@ -506,13 +506,13 @@ export default function TodoModal({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-[oklch(var(--border))] px-5 py-4 sm:space-x-0">
+        <DialogFooter className="shrink-0 border-t border-[oklch(var(--border))] px-5 py-4 sm:space-x-0">
           {mode === 'edit' ? (
             isRecycled ? (
-              <>
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button type="button" variant="destructive">永久删除</Button>
+                    <Button type="button" variant="destructive" className="order-2 w-full sm:order-1 sm:w-auto">永久删除</Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
@@ -525,14 +525,16 @@ export default function TodoModal({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
-                <Button type="button" onClick={handleRestore}>恢复</Button>
-              </>
+                <div className="order-1 grid grid-cols-2 gap-2 sm:order-2 sm:flex">
+                  <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
+                  <Button type="button" onClick={handleRestore}>恢复</Button>
+                </div>
+              </div>
             ) : (
-              <>
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button type="button" variant="destructive">删除</Button>
+                    <Button type="button" variant="destructive" className="order-2 w-full sm:order-1 sm:w-auto">删除</Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
@@ -545,15 +547,17 @@ export default function TodoModal({
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
-                <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-                <Button type="button" onClick={handleSave}>保存</Button>
-              </>
+                <div className="order-1 grid grid-cols-2 gap-2 sm:order-2 sm:flex">
+                  <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+                  <Button type="button" onClick={handleSave}>保存</Button>
+                </div>
+              </div>
             )
           ) : (
-            <>
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:justify-end">
               <Button type="button" variant="outline" onClick={onClose}>取消</Button>
               <Button type="button" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</Button>
-            </>
+            </div>
           )}
         </DialogFooter>
       </DialogContent>

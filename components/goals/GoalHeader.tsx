@@ -29,7 +29,7 @@ export default function GoalHeader({ selectedGoal, onBackToList, onEditGoal }: G
   const due = dueLabel(selectedGoal.due_date)
 
   return (
-    <header className="flex items-center gap-3 border-b border-border py-4 sm:py-5">
+    <header className="flex items-center gap-3 py-4 sm:py-5">
       <Button type="button" variant="ghost" size="icon" onClick={onBackToList} aria-label="返回目标列表">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
       </Button>

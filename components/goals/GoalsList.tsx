@@ -69,16 +69,35 @@ export default function GoalsList({ goals, onGoalClick, onEditGoal, onArchiveGoa
         const done = goal.total_tasks ? `${goal.completed_tasks ?? 0}/${goal.total_tasks} 项任务` : '尚未添加任务'
         const due = dueInfo(goal.due_date, progress)
         return (
-          <li key={goal.id} className="group mb-2 w-full rounded-lg border border-border bg-card transition-all duration-300">
-            <div className="flex min-h-[88px] w-full items-start gap-3 px-6 py-5">
-              <button type="button" className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => onGoalClick(goal)}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-sm font-semibold text-foreground">{goal.name}</h2>
-                    {goal.description && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{goal.description}</p>}
-                  </div>
+          <li key={goal.id} className="group mb-3 w-full rounded-lg border border-border bg-card transition-all duration-300">
+            <div className="min-h-[88px] w-full px-4 py-4">
+              <div className="flex min-h-8 items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <h2 className="min-w-0">
+                    <a
+                      href={`#goal-${goal.id}`}
+                      className="block truncate text-sm font-semibold text-foreground underline-offset-4 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        onGoalClick(goal)
+                      }}
+                    >
+                      {goal.name}
+                    </a>
+                  </h2>
                   {goal.priority > 0 && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">{priorityLabel(goal.priority)}</span>}
                 </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={`打开目标 ${goal.name} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => onEditGoal(goal)}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />编辑</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onArchiveGoal(goal.id)}><Archive className="mr-2 h-4 w-4" aria-hidden="true" />存档</DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(goal)}><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />删除</DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <div>
+                {goal.description && <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{goal.description}</p>}
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
                   <span>{done}</span><span className="font-medium text-foreground">{progress}%</span>
                 </div>
@@ -86,15 +105,7 @@ export default function GoalsList({ goals, onGoalClick, onEditGoal, onArchiveGoa
                   <div className="h-full rounded-full bg-[oklch(var(--primary))] transition-[width] duration-300" style={{ width: `${progress}%` }} />
                 </div>
                 {due && <p className={`mt-2 text-xs ${due.className}`}>{due.label}</p>}
-              </button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="shrink-0" aria-label={`打开目标 ${goal.name} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => onEditGoal(goal)}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />编辑</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onArchiveGoal(goal.id)}><Archive className="mr-2 h-4 w-4" aria-hidden="true" />存档</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(goal)}><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />删除</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              </div>
             </div>
           </li>
         )

@@ -83,7 +83,7 @@ export default function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, o
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="space-y-5 pb-8 pt-4 sm:pt-5">
+      <div className="space-y-5 pb-8">
         <section className="rounded-lg border border-border bg-card p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
