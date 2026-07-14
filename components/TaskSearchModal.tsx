@@ -13,6 +13,16 @@ import { RecurringTaskGenerator } from "../lib/recurring/RecurringTaskGenerator"
 import { dbUTCToDisplayDate } from "../lib/utils/dateUtils";
 import Image from "next/image";
 import React from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface TaskSearchModalProps {
   isOpen: boolean;
@@ -29,7 +39,6 @@ interface TaskSearchModalState {
   searchResults: Todo[];
   isLoading: boolean;
   isloadingMore: boolean; // 添加加载更多状态
-  isVisible: boolean;
   searchError: string | null;
   lastSearchTime: number;
   hasMoreResults: boolean; // 添加是否有更多结果的标志
@@ -235,7 +244,6 @@ export default function TaskSearchModal({
     searchResults: [],
     isLoading: false,
     isloadingMore: false, // 初始化加载更多状态
-    isVisible: false,
     searchError: null,
     lastSearchTime: 0,
     hasMoreResults: true, // 初始化更多结果标志
@@ -244,118 +252,33 @@ export default function TaskSearchModal({
   // 添加状态来存储总匹配数
   const [totalMatches, setTotalMatches] = useState<number>(0);
 
-  const modalRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const previousActiveElement = useRef<HTMLElement | null>(null);
   const searchAbortController = useRef<AbortController | null>(null);
   const resultsListRef = useRef<HTMLDivElement>(null);
 
   // 使用防抖处理搜索查询
   const debouncedSearchQuery = useDebounce(state.searchQuery, 300);
 
-  // Handle modal visibility and focus management
+  // Reset search state when the dialog closes and cancel any in-flight search.
   useEffect(() => {
-    if (isOpen) {
-      // Store the previously focused element
-      previousActiveElement.current = document.activeElement as HTMLElement;
+    if (isOpen) return;
 
-      // Set modal as visible
-      setState((prev) => ({ ...prev, isVisible: true }));
+    setState((prev) => ({
+      ...prev,
+      searchQuery: "",
+      searchResults: [],
+      isLoading: false,
+      isloadingMore: false,
+      searchError: null,
+      lastSearchTime: 0,
+      hasMoreResults: true,
+    }));
+    setTotalMatches(0);
 
-      // Focus the search input after a brief delay to ensure modal is rendered
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
-
-      // Prevent background scrolling
-      document.body.style.overflow = "hidden";
-    } else {
-      // Reset state when closing
-      setState((prev) => ({
-        ...prev,
-        isVisible: false,
-        searchQuery: "",
-        searchResults: [],
-        isLoading: false,
-        searchError: null,
-        lastSearchTime: 0,
-      }));
-      setTotalMatches(0);
-
-      // 取消正在进行的搜索
-      if (searchAbortController.current) {
-        searchAbortController.current.abort();
-        searchAbortController.current = null;
-      }
-
-      // Restore background scrolling
-      document.body.style.overflow = "";
-
-      // Restore focus to previously focused element
-      if (previousActiveElement.current) {
-        previousActiveElement.current.focus();
-      }
+    if (searchAbortController.current) {
+      searchAbortController.current.abort();
+      searchAbortController.current = null;
     }
-
-    // Cleanup on unmount
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
-
-  // Handle keyboard events for modal
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-
-      // Handle Ctrl/Cmd+K to close modal when already open
-      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
-  // Focus trap implementation
-  useEffect(() => {
-    if (!isOpen || !modalRef.current) return;
-
-    const modal = modalRef.current;
-    const focusableElements = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-
-    const firstElement = focusableElements[0] as HTMLElement;
-    const lastElement = focusableElements[
-      focusableElements.length - 1
-    ] as HTMLElement;
-
-    const handleTabKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-
-      if (e.shiftKey) {
-        if (document.activeElement === firstElement) {
-          lastElement?.focus();
-          e.preventDefault();
-        }
-      } else {
-        if (document.activeElement === lastElement) {
-          firstElement?.focus();
-          e.preventDefault();
-        }
-      }
-    };
-
-    modal.addEventListener("keydown", handleTabKey);
-    return () => modal.removeEventListener("keydown", handleTabKey);
   }, [isOpen]);
 
   // Handle scroll for infinite loading
@@ -576,58 +499,25 @@ export default function TaskSearchModal({
     }));
   };
 
-  
-  // Handle overlay click to close modal
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-
-  
-  // Handle close button click
-  const handleCloseClick = () => {
-    onClose();
-  };
-
-  // Don't render anything if modal is not open
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-16"
-      onClick={handleOverlayClick}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="search-modal-title"
-    >
-      <div
-        ref={modalRef}
-        className="bg-background border border-border rounded-lg w-full max-w-xl shadow-sm overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        size="lg"
+        className="max-h-[calc(100dvh-2rem)]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          searchInputRef.current?.focus();
+        }}
       >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 id="search-modal-title" className="text-sm font-semibold text-foreground">
-            搜索任务
-          </h2>
-          <button
-            className="p-1.5 rounded-md hover:bg-muted transition-colors duration-150 text-muted-foreground text-lg leading-none"
-            onClick={handleCloseClick}
-            aria-label="关闭搜索"
-          >
-            ×
-          </button>
-        </div>
+        <DialogHeader>
+          <DialogTitle>搜索任务</DialogTitle>
+          <DialogDescription>搜索任务标题、内容和标签</DialogDescription>
+        </DialogHeader>
 
-        {/* Search Input */}
-        <div className="px-4 py-2 border-b border-border">
-          <input
+        <div className="shrink-0 border-b border-border px-5 py-3">
+          <Input
             ref={searchInputRef}
             type="text"
-            className="w-full py-2 text-sm text-foreground bg-background placeholder:text-muted-foreground focus:outline-none"
             placeholder="搜索任务标题、内容、标签..."
             value={state.searchQuery}
             onChange={handleSearchChange}
@@ -635,8 +525,7 @@ export default function TaskSearchModal({
           />
         </div>
 
-        {/* Search Results Container */}
-        <div className="max-h-[60vh] overflow-y-auto">
+        <DialogBody className="max-h-[60vh] p-0">
           {/* 加载状态 */}
           {state.isLoading && (
             <div className="flex items-center gap-2 px-4 py-3 text-muted-foreground text-sm">
@@ -649,14 +538,17 @@ export default function TaskSearchModal({
           {!state.isLoading && state.searchError && (
               <div className="px-4 py-6 text-center text-muted-foreground text-sm">
               <p>{state.searchError}</p>
-              <button
-                className="mt-2 px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted transition-colors duration-150"
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2"
                 onClick={() =>
                   setState((prev) => ({ ...prev, searchError: null }))
                 }
               >
                 重试
-              </button>
+              </Button>
             </div>
           )}
 
@@ -716,8 +608,8 @@ export default function TaskSearchModal({
                 </div>
               </div>
             )}
-        </div>
-      </div>
-    </div>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

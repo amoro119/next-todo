@@ -2,7 +2,10 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Goal, List, Todo } from '@/lib/types';
-import { Dialog, DialogContent, DialogTitle } from '@/components/common/Dialog';
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 
 interface GoalModalProps {
   isOpen: boolean;
@@ -230,57 +233,27 @@ const GoalModal: React.FC<GoalModalProps> = ({
     }
   }, [isSubmitting, onClose]);
 
-  // 处理键盘事件
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting && isOpen) {
-        handleClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-      return () => document.removeEventListener('keydown', handleKeyDown);
-    }
-  }, [isOpen, isSubmitting, handleClose]);
-
-  if (!isOpen) return null;
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
-      <DialogContent showClose={false} className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md flex-col gap-0 overflow-hidden p-0">
-        {/* 头部 */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-4 sm:px-6">
-          <div>
-            <DialogTitle className="text-left text-lg font-semibold text-foreground">
-              {goal ? '编辑目标' : '创建新目标'}
-            </DialogTitle>
-          </div>
-          <button
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="flex h-10 w-10 items-center justify-center rounded-md text-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label="关闭"
-          >
-            ×
-          </button>
-        </div>
+      <DialogContent size="md" className="max-h-[calc(100dvh-2rem)]">
+        <DialogHeader>
+          <DialogTitle>{goal ? '编辑目标' : '创建新目标'}</DialogTitle>
+        </DialogHeader>
 
         {/* 表单内容 */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+        <DialogBody className="sm:py-6">
           <div className="space-y-4">
             {/* 目标名称 */}
             <div className="mb-4">
               <label htmlFor="goal-name" className="block text-sm font-medium text-foreground mb-1">
                 目标名称 <span className="text-red-500">*</span>
               </label>
-              <input
+              <Input
                 id="goal-name"
                 type="text"
                 value={formData.name}
                 onChange={(e) => handleInputChange('name', e.target.value)}
                 placeholder="输入目标名称"
-                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 maxLength={100}
                 autoFocus
               />
@@ -294,13 +267,12 @@ const GoalModal: React.FC<GoalModalProps> = ({
               <label htmlFor="goal-description" className="block text-sm font-medium text-foreground mb-1">
                 描述
               </label>
-              <textarea
+              <Textarea
                 id="goal-description"
                 value={formData.description}
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 placeholder="输入目标描述（可选）"
                 rows={3}
-                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 maxLength={500}
               />
             </div>
@@ -331,24 +303,23 @@ const GoalModal: React.FC<GoalModalProps> = ({
                 <label htmlFor="goal-start-date" className="block text-sm font-medium text-foreground mb-1">
                   开始日期
                 </label>
-                <input
+                <Input
                   id="goal-start-date"
                   type="date"
                   value={formData.start_date}
                   onChange={(e) => handleInputChange('start_date', e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
               <div className="mb-4">
                 <label htmlFor="goal-due-date" className="block text-sm font-medium text-foreground mb-1">
                   截止日期
                 </label>
-                <input
+                <Input
                   id="goal-due-date"
                   type="date"
                   value={formData.due_date}
                   onChange={(e) => handleInputChange('due_date', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${errors.due_date ? 'border-destructive' : 'border-border'}`}
+                  className={errors.due_date ? 'border-[oklch(var(--destructive))]' : undefined}
                 />
                 {errors.due_date && (
                   <p className="text-destructive text-sm mt-1">{errors.due_date}</p>
@@ -381,26 +352,17 @@ const GoalModal: React.FC<GoalModalProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </DialogBody>
 
         {/* 底部按钮 */}
-        <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-4 py-4 sm:px-6">
-          <button
-            onClick={handleClose}
-            disabled={isSubmitting}
-            className="min-h-10 rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
-          取消
-          </button>
-          
-          <button
-            onClick={handleSave}
-            disabled={isSubmitting}
-            className="min-h-10 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-          >
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
+            取消
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={isSubmitting}>
             {isSubmitting ? '保存中...' : goal ? '保存' : '创建目标'}
-          </button>
-        </div>
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

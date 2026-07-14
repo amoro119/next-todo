@@ -6,9 +6,11 @@ import { useStores } from "@/lib/stores/createStores"
 import { parseDidaCsv } from "@/lib/csvParser"
 import { RRuleEngine } from "@/lib/recurring/RRuleEngine"
 import type { Todo, List } from "@/lib/types"
+import { useAppDialog } from "@/lib/hooks/useAppDialog"
 
 export function useSyncOperations(todos: Todo[], lists: List[]) {
   const { todoStore, listStore } = useStores()
+  const { alert, confirm } = useAppDialog()
 
   const handleImport = useCallback(
     async (file: File) => {
@@ -27,14 +29,20 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
             console.log(`[CSV Import] Parsed: ${parsedTodos.length} active + ${removedTodos.length} removed = ${todosToImport.length} total`)
             console.log(`[CSV Import] With completedTime: ${todosToImport.filter(t => t.completed_time).length} | Without: ${todosToImport.filter(t => !t.completed_time).length}`)
           } else if (file.name.endsWith(".sql")) {
-            alert("SQL 文件导入在当前版本中暂不可用。请使用 CSV 格式导入。")
+            await alert({
+              title: "暂不支持 SQL 导入",
+              description: "当前版本请使用 CSV 格式导入。",
+            })
             return
           } else {
-            alert("不支持的文件格式。请选择 .csv 或 .sql 文件。")
+            await alert({
+              title: "不支持的文件格式",
+              description: "请选择 .csv 或 .sql 文件。",
+            })
             return
           }
           if (todosToImport.length === 0) {
-            alert("没有找到可导入的事项。")
+            await alert({ title: "没有可导入的事项" })
             return
           }
 
@@ -55,7 +63,11 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
                 })
                 .join("\n") +
               "\n\n是否继续导入？"
-            const confirmed = confirm(previewMessage)
+            const confirmed = await confirm({
+              title: "确认导入重复任务",
+              description: previewMessage,
+              confirmLabel: "继续导入",
+            })
             if (!confirmed) return
           }
 
@@ -96,16 +108,19 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
           if (skippedCount === 0) {
             console.log(summary)
           } else {
-            alert(summary)
+            await alert({ title: "导入完成", description: summary })
           }
         } catch (error) {
           console.error("导入失败:", error)
-          alert(`导入失败: ${error instanceof Error ? error.message : "Unknown error"}`)
+          await alert({
+            title: "导入失败",
+            description: error instanceof Error ? error.message : "未知错误",
+          })
         }
       }
       reader.readAsText(file)
     },
-    [lists, listStore, todoStore]
+    [lists, listStore, todoStore, alert, confirm]
   )
 
   const handleExport = useCallback(async () => {
@@ -163,9 +178,12 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Export failed:", error)
-      alert(`导出失败: ${error instanceof Error ? error.message : "Unknown error"}`)
+      await alert({
+        title: "导出失败",
+        description: error instanceof Error ? error.message : "未知错误",
+      })
     }
-  }, [todos, lists])
+  }, [todos, lists, alert])
 
   return {
     handleImport,

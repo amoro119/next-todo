@@ -12,6 +12,7 @@ import { deleteRecordsFromSupabase } from "@/lib/supabase/syncOperations"
 import { RecurringTaskIntegration } from "@/lib/recurring/RecurringTaskIntegration"
 import type { Todo, List, Goal } from "@/lib/types"
 import { useOptimizedInboxFilter, useOptimizedInboxSort } from "@/components/InboxPerformanceOptimizer"
+import { useAppDialog } from "@/lib/hooks/useAppDialog"
 
 /* ------------------------------------------------------------------ */
 /*  Helpers & utilities (extracted verbatim from old page.tsx)        */
@@ -221,6 +222,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   }, [])
 
   const { todoStore, listStore } = useStores()
+  const { alert, confirm } = useAppDialog()
 
   // ── Init recurring task system ──────────────────────────────────
   useEffect(() => {
@@ -413,13 +415,10 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       const recycledTodos = todos.filter((t: Todo) => t.deleted)
       const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId)
       if (!todoToDelete) return
-      const confirmed = window.confirm(`确认要永久删除任务 "${todoToDelete.title}" 吗？此操作无法撤销。`)
-      if (confirmed) {
-        await api.hardDeleteTodo(todoId)
-        todoStore.setState((s) => ({ todos: s.todos.filter((t) => t.id !== todoId) }))
-        if (supabase) await deleteRecordsFromSupabase(supabase, 'todos', [todoId])
-        if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null)
-      }
+      await api.hardDeleteTodo(todoId)
+      todoStore.setState((s) => ({ todos: s.todos.filter((t) => t.id !== todoId) }))
+      if (supabase) await deleteRecordsFromSupabase(supabase, 'todos', [todoId])
+      if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null)
     },
     [todos, selectedTodo, api, todoStore]
   )
@@ -444,19 +443,20 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
         return newList
       } catch (error) {
         console.error("Failed to add list:", error)
-        alert(`添加清单失败: ${error instanceof Error ? error.message : "未知错误"}`)
+        await alert({
+          title: "添加清单失败",
+          description: error instanceof Error ? error.message : "未知错误",
+        })
         return null
       }
     },
-    [lists, listStore]
+    [lists, listStore, alert]
   )
 
   const handleDeleteList = useCallback(
     async (listId: string) => {
       const listToDelete = lists.find((l: List) => l.id === listId)
       if (!listToDelete) return
-      const confirmed = window.confirm(`确认删除清单 "${listToDelete.name}" 吗？清单下的所有待办事项将被移至收件箱。`)
-      if (!confirmed) return
       const allTodos = await api.getTodos()
       const todosToUpdate = allTodos.filter((t) => t.list_id === listId)
       for (const todo of todosToUpdate) await todoStore.getState().updateTodo(todo.id, { list_id: null })
@@ -496,7 +496,10 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
 
   // ── Undo ────────────────────────────────────────────────────────
   const handleUndo = useCallback(async () => {
-    if (!lastAction) { alert("没有可撤销的操作"); return }
+    if (!lastAction) {
+      await alert({ title: "无法撤销", description: "没有可撤销的操作。" })
+      return
+    }
     try {
       switch (lastAction.type) {
         case "toggle-complete":
@@ -515,17 +518,24 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
           break
       }
     } catch (error) {
-      alert(`撤销操作失败: ${error instanceof Error ? error.message : "未知错误"}`)
+      await alert({
+        title: "撤销操作失败",
+        description: error instanceof Error ? error.message : "未知错误",
+      })
     }
     setLastAction(null)
-  }, [lastAction, handleUpdateTodo])
+  }, [lastAction, handleUpdateTodo, alert])
 
   // ── Mark all completed ──────────────────────────────────────────
   const handleMarkAllCompleted = useCallback(
     async (displayTodos: Todo[]) => {
       const todosToUpdate = displayTodos.filter((t: Todo) => !t.completed_time)
       if (todosToUpdate.length === 0) return
-      const confirmed = await window.confirm(`确认将当前视图的 ${todosToUpdate.length} 项全部标记为完成吗？`)
+      const confirmed = await confirm({
+        title: "批量完成任务",
+        description: `确认将当前视图的 ${todosToUpdate.length} 项全部标记为完成吗？`,
+        confirmLabel: "全部完成",
+      })
       if (!confirmed) return
       const newCompletedTime = new Date().toISOString()
       setLastAction({
@@ -535,7 +545,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       const updates = { completed: true, completed_time: newCompletedTime }
       for (const todo of todosToUpdate) await handleUpdateTodo(todo.id, updates)
     },
-    [handleUpdateTodo]
+    [handleUpdateTodo, confirm]
   )
 
   // ── Create todo for goal (used by goal components) ─────────────
@@ -546,10 +556,13 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
         await todoStore.getState().addTodo(newTodo)
       } catch (error) {
         console.error("创建待办事项失败:", error)
-        alert(`创建待办事项失败: ${error instanceof Error ? error.message : "未知错误"}`)
+        await alert({
+          title: "创建待办事项失败",
+          description: error instanceof Error ? error.message : "未知错误",
+        })
       }
     },
-    [todoStore]
+    [todoStore, alert]
   )
 
   // ── Return ──────────────────────────────────────────────────────

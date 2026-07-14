@@ -180,7 +180,6 @@ interface TodoListProps {
   goals: Goal[];
   currentView: string;
   onToggleComplete: (todo: Todo) => void;
-  onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
   onViewGoal: (goalId: string) => void;
@@ -192,7 +191,6 @@ const TodoListComponent: React.FC<TodoListProps> = ({
   goals,
   currentView,
   onToggleComplete,
-  onDelete,
   onRestore,
   onSelectTodo,
   onViewGoal,
@@ -341,7 +339,6 @@ const TodoListComponent: React.FC<TodoListProps> = ({
               todos={group.todos}
               currentView={currentView}
               onToggleComplete={onToggleComplete}
-              onDelete={onDelete}
               onRestore={onRestore}
               onSelectTodo={onSelectTodo}
               onViewAllClick={onViewGoal}

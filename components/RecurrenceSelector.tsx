@@ -3,6 +3,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { RRuleEngine, RRULE_PATTERNS } from "../lib/recurring/RRuleEngine";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 interface RecurrenceSelectorProps {
   value: string | null;
@@ -280,6 +282,7 @@ function CustomRecurrenceModal({
   // 错误状态
   const [intervalError, setIntervalError] = useState(false);
   const [dateError, setDateError] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
   const weekDays = [
     { label: "日", value: 0 },
@@ -591,16 +594,13 @@ function CustomRecurrenceModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-      <div className="bg-background border border-border rounded-lg w-full max-w-lg shadow-sm max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-bold text-foreground">自定义重复</h2>
-          <button className="bg-transparent border-0 text-2xl cursor-pointer p-0 leading-none text-foreground" onClick={onCancel}>
-            ×
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel() }}>
+      <DialogContent size="lg" className="max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle>自定义重复</DialogTitle>
+        </DialogHeader>
 
-        <div className="px-6 py-6 overflow-y-auto flex flex-col gap-6">
+        <DialogBody className="flex flex-col gap-6 px-6 py-6">
           {/* 重复基础设置 */}
           <div className="flex flex-col gap-4">
             <div>
@@ -672,21 +672,27 @@ function CustomRecurrenceModal({
               </label>
             )}
           </div>
-        </div>
+          {validationError && (
+            <p role="alert" className="text-sm text-[oklch(var(--destructive))]">
+              {validationError}
+            </p>
+          )}
+        </DialogBody>
 
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-border">
-          <button className="px-4 py-2 rounded-lg border border-border text-sm font-semibold cursor-pointer hover:shadow-sm hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all duration-300" onClick={onCancel}>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onCancel}>
             取消
-          </button>
-          <button className="px-4 py-2 rounded-lg bg-foreground text-background text-sm font-semibold cursor-pointer hover:opacity-90 transition-opacity" onClick={() => {
+          </Button>
+          <Button type="button" onClick={() => {
             // 重置错误状态
             setIntervalError(false);
             setDateError(false);
+            setValidationError('');
             
             // 验证输入框不为空
             let hasError = false;
             
-            if (interval === null || interval === '') {
+            if (interval === null) {
               setIntervalError(true);
               hasError = true;
             }
@@ -703,16 +709,16 @@ function CustomRecurrenceModal({
             
             // 如果有错误，显示提示并返回
             if (hasError) {
-              alert('请填写所有必填项');
+              setValidationError('请填写所有必填项');
               return;
             }
             
             handleSave();
           }}>
             确定
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

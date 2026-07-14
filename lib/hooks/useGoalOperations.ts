@@ -12,6 +12,7 @@ import { sanitizeUuidField } from "@/lib/hooks/useTodoOperations"
 import type { Todo, List, Goal } from "@/lib/types"
 import { GoalFormData } from "@/components/goals/GoalModal"
 import type { GoalsMainInterfaceRef } from "@/components/goals/GoalsMainInterface"
+import { useAppDialog } from "@/lib/hooks/useAppDialog"
 
 export function useGoalOperations(
   goals: Goal[],
@@ -24,6 +25,7 @@ export function useGoalOperations(
 
   const { goalStore, todoStore } = useStores()
   const { setActiveSection } = useUIStore()
+  const { alert } = useAppDialog()
 
   const goalsMainInterfaceRef = useRef<GoalsMainInterfaceRef>(null)
 
@@ -159,11 +161,14 @@ export function useGoalOperations(
         return goalId!
       } catch (error) {
         console.error("保存目标失败:", error)
-        alert(`保存目标失败: ${error instanceof Error ? error.message : "未知错误"}`)
+        await alert({
+          title: "保存目标失败",
+          description: error instanceof Error ? error.message : "未知错误",
+        })
         throw error
       }
     },
-    [goals, goalStore, todoStore, onUpdateSelectedGoal]
+    [goals, goalStore, todoStore, onUpdateSelectedGoal, alert]
   )
 
   const handleUpdateGoal = useCallback(
@@ -175,10 +180,13 @@ export function useGoalOperations(
         await goalStore.getState().updateGoal(updatedGoal.id, updateData)
       } catch (error) {
         console.error("更新目标失败:", error)
-        alert(`更新目标失败: ${error instanceof Error ? error.message : "未知错误"}`)
+        await alert({
+          title: "更新目标失败",
+          description: error instanceof Error ? error.message : "未知错误",
+        })
       }
     },
-    [goalStore]
+    [goalStore, alert]
   )
 
   const handleDeleteGoal = useCallback(
@@ -221,10 +229,13 @@ export function useGoalOperations(
         console.log(`成功关联 ${taskIds.length} 个任务到目标 ${goalId}`)
       } catch (error) {
         console.error("关联任务失败:", error)
-        alert(`关联任务失败: ${error instanceof Error ? error.message : "未知错误"}`)
+        await alert({
+          title: "关联任务失败",
+          description: error instanceof Error ? error.message : "未知错误",
+        })
       }
     },
-    [todoStore]
+    [todoStore, alert]
   )
 
   return {

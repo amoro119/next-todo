@@ -105,8 +105,8 @@ const GoalsMainInterface = forwardRef<GoalsMainInterfaceRef, GoalsMainInterfaceP
         )}
       </div>
 
-      <div className="mt-auto flex items-center border-t border-border px-1 py-3">
-        <span className="text-xs text-muted-foreground">
+      <div className="mt-auto flex items-center border-t border-[oklch(var(--border))] px-1 py-3">
+        <span className="text-xs text-[oklch(var(--muted-foreground))]">
           {goalView === 'active' ? `${visibleGoals.length} 项进行中` : `共 ${visibleGoals.length} 项已存档`}
         </span>
       </div>

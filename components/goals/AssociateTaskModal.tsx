@@ -11,6 +11,9 @@ import {
 } from "../../lib/search/searchUtils";
 import { RecurringTaskGenerator } from "../../lib/recurring/RecurringTaskGenerator";
 import { dbUTCToDisplayDate } from "../../lib/utils/dateUtils";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import React from "react";
 
 interface AssociateTaskModalProps {
@@ -27,7 +30,6 @@ interface AssociateTaskModalState {
   searchResults: Todo[];
   selectedTaskIds: string[]; // 用于跟踪选定的任务
   isLoading: boolean;
-  isVisible: boolean;
   searchError: string | null;
   lastSearchTime: number;
 }
@@ -163,122 +165,34 @@ export default function AssociateTaskModal({
     searchResults: [],
     selectedTaskIds: [], // 初始化为空数组
     isLoading: false,
-    isVisible: false,
     searchError: null,
     lastSearchTime: 0,
   });
 
-  const modalRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const previousActiveElement = useRef<HTMLElement | null>(null);
   const searchAbortController = useRef<AbortController | null>(null);
 
   // 使用防抖处理搜索查询
   const debouncedSearchQuery = useDebounce(state.searchQuery, 300);
 
-  // Handle modal visibility and focus management
+  // Reset transient search state when the dialog closes.
   useEffect(() => {
-    if (isOpen) {
-      // Store the previously focused element
-      previousActiveElement.current = document.activeElement as HTMLElement;
+    if (isOpen) return;
 
-      // Set modal as visible
-      setState((prev) => ({ ...prev, isVisible: true }));
+    setState((prev) => ({
+      ...prev,
+      searchQuery: "",
+      searchResults: [],
+      selectedTaskIds: [],
+      isLoading: false,
+      searchError: null,
+      lastSearchTime: 0,
+    }));
 
-      // Focus the search input after a brief delay to ensure modal is rendered
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
-
-      // Prevent background scrolling
-      document.body.style.overflow = "hidden";
-    } else {
-      // Reset state when closing
-      setState((prev) => ({
-        ...prev,
-        isVisible: false,
-        searchQuery: "",
-        searchResults: [],
-        selectedTaskIds: [], // 重置选择
-        isLoading: false,
-        searchError: null,
-        lastSearchTime: 0,
-      }));
-
-      // 取消正在进行的搜索
-      if (searchAbortController.current) {
-        searchAbortController.current.abort();
-        searchAbortController.current = null;
-      }
-
-      // Restore background scrolling
-      document.body.style.overflow = "";
-
-      // Restore focus to previously focused element
-      if (previousActiveElement.current) {
-        previousActiveElement.current.focus();
-      }
+    if (searchAbortController.current) {
+      searchAbortController.current.abort();
+      searchAbortController.current = null;
     }
-
-    // Cleanup on unmount
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
-
-  // Handle keyboard events for modal
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-
-      // Handle Ctrl/Cmd+K to close modal when already open
-      if ((event.ctrlKey || event.metaKey) && event.key === "k") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
-  // Focus trap implementation
-  useEffect(() => {
-    if (!isOpen || !modalRef.current) return;
-
-    const modal = modalRef.current;
-    const focusableElements = modal.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-
-    const firstElement = focusableElements[0] as HTMLElement;
-    const lastElement = focusableElements[
-      focusableElements.length - 1
-    ] as HTMLElement;
-
-    const handleTabKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-
-      if (e.shiftKey) {
-        if (document.activeElement === firstElement) {
-          lastElement?.focus();
-          e.preventDefault();
-        }
-      } else {
-        if (document.activeElement === lastElement) {
-          firstElement?.focus();
-          e.preventDefault();
-        }
-      }
-    };
-
-    modal.addEventListener("keydown", handleTabKey);
-    return () => modal.removeEventListener("keydown", handleTabKey);
   }, [isOpen]);
 
   // 执行搜索的效果
@@ -458,18 +372,6 @@ export default function AssociateTaskModal({
     }));
   };
 
-  // Handle overlay click to close modal
-  const handleOverlayClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-
-  // Handle close button click
-  const handleCloseClick = () => {
-    onClose();
-  };
-
   // 处理任务选择切换
   const handleToggleSelect = (todoId: string) => {
     setState((prev) => {
@@ -499,44 +401,25 @@ export default function AssociateTaskModal({
     }
   };
 
-  // Don't render anything if modal is not open
-  if (!isOpen) {
-    return null;
-  }
-
   return (
-    <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center"
-      onClick={handleOverlayClick}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="search-modal-title"
-    >
-      <div
-        ref={modalRef}
-        className="bg-background border border-border rounded-lg shadow-sm w-full max-w-md mx-4 max-h-[80vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent
+        size="md"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          searchInputRef.current?.focus();
+        }}
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 id="search-modal-title" className="text-lg font-semibold text-foreground">
-            关联任务
-          </h2>
-          <button
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            onClick={handleCloseClick}
-            aria-label="关闭搜索"
-          >
-            ×
-          </button>
-        </div>
+        <DialogHeader>
+          <DialogTitle>关联任务</DialogTitle>
+        </DialogHeader>
 
         {/* Search Input */}
-        <div className="p-4 border-b border-border">
-          <input
+        <div className="shrink-0 border-b border-border px-5 py-4">
+          <Input
             ref={searchInputRef}
             type="text"
-            className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="搜索任务标题、内容、标签..."
             value={state.searchQuery}
             onChange={handleSearchChange}
@@ -545,7 +428,7 @@ export default function AssociateTaskModal({
         </div>
 
         {/* Search Results Container */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <DialogBody className="p-4">
           {/* 加载状态 */}
           {state.isLoading && (
             <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
@@ -618,19 +501,15 @@ export default function AssociateTaskModal({
                 </div>
               </div>
             )}
-        </div>
+        </DialogBody>
 
         {/* Modal Footer with Confirm Button */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
-          <button
-            className="px-4 py-2 rounded-md text-sm font-medium transition-colors bg-foreground text-background hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-            onClick={handleConfirmClick}
-            disabled={state.selectedTaskIds.length === 0}
-          >
+        <DialogFooter>
+          <Button type="button" onClick={handleConfirmClick} disabled={state.selectedTaskIds.length === 0}>
             确认关联 ({state.selectedTaskIds.length})
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -2,6 +2,16 @@
 
 import React, { useState } from 'react';
 import { Goal, Todo } from '@/lib/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface GoalGroup {
   goal: Goal | null; // null 表示未分组的任务
@@ -187,6 +197,8 @@ const TodoItem: React.FC<TodoItemProps> = React.memo(({
   onEdit,
   onDelete
 }) => {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
   const handleToggle = () => {
     onToggle(todo);
   };
@@ -198,9 +210,7 @@ const TodoItem: React.FC<TodoItemProps> = React.memo(({
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm('确定要删除这个任务吗？')) {
-      onDelete(todo.id);
-    }
+    setDeleteDialogOpen(true);
   };
 
   const formatDate = (dateString: string) => {
@@ -228,8 +238,9 @@ const TodoItem: React.FC<TodoItemProps> = React.memo(({
   };
 
   return (
-    <div
-      className={`
+    <>
+      <div
+        className={`
         flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer
         ${todo.completed 
           ? 'bg-gray-50 border-gray-200' 
@@ -237,7 +248,7 @@ const TodoItem: React.FC<TodoItemProps> = React.memo(({
         }
       `}
       onClick={handleToggle}
-    >
+      >
       {/* 完成状态按钮 */}
       <button
         onClick={handleToggle}
@@ -306,7 +317,29 @@ const TodoItem: React.FC<TodoItemProps> = React.memo(({
           </svg>
         </button>
       </div>
-    </div>
+      </div>
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除任务？</AlertDialogTitle>
+            <AlertDialogDescription>确定要删除这个任务吗？</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]"
+              onClick={() => {
+                onDelete(todo.id);
+                setDeleteDialogOpen(false);
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 });
 

@@ -90,7 +90,11 @@ export default function GoalsList({ goals, onGoalClick, onEditGoal, onArchiveGoa
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-8 w-3 shrink-0" aria-label={`打开目标 ${goal.name} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => onEditGoal(goal)}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />编辑</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => {
+                      // 先让 DropdownMenu 完成卸载，再挂载 Dialog，避免两个
+                      // DismissableLayer 同时切换时残留 body 的 pointer-events 锁。
+                      window.setTimeout(() => onEditGoal(goal), 0)
+                    }}><Pencil className="mr-2 h-4 w-4" aria-hidden="true" />编辑</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => onArchiveGoal(goal.id)}><Archive className="mr-2 h-4 w-4" aria-hidden="true" />存档</DropdownMenuItem>
                     <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(goal)}><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />删除</DropdownMenuItem>
                   </DropdownMenuContent>

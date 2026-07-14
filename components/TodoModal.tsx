@@ -6,11 +6,10 @@ import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
 import { toast } from 'sonner';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 
 interface TodoModalProps {
@@ -309,24 +308,23 @@ export default function TodoModal({
       if (editableTodo.title.trim()) {
         handleSave();
       }
-    } else if (e.key === 'Escape') {
-      onClose();
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
-        className="grid h-[100dvh] w-full max-w-none grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:h-[min(86dvh,760px)] sm:max-w-2xl sm:rounded-lg"
+        size="lg"
+        className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden sm:h-[min(86dvh,760px)]"
         onKeyDown={handleKeyDown}
       >
-        <DialogHeader className="shrink-0 border-b border-[oklch(var(--border))] px-5 py-4 pr-12 text-left">
+        <DialogHeader className="pr-12">
           <DialogTitle className="text-base">
             {isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情'}
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="min-h-0 w-full">
+        <DialogBody className="p-0">
           <div className="space-y-4 px-5 py-4">
             <div>
               {mode === 'edit' ? (
@@ -504,9 +502,9 @@ export default function TodoModal({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </DialogBody>
 
-        <DialogFooter className="shrink-0 border-t border-[oklch(var(--border))] px-5 py-4 sm:space-x-0">
+        <DialogFooter className="sm:space-x-0">
           {mode === 'edit' ? (
             isRecycled ? (
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

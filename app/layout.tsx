@@ -5,6 +5,7 @@ import { Inter, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
 import { DatabaseProvider } from "@/app/providers";
 import { ThemeProvider } from "@/app/providers/ThemeProvider";
+import { AppDialogProvider } from "@/lib/hooks/useAppDialog";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -54,11 +55,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${notoSansSC.variable} font-sans antialiased`}>
-        <ThemeProvider>
-          <DatabaseProvider>
-            {children}
-          </DatabaseProvider>
-        </ThemeProvider>
+        <AppDialogProvider>
+          <ThemeProvider>
+            <DatabaseProvider>
+              {children}
+            </DatabaseProvider>
+          </ThemeProvider>
+        </AppDialogProvider>
         <Script id="pwa-sw-register" strategy="afterInteractive">
           {`if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js')})}`}
         </Script>

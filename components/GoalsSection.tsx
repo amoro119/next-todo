@@ -1,8 +1,7 @@
 'use client'
 
 import GoalsMainInterface from "@/components/goals/GoalsMainInterface"
-import GoalDetails from "@/components/goals/GoalDetails"
-import GoalHeader from "@/components/goals/GoalHeader"
+import GoalDetailsDrawer from "@/components/goals/GoalDetailsDrawer"
 import type { Todo, List, Goal } from "@/lib/types"
 import type { GoalsMainInterfaceRef } from "@/components/goals/GoalsMainInterface"
 import type { RefObject } from "react"
@@ -47,53 +46,44 @@ export function GoalsSection({
   return (
     <div className="mx-auto flex h-full min-h-0 w-full flex-col px-4">
       <div className="goals flex min-h-0 w-full flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 w-full flex-col">
-          {selectedGoal ? (
-            <>
-              <GoalHeader
-                selectedGoal={selectedGoal}
-                goalCount={goals.length}
-                onBackToList={() => setSelectedGoal(null)}
-                onEditGoal={handleEditGoal}
-              />
-              <GoalDetails
-                goal={selectedGoal}
-                todos={todos.filter((t) => t.goal_id === selectedGoal.id)}
-                goals={goals}
-                lists={lists}
-                onUpdateGoal={handleUpdateGoal}
-                onUpdateTodo={handleUpdateTodo}
-                onDeleteTodo={handleDeleteTodo}
-                onCreateTodo={handleCreateTodoForGoal}
-                onAssociateTasks={handleAssociateTasks}
-                onClose={() => setSelectedGoal(null)}
-              />
-            </>
-          ) : (
-            <div className="flex min-h-0 flex-1 w-full flex-col">
-              <GoalsMainInterface
-                ref={goalsMainInterfaceRef}
-                goals={
-                  currentView === "goals-main"
-                    ? goals
-                    : goals.filter((goal) => goal.list_name === currentView)
-                }
-                todos={todos}
-                lists={lists}
-                onUpdateGoal={handleUpdateGoal}
-                onUpdateTodo={handleUpdateTodo}
-                onDeleteTodo={handleDeleteTodo}
-                onDeleteGoal={handleDeleteGoal}
-                onCreateTodo={handleCreateTodoForGoal}
-                onAssociateTasks={handleAssociateTasks}
-                onEditGoal={handleEditGoal}
-                onCreateGoal={handleCreateGoal}
-                onArchiveGoal={handleArchiveGoal}
-                selectedGoal={selectedGoal}
-                onSelectGoal={setSelectedGoal}
-              />
-            </div>
-          )}
+        <div className="flex min-h-0 flex-1 w-full flex-row overflow-hidden">
+          <div className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${selectedGoal ? 'sm:pr-5' : ''}`}>
+            <GoalsMainInterface
+              ref={goalsMainInterfaceRef}
+              goals={
+                currentView === "goals-main"
+                  ? goals
+                  : goals.filter((goal) => goal.list_name === currentView)
+              }
+              todos={todos}
+              lists={lists}
+              onUpdateGoal={handleUpdateGoal}
+              onUpdateTodo={handleUpdateTodo}
+              onDeleteTodo={handleDeleteTodo}
+              onDeleteGoal={handleDeleteGoal}
+              onCreateTodo={handleCreateTodoForGoal}
+              onAssociateTasks={handleAssociateTasks}
+              onEditGoal={handleEditGoal}
+              onCreateGoal={handleCreateGoal}
+              onArchiveGoal={handleArchiveGoal}
+              selectedGoal={selectedGoal}
+              onSelectGoal={setSelectedGoal}
+            />
+          </div>
+
+          <GoalDetailsDrawer
+            goal={selectedGoal}
+            todos={selectedGoal ? todos.filter((todo) => todo.goal_id === selectedGoal.id) : []}
+            goals={goals}
+            lists={lists}
+            onUpdateGoal={handleUpdateGoal}
+            onUpdateTodo={handleUpdateTodo}
+            onDeleteTodo={handleDeleteTodo}
+            onCreateTodo={handleCreateTodoForGoal}
+            onAssociateTasks={handleAssociateTasks}
+            onEditGoal={handleEditGoal}
+            onClose={() => setSelectedGoal(null)}
+          />
         </div>
       </div>
     </div>

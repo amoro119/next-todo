@@ -138,20 +138,18 @@ export function AppModals(props: AppModalsProps) {
         />
       )}
 
-      {isGoalModalOpen && (
-        <GoalModal
-          isOpen={isGoalModalOpen}
-          goal={editingGoalId && editingGoalId !== "new" ? goals.find((g) => g.id === editingGoalId) || undefined : undefined}
-          goalId={editingGoalId ?? undefined}
-          initialName={editingGoalId === "new" ? newGoalTitle : undefined}
-          lists={lists}
-          availableTodos={uncompletedTodos}
-          goalTodos={editingGoalId && editingGoalId !== "new" ? todos.filter((t) => t.goal_id === editingGoalId) : undefined}
-          onSave={onSaveGoal}
-          onGoalCreated={onGoalCreated}
-          onClose={onCloseGoalModal}
-        />
-      )}
+      <GoalModal
+        isOpen={isGoalModalOpen}
+        goal={editingGoalId && editingGoalId !== "new" ? goals.find((g) => g.id === editingGoalId) || undefined : undefined}
+        goalId={editingGoalId ?? undefined}
+        initialName={editingGoalId === "new" ? newGoalTitle : undefined}
+        lists={lists}
+        availableTodos={uncompletedTodos}
+        goalTodos={editingGoalId && editingGoalId !== "new" ? todos.filter((t) => t.goal_id === editingGoalId) : undefined}
+        onSave={onSaveGoal}
+        onGoalCreated={onGoalCreated}
+        onClose={onCloseGoalModal}
+      />
 
       <SettingsModal isOpen={isSettingsOpen} onClose={onCloseSettings} />
     </>

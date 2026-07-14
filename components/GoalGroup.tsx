@@ -8,7 +8,6 @@ interface GoalGroupProps {
   todos: Todo[];
   currentView: string;
   onToggleComplete: (todo: Todo) => void;
-  onDelete: (todoId: string) => void;
   onRestore: (todoId: string) => void;
   onSelectTodo: (todo: Todo) => void;
   onViewAllClick: (goalId: string) => void;
@@ -19,7 +18,6 @@ const GoalGroupComponent: React.FC<GoalGroupProps> = ({
   todos,
   currentView,
   onToggleComplete,
-  onDelete,
   onRestore,
   onSelectTodo,
   onViewAllClick,
@@ -51,12 +49,13 @@ const GoalGroupComponent: React.FC<GoalGroupProps> = ({
   return (
     <li className="mb-4" data-goal-id={goal.id}>
       <div className="flex items-center gap-2">
-        <h3 
-          className="text-lg font-semibold text-gray-900 mb-3 cursor-pointer transition-colors"
+        <button
+          type="button"
+          className="mb-3 cursor-pointer text-left text-lg font-semibold text-foreground transition-colors hover:text-foreground/80 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={handleTitleClick}
         >
           {goal.name}
-        </h3>
+        </button>
       </div>
       <ul className="space-y-1">
         {todos.map((todo, idx) => {
@@ -72,7 +71,6 @@ const GoalGroupComponent: React.FC<GoalGroupProps> = ({
               todo={todo}
               currentView={currentView}
               onToggleComplete={onToggleComplete}
-              onDelete={onDelete}
               onRestore={onRestore}
               onSelectTodo={onSelectTodo}
               delay={idx * 150}

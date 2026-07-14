@@ -4,6 +4,7 @@ import { Command } from 'cmdk'
 import { useUIStore } from '@/lib/stores/uiStore'
 import { cn } from '@/components/common/cn'
 import { Search } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 
 interface SearchResult {
   id: string
@@ -25,9 +26,6 @@ export function KeyboardManager() {
         e.preventDefault()
         setOpen((prev) => !prev)
       }
-      if (e.key === 'Escape') {
-        setOpen(false)
-      }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -39,18 +37,15 @@ export function KeyboardManager() {
     setQuery('')
   }, [setActiveSection])
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => setOpen(false)}
-      />
-      <div className={cn(
-        'relative z-10 w-full max-w-lg rounded-xl border border-[oklch(var(--border))]',
-        'bg-[oklch(var(--background))] shadow-2xl overflow-hidden'
-      )}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setQuery('') }}>
+      <DialogContent
+        size="md"
+        className="overflow-hidden shadow-2xl"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <DialogTitle className="sr-only">搜索待办和目标</DialogTitle>
+        <DialogDescription className="sr-only">输入关键词搜索并打开待办事项或目标</DialogDescription>
         <Command shouldFilter={false}>
           <div className="flex items-center gap-2 px-4 py-3 border-b border-[oklch(var(--border))]">
             <Search className="h-4 w-4 text-[oklch(var(--muted-foreground))] shrink-0" />
@@ -96,7 +91,7 @@ export function KeyboardManager() {
             ))}
           </Command.List>
         </Command>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

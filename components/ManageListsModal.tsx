@@ -4,9 +4,8 @@ import { toast } from 'sonner';
 import type { List } from '../lib/types';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface ManageListsModalProps {
   lists: List[];
@@ -128,12 +127,12 @@ export default function ManageListsModal({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="flex h-[min(90vh,620px)] max-w-lg flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-[oklch(var(--border))] px-5 py-4 text-left">
+      <DialogContent size="md" className="h-[min(90vh,620px)]">
+        <DialogHeader>
           <DialogTitle>管理清单</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="min-h-0 flex-1">
+        <DialogBody className="p-0">
           <div className="space-y-5 px-5 py-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">添加新清单</label>
@@ -209,9 +208,9 @@ export default function ManageListsModal({
               </ul>
             </div>
           </div>
-        </ScrollArea>
+        </DialogBody>
 
-        <DialogFooter className="border-t border-[oklch(var(--border))] px-5 py-4">
+        <DialogFooter>
           <Button type="button" onClick={onClose}>完成</Button>
         </DialogFooter>
       </DialogContent>
