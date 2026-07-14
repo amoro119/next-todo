@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, Check, GripVertical, Link2, ListChecks, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import { Check, GripVertical, Link2, ListChecks, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import type { Goal, Todo, List } from '@/lib/types'
 import TodoModal from '@/components/TodoModal'
 import AssociateTaskModal from './AssociateTaskModal'
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { formatDate } from '@/lib/utils/dateUtils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { TODO_ITEM_STYLES } from '@/components/todos/todoItemStyles'
 
 interface GoalDetailsProps {
   goal: Goal
@@ -51,15 +52,6 @@ export default function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, o
     void Promise.all(ordered.map((todo, index) => onUpdateTodo(todo.id, { sort_order_in_goal: index, modified: new Date().toISOString() })))
   }, [onUpdateTodo])
 
-  const moveTask = useCallback((index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction
-    if (nextIndex < 0 || nextIndex >= sortedTodos.length) return
-    const ordered = [...sortedTodos]
-    const [item] = ordered.splice(index, 1)
-    ordered.splice(nextIndex, 0, item)
-    persistOrder(ordered)
-  }, [persistOrder, sortedTodos])
-
   const handleDrop = useCallback((targetId: string) => {
     if (!draggedId || draggedId === targetId) return setDraggedId(null)
     const ordered = [...sortedTodos]
@@ -101,9 +93,9 @@ export default function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, o
         </section>
 
         <section>
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div><h2 className="text-sm font-semibold text-foreground">任务与步骤</h2><p className="mt-1 text-xs text-muted-foreground">拖动排序，也可以用上下按钮调整顺序</p></div>
-            <div className="flex flex-wrap gap-2">
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><h2 className="text-sm font-semibold text-foreground">任务与步骤</h2><p className="mt-1 text-xs text-muted-foreground">拖动任务调整顺序</p></div>
+            <div className="flex flex-wrap justify-end gap-2 sm:ml-auto">
               <Button type="button" size="sm" onClick={() => setShowAddTask(true)}><Plus className="h-4 w-4" aria-hidden="true" />添加任务</Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setShowAssociateTask(true)}><Link2 className="h-4 w-4" aria-hidden="true" />关联任务</Button>
             </div>
@@ -113,20 +105,21 @@ export default function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, o
             <div className="rounded-lg border border-dashed border-border py-12 text-center"><ListChecks className="mx-auto h-8 w-8 text-muted-foreground" aria-hidden="true" /><p className="mt-3 text-sm text-muted-foreground">还没有关联任务</p><p className="mt-1 text-xs text-muted-foreground">添加任务后，目标进度会自动更新</p></div>
           ) : (
             <div className="space-y-2" role="list" aria-label="目标任务">
-              {sortedTodos.map((todo, index) => (
-                <div key={todo.id} role="listitem" draggable onDragStart={() => setDraggedId(todo.id)} onDragEnd={() => { setDraggedId(null); setDragOverId(null) }} onDragOver={(event) => { event.preventDefault(); setDragOverId(todo.id) }} onDrop={() => handleDrop(todo.id)} className={`flex items-center gap-2 rounded-lg border border-border bg-card p-3 transition-colors ${dragOverId === todo.id ? 'border-foreground bg-muted/50' : ''} ${draggedId === todo.id ? 'opacity-50' : ''}`}>
-                  <span className="hidden text-muted-foreground sm:inline" aria-hidden="true"><GripVertical className="h-4 w-4" /></span>
-                  <button type="button" role="checkbox" aria-checked={todo.completed} aria-label={todo.completed ? `标记 ${todo.title} 为未完成` : `标记 ${todo.title} 为完成`} onClick={() => toggleTodo(todo)} className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors ${todo.completed ? 'border-foreground bg-foreground text-background' : 'border-border bg-background hover:border-foreground'}`}>{todo.completed && <Check className="h-3.5 w-3.5" aria-hidden="true" />}</button>
-                  <button type="button" className={`min-w-0 flex-1 truncate text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${todo.completed ? 'text-muted-foreground line-through' : 'text-foreground'}`} onClick={() => setEditingTask(todo)}>{todo.title}<span className="ml-2 text-xs text-muted-foreground">{todo.due_date ? formatDate(todo.due_date, { month: 'short', day: 'numeric' }) : ''}</span></button>
-                  <div className="hidden shrink-0 items-center gap-0.5 sm:flex"><Button type="button" variant="ghost" size="icon" aria-label="上移任务" disabled={index === 0} onClick={() => moveTask(index, -1)}><ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /></Button><Button type="button" variant="ghost" size="icon" aria-label="下移任务" disabled={index === sortedTodos.length - 1} onClick={() => moveTask(index, 1)}><ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /></Button><Button type="button" variant="ghost" size="icon" aria-label={`删除任务 ${todo.title}`} onClick={() => setDeleteTarget(todo)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /></Button></div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="shrink-0 sm:hidden" aria-label={`打开任务 ${todo.title} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem disabled={index === 0} onSelect={() => moveTask(index, -1)}><ArrowUp className="mr-2 h-4 w-4" aria-hidden="true" />上移</DropdownMenuItem>
-                      <DropdownMenuItem disabled={index === sortedTodos.length - 1} onSelect={() => moveTask(index, 1)}><ArrowDown className="mr-2 h-4 w-4" aria-hidden="true" />下移</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(todo)}><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />删除</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+              {sortedTodos.map((todo) => (
+                <div key={todo.id} role="listitem" draggable onDragStart={() => setDraggedId(todo.id)} onDragEnd={() => { setDraggedId(null); setDragOverId(null) }} onDragOver={(event) => { event.preventDefault(); setDragOverId(todo.id) }} onDrop={() => handleDrop(todo.id)} className={`${TODO_ITEM_STYLES.row} ${dragOverId === todo.id ? 'border-foreground bg-muted/50' : ''} ${draggedId === todo.id ? 'opacity-50' : ''}`}>
+                  <div className={`${TODO_ITEM_STYLES.goalContent}${todo.completed ? ` ${TODO_ITEM_STYLES.completedContent}` : ''}`}>
+                    <span className="hidden shrink-0 text-muted-foreground sm:inline" aria-hidden="true"><GripVertical className="h-4 w-4" /></span>
+                    <button type="button" role="checkbox" aria-checked={todo.completed} aria-label={todo.completed ? `标记 ${todo.title} 为未完成` : `标记 ${todo.title} 为完成`} onClick={() => toggleTodo(todo)} className={`${TODO_ITEM_STYLES.checkbox} ${todo.completed ? TODO_ITEM_STYLES.checkboxCompleted : TODO_ITEM_STYLES.checkboxPending}`}>{todo.completed && <Check className="h-3.5 w-3.5 text-primary-foreground" aria-hidden="true" />}</button>
+                    <button type="button" className={`${TODO_ITEM_STYLES.title} min-w-0 truncate text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${todo.completed ? TODO_ITEM_STYLES.completedTitle : ''}`} onClick={() => setEditingTask(todo)}>{todo.title}</button>
+                    {todo.due_date && <span className={`${TODO_ITEM_STYLES.meta} shrink-0`}>{formatDate(todo.due_date, { month: 'short', day: 'numeric' })}</span>}
+                    <div className="hidden shrink-0 sm:flex"><Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label={`删除任务 ${todo.title}`} onClick={() => setDeleteTarget(todo)}><Trash2 className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /></Button></div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="shrink-0 sm:hidden" aria-label={`打开任务 ${todo.title} 的操作菜单`}><MoreHorizontal className="h-4 w-4" aria-hidden="true" /></Button></DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(todo)}><Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />删除</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               ))}
             </div>

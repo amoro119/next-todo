@@ -15,6 +15,7 @@ import { inboxCache } from "./InboxPerformanceOptimizer";
 import { useOptimizedClick } from "./INPOptimizer";
 import { GoalGroup } from "./GoalGroup";
 import { Button } from "@/components/ui/button";
+import { TODO_ITEM_STYLES } from "@/components/todos/todoItemStyles";
 
 // 优化的日期转换函数 - 使用缓存
 const utcToLocalDateString = (utcDate: string | null | undefined): string => {
@@ -107,15 +108,15 @@ const TodoItem = memo(
       return (
         <li
           ref={ref}
-          className={`relative border border-[oklch(var(--border))] rounded-lg w-full transition-all duration-300 flex items-center mb-2${
+          className={`${TODO_ITEM_STYLES.row} mb-2${
             todo.deleted ? " opacity-50 bg-muted" : ""
           }`}
           data-delay={delay}
           onClick={handleSelectTodo}
           style={{ opacity: show ? 1 : 0 }}
         >
-          <div className={`flex-1 flex items-center gap-3 px-6 py-5 w-full relative box-border min-h-[60px] select-none${
-            todo.completed ? " line-through bg-muted opacity-70 text-muted-foreground" : ""
+          <div className={`${TODO_ITEM_STYLES.content}${
+            todo.completed ? ` ${TODO_ITEM_STYLES.completedContent}` : ""
           }`}>
             {todo.deleted ? (
               <button className="flex items-center justify-center cursor-pointer border border-border rounded-full transition-all duration-200 shrink-0 bg-background hover:bg-accent w-[30px] h-[30px] px-3 py-1.5 text-[13px]" onClick={handleRestore}>
@@ -129,10 +130,10 @@ const TodoItem = memo(
               </button>
             ) : (
               <button
-                className={`flex items-center justify-center cursor-pointer border-2 rounded-full transition-all duration-200 shrink-0 w-[22px] h-[22px] mr-3 ${
+                className={`${TODO_ITEM_STYLES.checkbox} ${
                   todo.completed
-                    ? "border-primary bg-primary"
-                    : "border-border bg-background hover:border-primary"
+                    ? TODO_ITEM_STYLES.checkboxCompleted
+                    : TODO_ITEM_STYLES.checkboxPending
                 }`}
                 onClick={handleToggleComplete}
                 title={todo.completed ? "标为未完成" : "标为完成"}
@@ -153,7 +154,7 @@ const TodoItem = memo(
                 <span className="text-accent-foreground font-bold mr-1.5 text-sm">[{todo.list_name}] </span>
               )}
 
-            <div className="flex-1 text-sm text-foreground leading-relaxed">{todo.title}</div>
+            <div className={TODO_ITEM_STYLES.title}>{todo.title}</div>
 
             {/* 显示重复规则（仅原始重复任务） */}
             {isRecurringTask && recurringDescription && !todo.deleted && (
@@ -163,7 +164,7 @@ const TodoItem = memo(
             )}
 
             {formattedDueDate && currentView !== "list" && !todo.deleted && (
-              <span className="text-xs text-muted-foreground ml-1">{formattedDueDate}</span>
+              <span className={TODO_ITEM_STYLES.meta}>{formattedDueDate}</span>
             )}
 
 
