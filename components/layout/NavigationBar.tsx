@@ -1,6 +1,7 @@
 'use client'
 
-import { CalendarDays, CheckSquare, Settings, Target } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { CalendarDays, CheckSquare, PanelLeftClose, PanelLeftOpen, Settings, Target } from 'lucide-react'
 import { useNavResize } from '@/lib/hooks/useNavResize'
 import { useSyncStatus } from '@/lib/hooks/useSyncStatus'
 import { useUIStore, type AppSection } from '@/lib/stores/uiStore'
@@ -14,36 +15,57 @@ const NAV_ITEMS = [
   { section: 'calendar' as AppSection, label: '日历', icon: CalendarDays },
 ]
 
+const COLLAPSED_NAV_WIDTH = 64
+const COLLAPSED_STORAGE_KEY = 'navPanelCollapsed'
+
 interface NavigationBarProps {
   onOpenSettings: () => void
   onSectionChange: (section: AppSection) => void
 }
 
 export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBarProps) {
-  const { navWidth, resizeHandleProps } = useNavResize()
+  const { navWidth, isResizing, resizeHandleProps } = useNavResize()
   const { isSyncing } = useSyncStatus()
   const activeSection = useUIStore((s) => s.activeSection)
   const setActiveSection = useUIStore((s) => s.setActiveSection)
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  useEffect(() => {
+    setIsCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true')
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(isCollapsed))
+  }, [isCollapsed])
+
+  const toggleCollapsed = () => setIsCollapsed((value) => !value)
 
   return (
     <>
       <div
-        className="hidden md:flex flex-col h-full border-r border-[oklch(var(--border))] bg-[oklch(var(--background))] relative shrink-0"
-        style={{ width: `${navWidth}px` }}
+        id="desktop-sidebar"
+        className={cn(
+          'hidden md:flex flex-col h-full border-r border-[oklch(var(--border))] bg-[oklch(var(--background))] relative shrink-0',
+          isResizing ? 'transition-none' : 'transition-[width] duration-200 ease-out'
+        )}
+        style={{ width: `${isCollapsed ? COLLAPSED_NAV_WIDTH : navWidth}px` }}
       >
-        <div className="flex items-center justify-between px-4 py-4">
-          <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>
-          <div className="flex items-center gap-1">
+        <div className={cn('flex items-center px-3 py-4', isCollapsed ? 'justify-center' : 'justify-between')}>
+          {!isCollapsed && <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>}
+          <div className={cn('flex items-center gap-1', isCollapsed && 'flex-col')}>
             <PWAInstallButton />
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              onClick={onOpenSettings}
+              onClick={toggleCollapsed}
               className="text-[oklch(var(--muted-foreground))]"
-              aria-label="设置"
+              aria-label={isCollapsed ? '展开侧边栏' : '收起侧边栏'}
+              aria-expanded={!isCollapsed}
+              aria-controls="desktop-sidebar"
+              title={isCollapsed ? '展开侧边栏' : '收起侧边栏'}
             >
-              <Settings size={16} />
+              {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
             </Button>
           </div>
         </div>
@@ -59,8 +81,11 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
                 setActiveSection(section)
               }}
               aria-current={activeSection === section ? 'page' : undefined}
+              aria-label={label}
+              title={isCollapsed ? label : undefined}
               className={cn(
-                'relative h-9 justify-start px-3 text-xs font-medium tracking-widest uppercase whitespace-nowrap',
+                'relative h-9 text-xs font-medium tracking-widest uppercase whitespace-nowrap',
+                isCollapsed ? 'justify-center px-0' : 'justify-start px-3',
                 activeSection === section
                   ? 'bg-[oklch(var(--accent))] text-[oklch(var(--accent-foreground))]'
                   : 'text-[oklch(var(--muted-foreground))]'
@@ -68,21 +93,41 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
             >
               <span className={cn('absolute left-0 h-5 w-0.5 rounded-full bg-[oklch(var(--primary))] opacity-0', activeSection === section && 'opacity-100')} />
               <Icon className="h-4 w-4" />
-              {label}
+              <span className={cn(isCollapsed && 'sr-only')}>{label}</span>
             </Button>
           ))}
         </nav>
 
-        {isSyncing && (
-          <div className="mt-auto hidden px-4 pb-4 md:flex items-center gap-2 text-xs text-[oklch(var(--muted-foreground))]">
-            <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-            <span>同步中</span>
-          </div>
-        )}
+        <div className={cn('mt-auto hidden md:flex flex-col gap-1 px-2', process.env.NODE_ENV === 'development' ? 'pb-16' : 'pb-3')}>
+          {isSyncing && (
+            <div className={cn('flex items-center gap-2 px-3 py-2 text-xs text-[oklch(var(--muted-foreground))]', isCollapsed && 'justify-center px-0')}>
+              <div className="h-3 w-3 shrink-0 animate-spin rounded-full border border-current border-t-transparent" />
+              <span className={cn(isCollapsed && 'sr-only')}>同步中</span>
+            </div>
+          )}
+
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onOpenSettings}
+            className={cn(
+              'w-full text-[oklch(var(--muted-foreground))]',
+              isCollapsed ? 'justify-center px-0' : 'justify-start px-3'
+            )}
+            aria-label="设置"
+            title={isCollapsed ? '设置' : undefined}
+          >
+            <Settings size={16} />
+            <span className={cn(isCollapsed && 'sr-only')}>设置</span>
+          </Button>
+        </div>
 
         <div
           {...resizeHandleProps}
-          className="absolute right-0 top-0 bottom-0 w-2 translate-x-1 rounded-full transition-colors hover:bg-[oklch(var(--primary)/0.25)] focus-visible:bg-[oklch(var(--primary)/0.25)]"
+          className={cn(
+            'absolute right-0 top-0 bottom-0 w-2 translate-x-1 rounded-full transition-colors hover:bg-[oklch(var(--primary)/0.25)] focus-visible:bg-[oklch(var(--primary)/0.25)]',
+            isCollapsed && 'pointer-events-none opacity-0'
+          )}
         />
       </div>
 
