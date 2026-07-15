@@ -79,19 +79,21 @@
 @layer base {
   * {
     box-sizing: border-box;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   html {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
     font-family: var(--font-sans);
     background-color: oklch(var(--background));
     font-size: 16px;
     color: oklch(var(--foreground));
-  }
-
-  html::-webkit-scrollbar {
-    display: none;
   }
 
   body {
@@ -103,6 +105,10 @@
   ::placeholder {
     color: oklch(var(--muted-foreground));
     font-weight: 400;
+  }
+
+  [data-radix-scroll-area-scrollbar] {
+    display: none;
   }
 
   button {
