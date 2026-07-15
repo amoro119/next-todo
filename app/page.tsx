@@ -154,6 +154,7 @@ export default function Page() {
       onOpenSettings={() => setIsSettingsOpen(true)}
       onSectionChange={(section) => {
         if (section !== "goals") setSelectedGoal(null)
+        if (section !== "todo") todoOps.setSelectedTodo(null)
       }}
     >
       {process.env.NODE_ENV === "development" && <ModeIndicator />}
@@ -192,6 +193,8 @@ export default function Page() {
           handleToggleComplete={todoOps.handleToggleComplete}
           handleDeleteTodo={todoOps.handleDeleteTodo}
           handleRestoreTodo={todoOps.handleRestoreTodo}
+          handlePermanentDeleteTodo={todoOps.handlePermanentDeleteTodo}
+          handleSaveTodoDetails={todoOps.handleSaveTodoDetails}
           handleUpdateTodo={todoOps.handleUpdateTodo}
           handleCreateTodoForGoal={todoOps.handleCreateTodoForGoal}
           handleEditGoal={goalOps.handleEditGoal}
@@ -275,9 +278,13 @@ export default function Page() {
         onCreateTodo={todoOps.handleCreateTodo as (todoData: Partial<Todo>) => Promise<string | undefined>}
         onCloseTodoModal={() => { todoOps.setIsTodoModalOpen(false); todoOps.setNewTodoTitle("") }}
         isSearchModalOpen={todoOps.isSearchModalOpen}
-        onSelectTodo={(t) => todoOps.setSelectedTodo(t)}
+        onSelectTodo={(t) => {
+          todoOps.setSelectedGoal(null)
+          todoOps.setSelectedTodo(t)
+        }}
         onSelectGoal={(g) => {
           setActiveSection("goals")
+          todoOps.setSelectedTodo(null)
           todoOps.setSelectedGoal(g)
         }}
         onToggleTodoComplete={async (t) => { await todoOps.handleToggleComplete(t) }}
@@ -293,6 +300,7 @@ export default function Page() {
         }}
         onCloseCalendarCreateModal={() => { todoOps.setIsCalendarCreateModalOpen(false); todoOps.setNewTodoTitle("") }}
         selectedTodo={todoOps.selectedTodo}
+        showSelectedTodoModal={activeSection !== "todo"}
         onSaveTodoDetails={todoOps.handleSaveTodoDetails}
         onUpdateTodo={todoOps.handleUpdateTodo}
         onCloseSelectedTodo={() => todoOps.setSelectedTodo(null)}

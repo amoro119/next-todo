@@ -11,9 +11,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft } from 'lucide-react';
 
 interface TodoModalProps {
   isOpen?: boolean;
+  presentation?: 'dialog' | 'drawer';
   mode: 'create' | 'edit';
   initialData?: Partial<Todo>;
   lists: List[];
@@ -118,6 +120,7 @@ const cleanTodoDates = (todo: Todo): Todo => {
 
 export default function TodoModal({ 
   isOpen = true,
+  presentation = 'dialog',
   mode,
   initialData,
   lists, 
@@ -311,18 +314,23 @@ export default function TodoModal({
     }
   };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent
-        size="lg"
-        className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden sm:h-[min(86dvh,760px)]"
-        onKeyDown={handleKeyDown}
-      >
+  const panelTitle = isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情';
+  const panelContent = (
+    <>
+        {presentation === 'drawer' ? (
+          <header className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-[oklch(var(--border))] px-5 py-4">
+            <Button type="button" className="w-4" variant="ghost" size="icon" onClick={onClose} aria-label="返回任务列表">
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            </Button>
+            <h1 className="truncate text-base font-semibold text-[oklch(var(--foreground))]">{panelTitle}</h1>
+          </header>
+        ) : (
         <DialogHeader className="pr-12">
           <DialogTitle className="text-base">
-            {isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情'}
+            {panelTitle}
           </DialogTitle>
         </DialogHeader>
+        )}
 
         <DialogBody className="p-0">
           <div className="space-y-4 px-5 py-4">
@@ -558,6 +566,29 @@ export default function TodoModal({
             </div>
           )}
         </DialogFooter>
+    </>
+  );
+
+  if (presentation === 'drawer') {
+    return (
+      <section
+        aria-label={panelTitle}
+        className="grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[oklch(var(--background))]"
+        onKeyDown={handleKeyDown}
+      >
+        {panelContent}
+      </section>
+    );
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        size="lg"
+        className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden sm:h-[min(86dvh,760px)]"
+        onKeyDown={handleKeyDown}
+      >
+        {panelContent}
       </DialogContent>
     </Dialog>
   );

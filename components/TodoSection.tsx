@@ -6,6 +6,7 @@ import { utcToLocalDateString } from "@/lib/hooks/useTodoOperations"
 import type { Todo, List, Goal } from "@/lib/types"
 import { TodoViewOptions } from "@/components/todos/TodoViewOptions"
 import { TodoInput } from "@/components/todos/TodoInput"
+import TodoDetailsDrawer from "@/components/todos/TodoDetailsDrawer"
 
 interface TodoSectionProps {
   todos: Todo[]
@@ -31,6 +32,8 @@ interface TodoSectionProps {
   handleToggleComplete: (t: Todo) => Promise<void>
   handleDeleteTodo: (id: string) => Promise<void>
   handleRestoreTodo: (id: string) => Promise<void>
+  handlePermanentDeleteTodo: (id: string) => Promise<void>
+  handleSaveTodoDetails: (todo: Todo) => Promise<void>
   handleUpdateTodo: (id: string, u: Partial<Omit<Todo, "id" | "list_name">>) => Promise<void>
   handleCreateTodoForGoal: (d: Partial<Todo>) => Promise<void>
   handleEditGoal: (g: Goal) => void
@@ -51,6 +54,7 @@ export function TodoSection({
   setCurrentView,
   newTodoTitle,
   setNewTodoTitle,
+  selectedTodo,
   setSelectedTodo,
   selectedGoal,
   setSelectedGoal,
@@ -58,6 +62,8 @@ export function TodoSection({
   handleToggleComplete,
   handleDeleteTodo,
   handleRestoreTodo,
+  handlePermanentDeleteTodo,
+  handleSaveTodoDetails,
   handleUpdateTodo,
   handleCreateTodoForGoal,
   handleEditGoal,
@@ -69,7 +75,7 @@ export function TodoSection({
       <div className="flex flex-col flex-1 w-full min-h-0">
         <div className="flex flex-col flex-1 w-full min-h-0">
           <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
-            <div className={`flex min-w-0 flex-1 flex-col gap-0 overflow-hidden ${selectedGoal ? 'sm:pr-5' : ''}`}>
+            <div className={`flex min-w-0 flex-1 flex-col gap-0 overflow-hidden ${selectedGoal || selectedTodo ? 'sm:pr-5' : ''}`}>
               <div className="pt-4">
                 <TodoInput
                   value={newTodoTitle}
@@ -100,10 +106,16 @@ export function TodoSection({
                   currentView={currentView}
                   onToggleComplete={handleToggleComplete}
                   onRestore={handleRestoreTodo}
-                  onSelectTodo={setSelectedTodo}
+                  onSelectTodo={(todo) => {
+                    setSelectedGoal(null)
+                    setSelectedTodo(todo)
+                  }}
                   onViewGoal={(goalId) => {
                     const goal = goals.find((g) => g.id === goalId)
-                    if (goal) setSelectedGoal(goal)
+                    if (goal) {
+                      setSelectedTodo(null)
+                      setSelectedGoal(goal)
+                    }
                   }}
                   onOpenCreateTodo={handleAddTodo}
                 />
@@ -119,6 +131,18 @@ export function TodoSection({
                 </span>
               </div>
             </div>
+
+            <TodoDetailsDrawer
+              todo={selectedTodo}
+              goals={goals}
+              lists={lists}
+              onSubmit={handleSaveTodoDetails}
+              onUpdate={handleUpdateTodo}
+              onDelete={handleDeleteTodo}
+              onRestore={handleRestoreTodo}
+              onPermanentDelete={handlePermanentDeleteTodo}
+              onClose={() => setSelectedTodo(null)}
+            />
 
             <GoalDetailsDrawer
               goal={selectedGoal}

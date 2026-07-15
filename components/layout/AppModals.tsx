@@ -40,6 +40,7 @@ export interface AppModalsProps {
   onCloseCalendarCreateModal: () => void
 
   selectedTodo: Todo | null
+  showSelectedTodoModal: boolean
   onSaveTodoDetails: (todoData: Todo) => Promise<void>
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>
   onCloseSelectedTodo: () => void
@@ -66,7 +67,7 @@ export function AppModals(props: AppModalsProps) {
     isTodoModalOpen, newTodoTitle, newTodoDate, onCreateTodo, onCloseTodoModal,
     isSearchModalOpen, onSelectTodo, onSelectGoal, onOpenSearchModal, onCloseSearchModal,
     isCalendarCreateModalOpen, calendarSelectedDate, onCalendarCreateTodo, onCloseCalendarCreateModal,
-    selectedTodo, onSaveTodoDetails, onUpdateTodo, onCloseSelectedTodo,
+    selectedTodo, showSelectedTodoModal, onSaveTodoDetails, onUpdateTodo, onCloseSelectedTodo,
     onDeleteTodo, onRestoreTodo, onPermanentDeleteTodo,
     isGoalModalOpen, editingGoalId, newGoalTitle,
     onSaveGoal, onGoalCreated, onCloseGoalModal,
@@ -122,7 +123,7 @@ export function AppModals(props: AppModalsProps) {
         />
       )}
 
-      {selectedTodo && (
+      {showSelectedTodoModal && selectedTodo && (
         <TodoModal
           isOpen={!!selectedTodo}
           mode="edit"
