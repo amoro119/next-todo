@@ -108,7 +108,7 @@ const TodoItem = memo(
       return (
         <li
           ref={ref}
-          className={`${TODO_ITEM_STYLES.row} mb-2${
+          className={`${TODO_ITEM_STYLES.row} cursor-pointer mb-2${
             todo.deleted ? " opacity-50 bg-muted" : ""
           }`}
           data-delay={delay}

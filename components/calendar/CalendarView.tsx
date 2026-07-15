@@ -155,16 +155,23 @@ interface TodoPillProps {
 }
 
 function TodoPill({ todo, onOpen, onDragStart }: TodoPillProps) {
+  const stateClassName = todo.completed
+    ? 'bg-[oklch(var(--calendar-task-completed-bg))] font-normal text-[oklch(var(--calendar-task-completed-foreground))] line-through hover:bg-[oklch(var(--calendar-task-completed-hover))]'
+    : 'bg-[oklch(var(--calendar-task-open-bg))] font-medium text-[oklch(var(--calendar-task-open-foreground))] hover:bg-[oklch(var(--calendar-task-open-hover))]'
+
   return (
     <button
       type="button"
       draggable
       onDragStart={(event) => onDragStart(event, todo)}
-      onClick={() => onOpen(todo)}
-      className={`block min-h-7 w-full truncate rounded-[4px] border border-border bg-muted/50 px-2 py-1 text-left text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${todo.completed ? 'text-muted-foreground line-through opacity-70' : 'text-foreground'}`}
-      title={todo.title}
+      onClick={(event) => {
+        event.stopPropagation()
+        onOpen(todo)
+      }}
+      className={`block min-h-7 w-full cursor-pointer truncate rounded-[4px] px-2 py-1 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${stateClassName}`}
+      aria-label={`${todo.completed ? '已完成' : '未完成'}任务：${todo.title}`}
     >
-      {todo.list_name && <span className="mr-1 text-muted-foreground">[{todo.list_name}]</span>}
+      {todo.list_name && <span className="mr-1 opacity-70">[{todo.list_name}]</span>}
       {todo.title}
     </button>
   )
@@ -194,6 +201,16 @@ function DayCell({
   onDrop,
 }: DayCellProps) {
   const dateString = format(date, 'yyyy-MM-dd')
+  const dayStateClassName = isCurrentMonth
+    ? 'bg-[var(--calendar-current-month-bg)]'
+    : 'bg-[var(--calendar-other-month-bg)] text-muted-foreground'
+  const dateMarkerClassName = selected
+    ? 'bg-[oklch(var(--foreground))] text-[oklch(var(--background))]'
+    : isToday(date)
+      ? 'text-foreground ring-1 ring-inset ring-foreground'
+      : isCurrentMonth
+        ? 'text-foreground hover:bg-muted'
+        : 'text-muted-foreground hover:bg-muted'
 
   return (
     <div
@@ -201,6 +218,7 @@ function DayCell({
       aria-selected={selected}
       tabIndex={0}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onSelect(date)
@@ -209,17 +227,19 @@ function DayCell({
       onClick={() => onSelect(date)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => onDrop(event, dateString)}
-      className={`group min-h-[112px] p-2 text-left transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${isCurrentMonth ? 'bg-background' : 'bg-muted/35 text-muted-foreground'} ${selected ? 'z-10 ring-1 ring-inset ring-foreground' : 'hover:bg-muted/30'} ${isToday(date) ? 'bg-accent/60' : ''}`}
+      className={`group min-h-[112px] p-2 text-left transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${dayStateClassName}`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <button
           type="button"
-          className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-medium ${isToday(date) ? 'bg-foreground text-background' : isCurrentMonth ? 'text-foreground hover:bg-muted' : 'text-muted-foreground'}`}
+          className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-medium transition-colors ${dateMarkerClassName}`}
           onClick={(event) => {
             event.stopPropagation()
             onSelect(date)
           }}
+          onKeyDown={(event) => event.stopPropagation()}
           aria-label={`选择 ${dateString}`}
+          aria-current={isToday(date) ? 'date' : undefined}
         >
           {format(date, 'd')}
         </button>
@@ -266,7 +286,7 @@ function AgendaView({ selectedDate, todos, onOpenTodo, onCreate, onDragStart, on
   const dateString = format(selectedDate, 'yyyy-MM-dd')
   return (
     <section
-      className="rounded-lg border border-border bg-card p-4 sm:p-5"
+      className="rounded-lg bg-muted/20 p-4 sm:p-5"
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => onDrop(event, dateString)}
     >
@@ -329,7 +349,8 @@ function WeekView({
             type="button"
             key={day.toISOString()}
             onClick={() => onSelect(day)}
-            className={`min-h-11 rounded-md px-1 py-2 text-xs transition-colors ${isSameDay(day, selectedDate) ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-background hover:text-foreground'}`}
+            aria-pressed={isSameDay(day, selectedDate)}
+            className={`min-h-11 rounded-md px-1 py-2 text-xs transition-colors ${isSameDay(day, selectedDate) ? 'bg-[oklch(var(--foreground))] text-[oklch(var(--background))]' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
           >
             <span className="block">{WEEKDAYS[day.getDay()]}</span>
             <span className="mt-0.5 block font-semibold">{format(day, 'd')}</span>
@@ -483,7 +504,7 @@ export default function CalendarView({
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border border-border bg-border" role="grid" aria-label="月视图">
+            <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border border-[oklch(var(--border))] bg-[oklch(var(--border))]" role="grid" aria-label="月视图">
               {monthDays.map((day) => (
                 <DayCell
                   key={day.toISOString()}

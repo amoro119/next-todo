@@ -69,7 +69,7 @@ export default function GoalsList({ goals, onGoalClick, onEditGoal, onArchiveGoa
         const done = goal.total_tasks ? `${goal.completed_tasks ?? 0}/${goal.total_tasks} 项任务` : '尚未添加任务'
         const due = dueInfo(goal.due_date, progress)
         return (
-          <li key={goal.id} className="group mb-3 w-full rounded-lg border border-border bg-card transition-all duration-300">
+          <li key={goal.id} className="group mb-3 w-full rounded-lg border border-[oklch(var(--border))] bg-card transition-all duration-300">
             <div className="min-h-[88px] w-full px-4 py-4">
               <div className="flex min-h-8 items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-1 items-center gap-2">

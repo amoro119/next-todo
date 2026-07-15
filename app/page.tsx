@@ -20,6 +20,7 @@ import { AppModals } from "@/components/layout/AppModals"
 import { ModeIndicator } from "@/components/ModeIndicator"
 import { TodoSection } from "@/components/TodoSection"
 import { GoalsSection } from "@/components/GoalsSection"
+import TodoDetailsDrawer from "@/components/todos/TodoDetailsDrawer"
 import { useOptimizedInboxFilter } from "@/components/InboxPerformanceOptimizer"
 import type { Todo, List, Goal } from "@/lib/types"
 
@@ -241,16 +242,29 @@ export default function Page() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.15 }}
-          className="h-full overflow-y-auto"
+          className="flex h-full min-h-0 overflow-hidden"
         >
-        <CalendarView
-          todos={todosWithListNames}
-          currentDate={todoOps.currentDate}
-          onDateChange={todoOps.setCurrentDate}
-          onUpdateTodo={todoOps.handleUpdateTodo}
-          onOpenModal={todoOps.setSelectedTodo}
-          onAddTodo={todoOps.handleAddTodoFromCalendar}
-          onOpenCreateModal={todoOps.handleOpenCalendarCreateModal}
+        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${todoOps.selectedTodo ? 'sm:pr-5' : ''}`}>
+          <CalendarView
+            todos={todosWithListNames}
+            currentDate={todoOps.currentDate}
+            onDateChange={todoOps.setCurrentDate}
+            onUpdateTodo={todoOps.handleUpdateTodo}
+            onOpenModal={todoOps.setSelectedTodo}
+            onAddTodo={todoOps.handleAddTodoFromCalendar}
+            onOpenCreateModal={todoOps.handleOpenCalendarCreateModal}
+          />
+        </div>
+        <TodoDetailsDrawer
+          todo={todoOps.selectedTodo}
+          goals={goals}
+          lists={lists}
+          onSubmit={todoOps.handleSaveTodoDetails}
+          onUpdate={todoOps.handleUpdateTodo}
+          onDelete={todoOps.handleDeleteTodo}
+          onRestore={todoOps.handleRestoreTodo}
+          onPermanentDelete={todoOps.handlePermanentDeleteTodo}
+          onClose={() => todoOps.setSelectedTodo(null)}
         />
         </motion.div>
       )}
@@ -300,7 +314,7 @@ export default function Page() {
         }}
         onCloseCalendarCreateModal={() => { todoOps.setIsCalendarCreateModalOpen(false); todoOps.setNewTodoTitle("") }}
         selectedTodo={todoOps.selectedTodo}
-        showSelectedTodoModal={activeSection !== "todo"}
+        showSelectedTodoModal={activeSection !== "todo" && activeSection !== "calendar"}
         onSaveTodoDetails={todoOps.handleSaveTodoDetails}
         onUpdateTodo={todoOps.handleUpdateTodo}
         onCloseSelectedTodo={() => todoOps.setSelectedTodo(null)}
