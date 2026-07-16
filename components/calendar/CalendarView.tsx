@@ -491,36 +491,38 @@ export default function CalendarView({
   return (
     <main ref={calendarRef} className="min-h-full w-full bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
       <div className="mx-auto w-full">
-        <CalendarHeader
-          currentDate={currentDate}
-          selectedDate={selectedDate}
-          mode={effectiveMode}
-          isDesktop={isDesktop}
-          onDateChange={selectDate}
-          onGoToToday={goToToday}
-          onModeChange={setMode}
-        />
+        <div className="-mx-4 -mt-4 sticky top-0 z-30 flex flex-col bg-background/95 px-4 pt-4 backdrop-blur-sm sm:-mx-6 sm:-mt-5 sm:px-6 sm:pt-5 lg:-mx-8 lg:px-8">
+          <CalendarHeader
+            currentDate={currentDate}
+            selectedDate={selectedDate}
+            mode={effectiveMode}
+            isDesktop={isDesktop}
+            onDateChange={selectDate}
+            onGoToToday={goToToday}
+            onModeChange={setMode}
+          />
 
-        {!isDesktop && (
-          <div className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="移动端日历视图">
-            <button
-              type="button"
-              aria-pressed={effectiveMode === 'week'}
-              onClick={() => setMode('week')}
-              className={`h-10 rounded-[4px] text-xs font-medium transition-colors ${effectiveMode === 'week' ? 'border border-border bg-background text-foreground' : 'border border-transparent text-muted-foreground'}`}
-            >
-              本周
-            </button>
-            <button
-              type="button"
-              aria-pressed={effectiveMode === 'agenda'}
-              onClick={() => setMode('agenda')}
-              className={`h-10 rounded-[4px] text-xs font-medium transition-colors ${effectiveMode === 'agenda' ? 'border border-border bg-background text-foreground' : 'border border-transparent text-muted-foreground'}`}
-            >
-              日程
-            </button>
-          </div>
-        )}
+          {!isDesktop && (
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-md bg-muted p-1" aria-label="移动端日历视图">
+              <button
+                type="button"
+                aria-pressed={effectiveMode === 'week'}
+                onClick={() => setMode('week')}
+                className={`h-10 rounded-[4px] text-xs font-medium transition-colors ${effectiveMode === 'week' ? 'border border-border bg-background text-foreground' : 'border border-transparent text-muted-foreground'}`}
+              >
+                本周
+              </button>
+              <button
+                type="button"
+                aria-pressed={effectiveMode === 'agenda'}
+                onClick={() => setMode('agenda')}
+                className={`h-10 rounded-[4px] text-xs font-medium transition-colors ${effectiveMode === 'agenda' ? 'border border-border bg-background text-foreground' : 'border border-transparent text-muted-foreground'}`}
+              >
+                日程
+              </button>
+            </div>
+          )}
+        </div>
 
         {effectiveMode === 'month' && (
           <>
