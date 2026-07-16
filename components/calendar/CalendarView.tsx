@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addDays,
   addMonths,
@@ -91,6 +91,7 @@ interface CalendarHeaderProps {
   mode: CalendarMode
   isDesktop: boolean
   onDateChange: (date: Date) => void
+  onGoToToday: () => void
   onModeChange: (mode: CalendarMode) => void
 }
 
@@ -100,6 +101,7 @@ function CalendarHeader({
   mode,
   isDesktop,
   onDateChange,
+  onGoToToday,
   onModeChange,
 }: CalendarHeaderProps) {
   const shift = (amount: number) => {
@@ -131,7 +133,7 @@ function CalendarHeader({
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2 sm:mt-0 sm:justify-end">
-        <Button type="button" variant="outline" size="sm" className={isDesktop ? undefined : 'h-11'} onClick={() => onDateChange(new Date())}>
+        <Button type="button" variant="outline" size="sm" className={isDesktop ? undefined : 'h-11'} onClick={onGoToToday}>
           今天
         </Button>
         {isDesktop && (
@@ -227,6 +229,7 @@ function DayCell({
       onClick={() => onSelect(date)}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => onDrop(event, dateString)}
+      data-calendar-today={isToday(date) && isCurrentMonth ? 'true' : undefined}
       className={`group min-h-[112px] p-2 text-left transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${dayStateClassName}`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -287,6 +290,7 @@ function AgendaView({ selectedDate, todos, onOpenTodo, onCreate, onDragStart, on
   return (
     <section
       className="rounded-lg bg-muted/20 p-4 sm:p-5"
+      data-calendar-today={isToday(selectedDate) ? 'true' : undefined}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => onDrop(event, dateString)}
     >
@@ -349,6 +353,7 @@ function WeekView({
             type="button"
             key={day.toISOString()}
             onClick={() => onSelect(day)}
+            data-calendar-today={isToday(day) ? 'true' : undefined}
             aria-pressed={isSameDay(day, selectedDate)}
             className={`min-h-11 rounded-md px-1 py-2 text-xs transition-colors ${isSameDay(day, selectedDate) ? 'bg-[oklch(var(--foreground))] text-[oklch(var(--background))]' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
           >
@@ -382,10 +387,24 @@ export default function CalendarView({
   const [mode, setMode] = useState<CalendarMode>('month')
   const [selectedDate, setSelectedDate] = useState(currentDate)
   const [dragState, setDragState] = useState<{ todoId: string; sourceDate: string } | null>(null)
+  const [todayFocusRequest, setTodayFocusRequest] = useState(0)
+  const calendarRef = useRef<HTMLElement>(null)
   const effectiveMode = !isDesktop && mode === 'month' ? 'week' : mode
 
   useEffect(() => setMode(isDesktop ? 'month' : 'week'), [isDesktop])
   useEffect(() => setSelectedDate(currentDate), [currentDate])
+
+  useEffect(() => {
+    if (!todayFocusRequest) return
+
+    const timeoutId = window.setTimeout(() => {
+      const todayElement = calendarRef.current?.querySelector<HTMLElement>('[data-calendar-today="true"]')
+      todayElement?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+      setTodayFocusRequest(0)
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [currentDate, effectiveMode, todayFocusRequest])
 
   const selectDate = useCallback(
     (date: Date) => {
@@ -394,6 +413,13 @@ export default function CalendarView({
     },
     [onDateChange]
   )
+
+  const goToToday = useCallback(() => {
+    const today = new Date()
+    setSelectedDate(today)
+    setTodayFocusRequest((request) => request + 1)
+    onDateChange(today)
+  }, [onDateChange])
 
   const createTodo = useCallback(
     (date: string) => {
@@ -463,7 +489,7 @@ export default function CalendarView({
   ] || []
 
   return (
-    <main className="min-h-full w-full bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+    <main ref={calendarRef} className="min-h-full w-full bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
       <div className="mx-auto w-full">
         <CalendarHeader
           currentDate={currentDate}
@@ -471,6 +497,7 @@ export default function CalendarView({
           mode={effectiveMode}
           isDesktop={isDesktop}
           onDateChange={selectDate}
+          onGoToToday={goToToday}
           onModeChange={setMode}
         />
 
