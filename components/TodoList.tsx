@@ -109,7 +109,11 @@ const TodoItem = memo(
         <li
           ref={ref}
           className={`${TODO_ITEM_STYLES.row} cursor-pointer mb-2${
-            todo.deleted ? " opacity-50 bg-muted" : ""
+            todo.deleted
+              ? " opacity-50 bg-muted"
+              : todo.completed
+                ? ` ${TODO_ITEM_STYLES.completedRow}`
+                : ""
           }`}
           data-delay={delay}
           onClick={handleSelectTodo}
@@ -142,8 +146,8 @@ const TodoItem = memo(
                 role="checkbox"
               >
                 {todo.completed && (
-                  <svg viewBox="0 0 12 10" fill="none" className="w-3 h-auto" aria-hidden="true">
-                    <path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary-foreground" />
+                  <svg viewBox="0 0 12 10" fill="none" className="w-3 h-auto text-[oklch(var(--muted-foreground))]" aria-hidden="true">
+                    <path d="M1 5l3.5 3.5L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
               </button>
@@ -151,20 +155,20 @@ const TodoItem = memo(
 
             {(currentView === "inbox" || currentView === "today") &&
               todo.list_name && (
-                <span className="text-accent-foreground font-bold mr-1.5 text-sm">[{todo.list_name}] </span>
+                <span className={`${todo.completed ? "text-[oklch(var(--muted-foreground)/0.7)]" : "text-accent-foreground"} font-bold mr-1.5 text-sm`}>[{todo.list_name}] </span>
               )}
 
-            <div className={TODO_ITEM_STYLES.title}>{todo.title}</div>
+            <div className={`${TODO_ITEM_STYLES.title}${todo.completed ? ` ${TODO_ITEM_STYLES.completedTitle}` : ""}`}>{todo.title}</div>
 
             {/* 显示重复规则（仅原始重复任务） */}
             {isRecurringTask && recurringDescription && !todo.deleted && (
-              <span className="text-xs text-muted-foreground ml-2" title="重复规则">
+              <span className={`${todo.completed ? TODO_ITEM_STYLES.completedMeta : "text-xs text-muted-foreground ml-2"}`} title="重复规则">
                 {recurringDescription}
               </span>
             )}
 
             {formattedDueDate && currentView !== "list" && !todo.deleted && (
-              <span className={TODO_ITEM_STYLES.meta}>{formattedDueDate}</span>
+              <span className={todo.completed ? TODO_ITEM_STYLES.completedMeta : TODO_ITEM_STYLES.meta}>{formattedDueDate}</span>
             )}
 
 
