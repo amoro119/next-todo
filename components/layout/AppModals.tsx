@@ -65,7 +65,7 @@ export function AppModals(props: AppModalsProps) {
     isManageListsModalOpen,
     onAddList, onUpdateList, onDeleteList, onUpdateListsOrder, onCloseManageListsModal,
     isTodoModalOpen, newTodoTitle, newTodoDate, onCreateTodo, onCloseTodoModal,
-    isSearchModalOpen, onSelectTodo, onSelectGoal, onOpenSearchModal, onCloseSearchModal,
+    isSearchModalOpen, onSelectTodo, onSelectGoal, onToggleTodoComplete, onOpenSearchModal, onCloseSearchModal,
     isCalendarCreateModalOpen, calendarSelectedDate, onCalendarCreateTodo, onCloseCalendarCreateModal,
     selectedTodo, showSelectedTodoModal, onSaveTodoDetails, onUpdateTodo, onCloseSelectedTodo,
     onDeleteTodo, onRestoreTodo, onPermanentDeleteTodo,
@@ -109,6 +109,7 @@ export function AppModals(props: AppModalsProps) {
         }}
         onSelectTodo={onSelectTodo}
         onSelectGoal={onSelectGoal}
+        onToggleTodoComplete={onToggleTodoComplete}
       />
 
       {isCalendarCreateModalOpen && (

@@ -275,18 +275,6 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
     if (typeof window !== "undefined") localStorage.setItem("app_mode", currentMode)
   }, [currentMode])
 
-  // Keyboard shortcut for search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault()
-        setIsSearchModalOpen(prev => !prev)
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [])
-
   // Clear input on view change
   useEffect(() => {
     setNewTodoTitle("")
