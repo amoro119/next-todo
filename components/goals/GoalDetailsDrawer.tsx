@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import type { Goal, List, Todo } from '@/lib/types'
 import GoalDetails from './GoalDetails'
 import GoalHeader from './GoalHeader'
+import { useIsDesktopLayout } from '@/lib/hooks/useIsDesktopLayout'
 
 interface GoalDetailsDrawerProps {
   goal: Goal | null
@@ -49,6 +50,7 @@ export default function GoalDetailsDrawer({
   const [isResizing, setIsResizing] = useState(false)
   const [mountedGoal, setMountedGoal] = useState<Goal | null>(goal)
   const [mountedTodos, setMountedTodos] = useState<Todo[]>(todos)
+  const isDesktop = useIsDesktopLayout()
 
   useEffect(() => {
     if (goal) setMountedGoal(goal)
@@ -193,10 +195,14 @@ export default function GoalDetailsDrawer({
 
       <aside
         ref={drawerRef}
-        className="relative h-full min-h-0 shrink-0 overflow-hidden bg-background will-change-[width]"
+        role={isDesktop ? 'complementary' : 'dialog'}
+        aria-modal={isDesktop ? undefined : true}
+        className="fixed inset-0 z-50 flex h-[100dvh] w-full min-h-0 flex-col overflow-hidden bg-[oklch(var(--background))] will-change-transform md:relative md:inset-auto md:z-auto md:block md:h-full md:w-auto md:shrink-0"
         style={{
-          width: goal ? drawerCssWidth : 0,
-          transition: isResizing ? 'none' : 'width 320ms cubic-bezier(0.22, 1, 0.36, 1)',
+          width: isDesktop ? (goal ? drawerCssWidth : 0) : '100%',
+          backgroundColor: displayGoal ? 'oklch(var(--background))' : 'transparent',
+          pointerEvents: goal ? 'auto' : 'none',
+          transition: isDesktop ? (isResizing ? 'none' : 'width 320ms cubic-bezier(0.22, 1, 0.36, 1)') : 'none',
         }}
         onTransitionEnd={(event) => {
           if (event.target === event.currentTarget && event.propertyName === 'width' && !goal) {
@@ -209,13 +215,18 @@ export default function GoalDetailsDrawer({
         <AnimatePresence initial={false}>
           {mountedGoal && (
             <motion.div
-              initial={{ opacity: 0, x: '100%' }}
-              animate={{ opacity: goal ? 1 : 0, x: goal ? 0 : '100%' }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              className="h-full"
-              style={{ width: drawerCssWidth, minWidth: drawerCssWidth }}
+              initial={isDesktop ? { opacity: 0, x: '100%' } : { opacity: 0, y: '100%' }}
+              animate={isDesktop
+                ? { opacity: goal ? 1 : 0, x: goal ? 0 : '100%' }
+                : { opacity: goal ? 1 : 0, y: goal ? 0 : '100%' }}
+              onAnimationComplete={() => {
+                if (!isDesktop && !goal) setMountedGoal(null)
+              }}
+              transition={{ duration: goal ? 0.36 : 0.24, ease: goal ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1] }}
+              className="h-full bg-[oklch(var(--background))]"
+              style={isDesktop ? { width: drawerCssWidth, minWidth: drawerCssWidth } : { width: '100%' }}
             >
-              <div className="flex h-full min-h-0 flex-col bg-background px-3 sm:px-5">
+              <div className="mobile-detail-safe-top flex h-full min-h-0 flex-col bg-[oklch(var(--background))] px-3 sm:px-5">
                 <GoalHeader
                   selectedGoal={displayGoal!}
                   goalCount={goals.length}

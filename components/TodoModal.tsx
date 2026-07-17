@@ -1,7 +1,7 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
@@ -11,7 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CalendarDays } from 'lucide-react';
 
 interface TodoModalProps {
   isOpen?: boolean;
@@ -33,6 +33,10 @@ interface TodoModalProps {
   onUpdate?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onRestore?: (todoId: string) => void;
   onPermanentDelete?: (todoId: string) => void;
+  onSheetPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSheetPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSheetPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onSheetPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }
 
 // 数据库 UTC 字符串转本地日期字符串
@@ -132,7 +136,11 @@ export default function TodoModal({
   onDelete,
   onUpdate,
   onRestore,
-  onPermanentDelete
+  onPermanentDelete,
+  onSheetPointerDown,
+  onSheetPointerMove,
+  onSheetPointerUp,
+  onSheetPointerCancel,
 }: TodoModalProps) {
   // 初始化表单数据
   const initialTodo: Todo = useMemo(() => ({
@@ -335,7 +343,17 @@ export default function TodoModal({
   const panelContent = (
     <>
         {presentation === 'drawer' ? (
-          <header className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-[oklch(var(--border))] px-5 py-4">
+          <header className="relative flex min-h-[68px] shrink-0 items-center gap-3 border-b border-[oklch(var(--border))] px-5 py-4">
+            <div
+              className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-[oklch(var(--border))] md:hidden"
+              role="presentation"
+              aria-hidden="true"
+              onPointerDown={onSheetPointerDown}
+              onPointerMove={onSheetPointerMove}
+              onPointerUp={onSheetPointerUp}
+              onPointerCancel={onSheetPointerCancel}
+              style={{ touchAction: 'none' }}
+            />
             <Button type="button" className="w-4" variant="ghost" size="icon" onClick={onClose} aria-label="返回任务列表">
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
@@ -434,25 +452,33 @@ export default function TodoModal({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="start_date" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">开始日期</label>
-                <Input
-                  type="date"
-                  id="start_date"
-                  name="start_date"
-                  value={mode === 'create' ? dbUTCToLocalDate(editableTodo.start_date) : dbUTCToLocalDate(editableTodo.start_date) || ''}
-                  onChange={handleInputChange}
-                  readOnly={isRecycled}
-                />
+                <div className="relative">
+                  <Input
+                    type="date"
+                    id="start_date"
+                    name="start_date"
+                    className="date-input pr-10"
+                    value={mode === 'create' ? dbUTCToLocalDate(editableTodo.start_date) : dbUTCToLocalDate(editableTodo.start_date) || ''}
+                    onChange={handleInputChange}
+                    readOnly={isRecycled}
+                  />
+                  <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[oklch(var(--foreground))]" aria-hidden="true" />
+                </div>
               </div>
               <div>
                 <label htmlFor="due_date" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">截止日期</label>
-                <Input
-                  type="date"
-                  id="due_date"
-                  name="due_date"
-                  value={mode === 'create' ? dbUTCToLocalDate(editableTodo.due_date) : dbUTCToLocalDate(editableTodo.due_date)}
-                  onChange={handleInputChange}
-                  readOnly={isRecycled}
-                />
+                <div className="relative">
+                  <Input
+                    type="date"
+                    id="due_date"
+                    name="due_date"
+                    className="date-input pr-10"
+                    value={mode === 'create' ? dbUTCToLocalDate(editableTodo.due_date) : dbUTCToLocalDate(editableTodo.due_date)}
+                    onChange={handleInputChange}
+                    readOnly={isRecycled}
+                  />
+                  <CalendarDays className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[oklch(var(--foreground))]" aria-hidden="true" />
+                </div>
               </div>
             </div>
 
@@ -529,7 +555,7 @@ export default function TodoModal({
           </div>
         </DialogBody>
 
-        <DialogFooter className="sm:space-x-0">
+        <DialogFooter className="pb-[max(1rem,env(safe-area-inset-bottom))] sm:space-x-0">
           {mode === 'edit' ? (
             isRecycled ? (
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -554,21 +580,13 @@ export default function TodoModal({
                 </div>
               </div>
             ) : (
-              presentation === 'drawer' ? (
-                <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onClose}>取消</Button>
-                  <div className="grid grid-cols-2 gap-2 sm:flex">
-                    {deleteAction}
-                    <Button type="button" onClick={handleSave}>保存</Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:justify-end">
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Button type="button" variant="outline" className="order-2 w-full sm:order-1 sm:w-auto" onClick={onClose}>取消</Button>
+                <div className="order-1 grid grid-cols-2 gap-2 sm:order-2 sm:flex">
                   {deleteAction}
-                  <Button type="button" variant="outline" onClick={onClose}>取消</Button>
                   <Button type="button" onClick={handleSave}>保存</Button>
                 </div>
-              )
+              </div>
             )
           ) : (
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:justify-end">
@@ -596,7 +614,7 @@ export default function TodoModal({
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         size="lg"
-        className="grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden sm:h-[min(86dvh,760px)]"
+        className="todo-dialog-content grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden sm:h-[min(86dvh,760px)]"
         onKeyDown={handleKeyDown}
       >
         {panelContent}

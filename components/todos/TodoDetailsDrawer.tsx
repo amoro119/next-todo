@@ -11,6 +11,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion'
 import TodoModal from '@/components/TodoModal'
 import type { Goal, List, Todo } from '@/lib/types'
+import { useIsDesktopLayout } from '@/lib/hooks/useIsDesktopLayout'
 
 interface TodoDetailsDrawerProps {
   todo: Todo | null
@@ -51,9 +52,15 @@ export default function TodoDetailsDrawer({
   const [drawerWidth, setDrawerWidth] = useState(DEFAULT_DRAWER_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const [mountedTodo, setMountedTodo] = useState<Todo | null>(todo)
+  const [sheetOffset, setSheetOffset] = useState(0)
+  const sheetDragRef = useRef<{ startY: number; offset: number } | null>(null)
+  const isDesktop = useIsDesktopLayout()
 
   useEffect(() => {
-    if (todo) setMountedTodo(todo)
+    if (todo) {
+      setMountedTodo(todo)
+      setSheetOffset(0)
+    }
   }, [todo])
 
   const getDrawerBounds = useCallback(() => {
@@ -161,6 +168,32 @@ export default function TodoDetailsDrawer({
     }
   }
 
+  const handleSheetPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isDesktop) return
+
+    event.preventDefault()
+    sheetDragRef.current = { startY: event.clientY, offset: sheetOffset }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  const handleSheetPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = sheetDragRef.current
+    if (!dragState) return
+
+    setSheetOffset(Math.max(0, dragState.offset + event.clientY - dragState.startY))
+  }
+
+  const handleSheetPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    const shouldClose = sheetOffset >= 120
+    sheetDragRef.current = null
+    setSheetOffset(0)
+    if (shouldClose) onClose()
+  }
+
   const drawerCssWidth = `min(100%, ${drawerWidth}px)`
   const displayTodo = todo ?? mountedTodo
 
@@ -191,12 +224,31 @@ export default function TodoDetailsDrawer({
         </div>
       )}
 
+      <AnimatePresence initial={false}>
+        {todo && (
+          <motion.button
+            type="button"
+            aria-label="关闭任务详情"
+            className="fixed inset-0 z-40 bg-[oklch(var(--overlay))] md:hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+            onClick={onClose}
+          />
+        )}
+      </AnimatePresence>
+
       <aside
         ref={drawerRef}
-        className="relative h-full min-h-0 shrink-0 overflow-hidden bg-background will-change-[width]"
+        role={isDesktop ? 'complementary' : 'dialog'}
+        aria-modal={isDesktop ? undefined : true}
+        className="fixed inset-x-0 bottom-0 z-50 flex h-[min(92dvh,760px)] w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border-t border-[oklch(var(--border))] bg-[oklch(var(--background))] shadow-2xl will-change-transform md:relative md:inset-auto md:z-auto md:block md:h-full md:w-auto md:shrink-0 md:rounded-none md:border-0 md:shadow-none"
         style={{
-          width: todo ? drawerCssWidth : 0,
-          transition: isResizing ? 'none' : 'width 320ms cubic-bezier(0.22, 1, 0.36, 1)',
+          width: isDesktop ? (todo ? drawerCssWidth : 0) : '100%',
+          visibility: displayTodo ? 'visible' : 'hidden',
+          pointerEvents: todo ? 'auto' : 'none',
+          transition: isDesktop ? (isResizing ? 'none' : 'width 320ms cubic-bezier(0.22, 1, 0.36, 1)') : 'none',
         }}
         onTransitionEnd={(event) => {
           if (event.target === event.currentTarget && event.propertyName === 'width' && !todo) {
@@ -209,11 +261,16 @@ export default function TodoDetailsDrawer({
         <AnimatePresence initial={false}>
           {mountedTodo && (
             <motion.div
-              initial={{ opacity: 0, x: '100%' }}
-              animate={{ opacity: todo ? 1 : 0, x: todo ? 0 : '100%' }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              className="h-full"
-              style={{ width: drawerCssWidth, minWidth: drawerCssWidth }}
+              initial={isDesktop ? { opacity: 0, x: '100%' } : { opacity: 0, y: '100%' }}
+              animate={isDesktop
+                ? { opacity: todo ? 1 : 0, x: todo ? 0 : '100%' }
+                : { opacity: todo ? 1 : 0, y: todo ? sheetOffset : '100%' }}
+              onAnimationComplete={() => {
+                if (!isDesktop && !todo) setMountedTodo(null)
+              }}
+              transition={{ duration: todo ? 0.36 : 0.24, ease: todo ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1] }}
+              className="h-full w-full md:w-auto"
+              style={isDesktop ? { width: drawerCssWidth, minWidth: drawerCssWidth } : undefined}
             >
               <TodoModal
                 isOpen={!!todo}
@@ -228,6 +285,10 @@ export default function TodoDetailsDrawer({
                 onDelete={onDelete}
                 onRestore={onRestore}
                 onPermanentDelete={onPermanentDelete}
+                onSheetPointerDown={handleSheetPointerDown}
+                onSheetPointerMove={handleSheetPointerMove}
+                onSheetPointerUp={handleSheetPointerEnd}
+                onSheetPointerCancel={handleSheetPointerEnd}
               />
             </motion.div>
           )}
