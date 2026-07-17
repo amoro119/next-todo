@@ -42,10 +42,11 @@ export const loadDistributionConfig = async (): Promise<DistributionConfig> => {
     
     const response = await fetch(configUrl);
     if (response.ok) {
-      const config = await response.json();
-      cachedConfig = { ...DEFAULT_CONFIG, ...config };
+      const config = await response.json() as Partial<DistributionConfig>;
+      const loadedConfig: DistributionConfig = { ...DEFAULT_CONFIG, ...config };
+      cachedConfig = loadedConfig;
       console.log('已加载分发配置:', cachedConfig);
-      return cachedConfig;
+      return loadedConfig;
     }
   } catch {
     console.log('未找到分发配置文件，使用默认配置');

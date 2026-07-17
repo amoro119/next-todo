@@ -41,7 +41,7 @@ const CommandInput = React.forwardRef<
     <CommandPrimitive.Input
       ref={ref}
       value={value}
-      className={cn('h-14 min-w-0 flex-1 bg-transparent py-3 text-base outline-none placeholder:text-[oklch(var(--muted-foreground))] disabled:cursor-not-allowed disabled:opacity-50', className)}
+      className={cn('h-14 min-w-0 flex-1 cursor-text rounded-none border-0 bg-transparent px-0 py-3 text-base shadow-none outline-none placeholder:text-[oklch(var(--muted-foreground))] focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50', className)}
       {...props}
     />
     {value && onClear ? (

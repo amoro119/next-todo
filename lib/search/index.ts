@@ -3,7 +3,6 @@
 // Export search service
 export {
   TaskSearchService,
-  getSearchService,
   searchTodos,
   type SearchOptions,
   type SearchResult

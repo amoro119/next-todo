@@ -15,7 +15,7 @@ export function groupTodosByGoal(todos: Todo[], goals: Goal[]): GoalGroup[] {
   const groupMap = new Map<string | null, Todo[]>();
   
   todos.forEach(todo => {
-    const goalId = todo.goal_id;
+    const goalId = todo.goal_id ?? null;
     if (!groupMap.has(goalId)) {
       groupMap.set(goalId, []);
     }
@@ -31,12 +31,12 @@ export function groupTodosByGoal(todos: Todo[], goals: Goal[]): GoalGroup[] {
       goal,
       todos: todos.sort((a, b) => {
         // 按排序权重排序，如果没有权重则按创建时间
-        const weightA = a.sort_weight || 0;
-        const weightB = b.sort_weight || 0;
+        const weightA = a.sort_order_in_goal ?? 0;
+        const weightB = b.sort_order_in_goal ?? 0;
         if (weightA !== weightB) {
           return weightA - weightB;
         }
-        return new Date(a.created_time).getTime() - new Date(b.created_time).getTime();
+        return new Date(a.created_time ?? 0).getTime() - new Date(b.created_time ?? 0).getTime();
       })
     });
   });
@@ -98,7 +98,7 @@ export function filterGoalGroups(
         );
         const matchesTodo = group.todos.some(todo =>
           todo.title.toLowerCase().includes(term) ||
-          (todo.notes && todo.notes.toLowerCase().includes(term))
+          (todo.content && todo.content.toLowerCase().includes(term))
         );
         if (!matchesGoal && !matchesTodo) {
           return false;
@@ -125,7 +125,7 @@ export function filterGoalGroups(
           
           if (!goalMatches) {
             return todo.title.toLowerCase().includes(term) ||
-                   (todo.notes && todo.notes.toLowerCase().includes(term));
+                   (todo.content && todo.content.toLowerCase().includes(term));
           }
         }
 

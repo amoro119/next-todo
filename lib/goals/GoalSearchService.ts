@@ -1,5 +1,5 @@
 import type { Goal } from '../types';
-import { getDbWrapper } from '../sync/initOfflineSync';
+import { db } from '../db/dexie';
 
 export interface GoalSearchOptions {
   fields: ('name' | 'description')[];
@@ -75,21 +75,40 @@ export class GoalSearchService {
     }
 
     try {
-      const dbWrapper = getDbWrapper();
-      if (!dbWrapper) {
-        throw new Error('Database not initialized');
-      }
-
       const searchOptions = this.normalizeSearchOptions(options);
-      const { sql, params } = this.buildSearchQueryWithCache(query, searchOptions);
-      
+
       // 检查是否被取消
       if (this.searchAbortController?.signal.aborted) {
         throw new Error('Search cancelled');
       }
-      
-      const result = await dbWrapper.raw.query(sql, params);
-      const goals = result.rows.map((raw: unknown) => this.normalizeGoal(raw as Record<string, unknown>));
+
+      const searchTerm = query.trim().toLowerCase();
+      const [storedGoals, lists] = await Promise.all([
+        db.goals.toArray(),
+        db.lists.toArray(),
+      ]);
+      const listNames = new Map(lists.map((list) => [list.id, list.name]));
+      const goals = storedGoals
+        .filter((goal) => goal.deleted_at === null)
+        .filter((goal) => searchOptions.includeArchived || !goal.is_archived)
+        .filter((goal) => searchOptions.priority === undefined || goal.priority === searchOptions.priority)
+        .filter((goal) => !searchOptions.listId || goal.list_id === searchOptions.listId)
+        .filter((goal) =>
+          (searchOptions.fields.includes('name') && goal.name.toLowerCase().includes(searchTerm)) ||
+          (searchOptions.fields.includes('description') && goal.description?.toLowerCase().includes(searchTerm))
+        )
+        .sort((a, b) => {
+          const aNameMatch = a.name.toLowerCase().includes(searchTerm) ? 0 : 1;
+          const bNameMatch = b.name.toLowerCase().includes(searchTerm) ? 0 : 1;
+          if (aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
+          if (a.priority !== b.priority) return b.priority - a.priority;
+          return b.created_time.localeCompare(a.created_time);
+        })
+        .slice(0, searchOptions.limit)
+        .map((goal): Goal => ({
+          ...goal,
+          list_name: goal.list_id ? listNames.get(goal.list_id) ?? null : null,
+        }));
       
       const searchResult: GoalSearchResult = {
         goals,

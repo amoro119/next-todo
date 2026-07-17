@@ -7,7 +7,6 @@ export default defineConfig({
     globals: true,
     pool: 'forks',
     maxWorkers: 1,
-    minWorkers: 1,
     include: ['lib/supabase/__tests__/**/*.test.ts'],
   },
   resolve: {

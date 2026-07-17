@@ -30,12 +30,8 @@ class StartupOptimizer {
     }
     
     // 预加载同步相关模块
-    this.preloadPromises.set('auth', import('../auth'));
     this.preloadPromises.set('syncConfig', import('../config/syncConfig'));
-    this.preloadPromises.set('syncErrorHandling', import('../sync/syncErrorHandling'));
-    
-    // 预加载数据库相关模块
-    this.preloadPromises.set('migrations', import('../../db/migrations-client'));
+    this.preloadPromises.set('database', import('../db/dexie'));
     
     console.log('🚀 预加载关键模块...');
   }

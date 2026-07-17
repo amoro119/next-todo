@@ -336,7 +336,7 @@ function CustomRecurrenceModal({
           if (parsed.bymonthday) {
             setMonthlyMode("date");
             setSelectedDate(parsed.bymonthday[0] || 1);
-          } else if (parsed.byday) {
+          } else if (parsed.byweekday?.length) {
             setMonthlyMode("weekday");
           }
         }

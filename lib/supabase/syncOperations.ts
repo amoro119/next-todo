@@ -29,7 +29,7 @@ export function fromSupabaseRow(row: Record<string, unknown>): SyncRecord {
     deleted: !!row.deleted,
     deleted_at: row.deleted ? new Date().toISOString() : null,
     updated_at: (row.modified as string) || new Date().toISOString(),
-  } as SyncRecord
+  } as unknown as SyncRecord
 }
 
 export async function fetchRemoteLatestTimestamp(

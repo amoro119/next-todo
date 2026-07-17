@@ -11,8 +11,13 @@ import {
   createDefaultGoal,
   calculateGoalProgress,
 } from '@/lib/types';
-import { DatabaseWrapper } from '@/lib/sync/ChangeInterceptor';
 import { db } from '@/lib/db/dexie';
+
+export interface GoalDatabaseWriter {
+  insert(table: 'todos' | 'goals', record: Record<string, unknown>): Promise<unknown>;
+  update(table: 'todos' | 'goals', id: string, updates: Record<string, unknown>): Promise<unknown>;
+  delete(table: 'goals', id: string): Promise<unknown>;
+}
 
 /**
  * 目标查询选项
@@ -32,7 +37,7 @@ export interface GoalQueryOptions {
  * 目标服务类 - 处理所有目标相关的数据库操作
  */
 export class GoalsService {
-  constructor(private dbWrapper: DatabaseWrapper) {}
+  constructor(private dbWrapper: GoalDatabaseWriter) {}
 
   /**
    * 创建新目标
@@ -208,8 +213,8 @@ export class GoalsService {
 
     // 排序
     goals.sort((a, b) => {
-      const aVal = a[sortBy as keyof Goal] ?? '';
-      const bVal = b[sortBy as keyof Goal] ?? '';
+      const aVal = a[sortBy] ?? '';
+      const bVal = b[sortBy] ?? '';
       if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
       if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
       return 0;
@@ -483,6 +488,6 @@ export class GoalsService {
 /**
  * 创建目标服务实例
  */
-export function createGoalsService(dbWrapper: DatabaseWrapper): GoalsService {
+export function createGoalsService(dbWrapper: GoalDatabaseWriter): GoalsService {
   return new GoalsService(dbWrapper);
 }

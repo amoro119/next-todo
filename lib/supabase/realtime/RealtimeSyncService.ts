@@ -484,8 +484,6 @@ export class RealtimeSyncService {
         return this.db?.lists ?? null
       case 'goals':
         return this.db?.goals ?? null
-      case 'goal_progress':
-        return this.db?.goal_progress ?? null
       default:
         return null
     }

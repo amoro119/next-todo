@@ -58,7 +58,7 @@ class InboxCache {
       // 限制缓存大小
       if (this.dateCache.size > 500) {
         const firstKey = this.dateCache.keys().next().value;
-        this.dateCache.delete(firstKey);
+        if (firstKey !== undefined) this.dateCache.delete(firstKey);
       }
       
       this.dateCache.set(utcDate, result);
@@ -91,9 +91,9 @@ class InboxCache {
     this.lastFilterKey = filterKey;
     
     // 限制缓存大小
-    if (this.filterCache.size > 10) {
-      const firstKey = this.filterCache.keys().next().value;
-      this.filterCache.delete(firstKey);
+      if (this.filterCache.size > 10) {
+        const firstKey = this.filterCache.keys().next().value;
+        if (firstKey !== undefined) this.filterCache.delete(firstKey);
     }
     
     this.filterCache.set(filterKey, result);
@@ -112,7 +112,7 @@ class InboxCache {
     // 限制缓存大小
     if (this.sortCache.size > 10) {
       const firstKey = this.sortCache.keys().next().value;
-      this.sortCache.delete(firstKey);
+      if (firstKey !== undefined) this.sortCache.delete(firstKey);
     }
     
     this.sortCache.set(todosHash, result);

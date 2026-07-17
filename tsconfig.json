@@ -23,5 +23,11 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "dist", "dist-electron"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "server.ts",
+    "supabase/functions"
+  ]
 }

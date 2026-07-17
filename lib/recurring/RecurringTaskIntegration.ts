@@ -132,7 +132,7 @@ export class RecurringTaskIntegration {
           });
           
           // 使用原任务的到期日期作为基准，而不是当前时间
-          const originalDueDate = new Date(completedTask.due_date || completedTask.created_time);
+          const originalDueDate = new Date(completedTask.due_date || completedTask.created_time || Date.now());
           
           const result = RecurringTaskGenerator.handleRecurringTaskCompletion(
             completedTask,
@@ -270,7 +270,7 @@ export class RecurringTaskIntegration {
 
           for (const task of recurringTasks) {
             try {
-              const originalDueDate = new Date(task.due_date || task.created_time);
+              const originalDueDate = new Date(task.due_date || task.created_time || Date.now());
               const result = RecurringTaskGenerator.handleRecurringTaskCompletion(
                 task,
                 originalDueDate
@@ -307,7 +307,7 @@ export class RecurringTaskIntegration {
                   params: [
                     task.id,
                     task.title,
-                    task.notes,
+                    task.content,
                     task.completed,
                     task.due_date,
                     task.created_time,

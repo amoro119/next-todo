@@ -144,9 +144,9 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
 
         const newTodo: Partial<Todo> = {
             title: values[titleIndex]?.trim() || '无标题',
-            removed: status === '-1' ? 1 : 0,
+            deleted: status === '-1',
             completed_time: completedTime,
-            completed: completedTime ? 1 : 0,
+            completed: Boolean(completedTime),
             due_date: dueDate,
             content: contentIndex > -1 ? values[contentIndex] || null : null,
             priority: priorityMap[priorityIndex > -1 ? values[priorityIndex] : ''] ?? 0,
@@ -164,7 +164,7 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
             next_due_date: isRecurring ? dueDate : null // 如果是重复任务，设置下次到期日期
         };
 
-        if (newTodo.removed) {
+        if (newTodo.deleted) {
             removedTodos.push(newTodo);
         } else {
             todos.push(newTodo);

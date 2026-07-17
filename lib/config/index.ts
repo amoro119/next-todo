@@ -1,5 +1,8 @@
 // lib/config/index.ts
 
+import { getUserState } from '../user/userState';
+import { getSyncConfig } from './syncConfig';
+
 export { 
   type UserState, 
   getUserState, 

@@ -24,7 +24,7 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
             const { todos: parsedTodos, removedTodos } = parseDidaCsv(content)
             todosToImport = [...parsedTodos, ...removedTodos].map((t) => ({
               ...t,
-              deleted: !!(t as unknown as { removed?: boolean }).removed,
+              deleted: Boolean(t.deleted),
             }))
             console.log(`[CSV Import] Parsed: ${parsedTodos.length} active + ${removedTodos.length} removed = ${todosToImport.length} total`)
             console.log(`[CSV Import] With completedTime: ${todosToImport.filter(t => t.completed_time).length} | Without: ${todosToImport.filter(t => !t.completed_time).length}`)

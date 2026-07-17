@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, Circle, Target } from 'lucide-react'
+import { CheckCircle2, Circle, Search, Target } from 'lucide-react'
 import type { Goal, Todo } from '@/lib/types'
 import { cn } from '@/components/common/cn'
 import {
@@ -134,11 +134,27 @@ export function CommandPalette({
   }, [open])
 
   const normalizedQuery = normalize(query)
+  const hasQuery = normalizedQuery.length > 0
 
-  const todoResults = useMemo<TodoSearchResult[]>(() => {
+  const matchedTodos = useMemo(() => {
+    if (!hasQuery) return []
+
     return todos
       .filter((todo) => !todo.deleted && matches(normalizedQuery, todo.title, todo.content, todo.tags, todo.list_name))
       .sort((a, b) => Number(a.completed) - Number(b.completed))
+  }, [hasQuery, normalizedQuery, todos])
+
+  const matchedGoals = useMemo(() => {
+    if (!hasQuery) return []
+    return goals.filter((goal) => matches(normalizedQuery, goal.name, goal.description, goal.list_name))
+  }, [goals, hasQuery, normalizedQuery])
+
+  const visibleTodoResults = useMemo<TodoSearchResult[]>(() => {
+    if (resultFilter === 'goal') return []
+    const limit = resultFilter === 'todo' ? 18 : 10
+
+    return matchedTodos
+      .slice(0, limit)
       .map((todo) => {
         const matchContext = getMatchContext(normalizedQuery, todo.title, [
           { label: '备注', value: todo.content },
@@ -154,11 +170,14 @@ export function CommandPalette({
           todo,
         }
       })
-  }, [normalizedQuery, todos])
+  }, [matchedTodos, normalizedQuery, resultFilter])
 
-  const goalResults = useMemo<GoalSearchResult[]>(() => {
-    return goals
-      .filter((goal) => matches(normalizedQuery, goal.name, goal.description, goal.list_name))
+  const visibleGoalResults = useMemo<GoalSearchResult[]>(() => {
+    if (resultFilter === 'todo') return []
+    const limit = resultFilter === 'goal' ? 18 : 6
+
+    return matchedGoals
+      .slice(0, limit)
       .map((goal) => {
         const matchContext = getMatchContext(normalizedQuery, goal.name, [
           { label: '描述', value: goal.description },
@@ -173,7 +192,7 @@ export function CommandPalette({
           goal,
         }
       })
-  }, [goals, normalizedQuery])
+  }, [matchedGoals, normalizedQuery, resultFilter])
 
   const handleSelect = (result: CommandSearchResult) => {
     onOpenChange(false)
@@ -181,33 +200,37 @@ export function CommandPalette({
     else onSelectGoal(result.goal)
   }
 
-  const visibleTodoResults = resultFilter === 'goal'
-    ? []
-    : todoResults.slice(0, resultFilter === 'todo' ? 18 : 10)
-  const visibleGoalResults = resultFilter === 'todo'
-    ? []
-    : goalResults.slice(0, resultFilter === 'goal' ? 18 : 6)
   const visibleResultCount = visibleTodoResults.length + visibleGoalResults.length
-  const totalResultCount = todoResults.length + goalResults.length
+  const totalResultCount = matchedTodos.length + matchedGoals.length
+  const activeResultCount = resultFilter === 'todo'
+    ? matchedTodos.length
+    : resultFilter === 'goal'
+      ? matchedGoals.length
+      : totalResultCount
 
   const filters: Array<{ value: ResultFilter; label: string; count: number }> = [
     { value: 'all', label: '全部', count: totalResultCount },
-    { value: 'todo', label: '待办', count: todoResults.length },
-    { value: 'goal', label: '目标', count: goalResults.length },
+    { value: 'todo', label: '待办', count: matchedTodos.length },
+    { value: 'goal', label: '目标', count: matchedGoals.length },
   ]
+
+  const handleQueryChange = (nextQuery: string) => {
+    setQuery(nextQuery)
+    if (!nextQuery.trim()) setResultFilter('all')
+  }
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput
         value={query}
-        onValueChange={setQuery}
-        onClear={() => setQuery('')}
+        onValueChange={handleQueryChange}
+        onClear={() => handleQueryChange('')}
         onClose={() => onOpenChange(false)}
         placeholder="搜索待办、目标、清单或标签..."
         autoFocus
       />
 
-      <div className="flex shrink-0 items-center gap-1 border-b border-[oklch(var(--border))] bg-[oklch(var(--muted)/0.25)] px-3 py-2" role="group" aria-label="搜索结果类型">
+      {hasQuery && totalResultCount > 0 && <div className="flex shrink-0 items-center gap-1 border-b border-[oklch(var(--border))] bg-[oklch(var(--muted)/0.25)] px-3 py-2" role="group" aria-label="搜索结果类型">
         {filters.map((filter) => {
           const isActive = resultFilter === filter.value
           return (
@@ -236,16 +259,28 @@ export function CommandPalette({
             </button>
           )
         })}
-      </div>
+      </div>}
 
       <CommandList>
         <CommandEmpty>
-          <div className="font-medium text-[oklch(var(--foreground))]">未找到相关内容</div>
-          <div className="mt-1 text-xs">尝试更短的关键词，或切换结果类型</div>
+          {hasQuery ? (
+            <>
+              <div className="font-medium text-[oklch(var(--foreground))]">未找到相关内容</div>
+              <div className="mt-1 text-xs">尝试更短的关键词，或检查拼写</div>
+            </>
+          ) : (
+            <div className="mx-auto flex max-w-xs flex-col items-center py-2">
+              <span className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[oklch(var(--muted))] text-[oklch(var(--muted-foreground))]">
+                <Search className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div className="font-medium text-[oklch(var(--foreground))]">搜索你的待办与目标</div>
+              <div className="mt-1 text-xs">支持标题、备注、清单和标签</div>
+            </div>
+          )}
         </CommandEmpty>
 
         {visibleTodoResults.length > 0 && (
-          <CommandGroup heading={`待办 · ${todoResults.length}`}>
+          <CommandGroup heading={`待办 · ${matchedTodos.length}`}>
             {visibleTodoResults.map((result) => (
               <CommandItem
                 key={`todo-${result.id}`}
@@ -285,7 +320,7 @@ export function CommandPalette({
         {visibleTodoResults.length > 0 && visibleGoalResults.length > 0 && <CommandSeparator />}
 
         {visibleGoalResults.length > 0 && (
-          <CommandGroup heading={`目标 · ${goalResults.length}`}>
+          <CommandGroup heading={`目标 · ${matchedGoals.length}`}>
             {visibleGoalResults.map((result) => (
               <CommandItem
                 key={`goal-${result.id}`}
@@ -308,10 +343,10 @@ export function CommandPalette({
       </CommandList>
 
       <div aria-live="polite" className="flex min-h-10 shrink-0 items-center justify-between gap-4 border-t border-[oklch(var(--border))] bg-[oklch(var(--muted)/0.2)] px-4 py-2 text-[11px] text-[oklch(var(--muted-foreground))]">
-        <span>{visibleResultCount < totalResultCount ? `显示 ${visibleResultCount} / ${totalResultCount} 项` : `共 ${totalResultCount} 项`}</span>
+        <span>{hasQuery ? (visibleResultCount < activeResultCount ? `显示 ${visibleResultCount} / ${activeResultCount} 项` : `共 ${activeResultCount} 项`) : '输入关键词开始搜索'}</span>
         <span className="hidden items-center gap-3 sm:flex">
-          <span><kbd>↑↓</kbd> 选择</span>
-          <span><kbd>↵</kbd> 打开</span>
+          {activeResultCount > 0 && <span><kbd>↑↓</kbd> 选择</span>}
+          {activeResultCount > 0 && <span><kbd>↵</kbd> 打开</span>}
           <span><kbd>Esc</kbd> 关闭</span>
         </span>
       </div>
