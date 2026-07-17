@@ -31,6 +31,10 @@ const MAX_DRAWER_WIDTH = 720
 const MIN_MAIN_WIDTH = 400
 // 与目标详情共用宽度偏好，保证两种侧栏在页面间保持一致。
 const DRAWER_WIDTH_STORAGE_KEY = 'next-todo:goal-details-drawer-width'
+const MOBILE_SHEET_ENTER_TRANSITION = {
+  duration: 0.36,
+  ease: [0.22, 1, 0.36, 1] as const,
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
@@ -233,7 +237,7 @@ export default function TodoDetailsDrawer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.24, ease: 'easeOut' }}
+            transition={MOBILE_SHEET_ENTER_TRANSITION}
             onClick={onClose}
           />
         )}
@@ -259,7 +263,7 @@ export default function TodoDetailsDrawer({
         aria-label={displayTodo ? `任务详情：${displayTodo.title}` : undefined}
       >
         <AnimatePresence initial={false}>
-          {mountedTodo && (
+          {displayTodo && (
             <motion.div
               initial={isDesktop ? { opacity: 0, x: '100%' } : { opacity: 0, y: '100%' }}
               animate={isDesktop
@@ -268,7 +272,9 @@ export default function TodoDetailsDrawer({
               onAnimationComplete={() => {
                 if (!isDesktop && !todo) setMountedTodo(null)
               }}
-              transition={{ duration: todo ? 0.36 : 0.24, ease: todo ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1] }}
+              transition={todo
+                ? MOBILE_SHEET_ENTER_TRANSITION
+                : { duration: 0.24, ease: [0.4, 0, 1, 1] }}
               className="h-full w-full md:w-auto"
               style={isDesktop ? { width: drawerCssWidth, minWidth: drawerCssWidth } : undefined}
             >
