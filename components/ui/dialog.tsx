@@ -77,8 +77,13 @@ const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 )
 DialogFooter.displayName = 'DialogFooter'
 
-const DialogBody = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('min-h-0 flex-1 overflow-y-auto px-5 py-4', className)} {...props} />
+const DialogBody = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, style, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn('min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-4', className)}
+    style={{ touchAction: 'pan-y', ...style }}
+    {...props}
+  />
 ))
 DialogBody.displayName = 'DialogBody'
 

@@ -1886,7 +1886,8 @@ span.shortcut-name {
     height: min(92dvh, 760px);
     max-height: min(92dvh, 760px);
     transform: none;
-    translate: none;
+    /* Tailwind v4 compiles -translate-* utilities to the separate translate property. */
+    translate: 0 0 !important;
     border-radius: 1rem 1rem 0 0;
     border-bottom-width: 0;
     will-change: transform, opacity;
