@@ -37,7 +37,7 @@ export default function ArchivedGoalsList({ goals, onRestoreGoal, onDeleteGoal, 
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索已存档目标"
-            className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
+            className="form-control h-9 w-full pl-9 pr-3 text-sm placeholder:text-muted-foreground"
           />
         </div>
 

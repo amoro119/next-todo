@@ -23,7 +23,7 @@ export function TodoInput({ value, onChange, onSubmit, placeholder = '添加任�
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={handleKeyDown}
       placeholder={placeholder}
-      className="w-full px-4 py-3 bg-transparent border-b border-[oklch(var(--border))] text-[oklch(var(--foreground))] placeholder:text-[oklch(var(--muted-foreground))] focus:outline-none text-sm"
+      className="form-control w-full px-4 py-3 text-sm placeholder:text-[oklch(var(--muted-foreground))]"
     />
   )
 }

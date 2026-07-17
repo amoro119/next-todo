@@ -66,7 +66,7 @@ export default function SyncSettings() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://xxx.supabase.co"
-          className="w-full px-3 py-2 rounded-lg border border-[oklch(var(--border))] bg-[oklch(var(--background))] text-[oklch(var(--foreground))] text-sm focus:outline-none focus:ring-1 focus:ring-[oklch(var(--ring))]"
+          className="form-control w-full px-3 py-2 text-sm"
         />
       </div>
 
@@ -77,7 +77,7 @@ export default function SyncSettings() {
           value={anonKey}
           onChange={(e) => setAnonKey(e.target.value)}
           placeholder="eyJ..."
-          className="w-full px-3 py-2 rounded-lg border border-[oklch(var(--border))] bg-[oklch(var(--background))] text-[oklch(var(--foreground))] text-sm focus:outline-none focus:ring-1 focus:ring-[oklch(var(--ring))]"
+          className="form-control w-full px-3 py-2 text-sm"
         />
       </div>
 

@@ -286,7 +286,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
                 id="goal-list"
                 value={formData.list_id}
                 onChange={(e) => handleInputChange('list_id', e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="form-control w-full px-3 py-2 text-sm"
               >
                 <option value="">选择列表（可选）</option>
                 {lists.map((list) => (
@@ -336,7 +336,7 @@ const GoalModal: React.FC<GoalModalProps> = ({
                 id="goal-priority"
                 value={formData.priority}
                 onChange={(e) => handleInputChange('priority', parseInt(e.target.value))}
-                className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="form-control w-full px-3 py-2 text-sm"
               >
                 <option value={0}>无</option>
                 <option value={1}>低</option>

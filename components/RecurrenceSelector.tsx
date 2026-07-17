@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { RRuleEngine, RRULE_PATTERNS } from "../lib/recurring/RRuleEngine";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ChevronDown } from "lucide-react";
 
 interface RecurrenceSelectorProps {
   value: string | null;
@@ -129,37 +130,55 @@ export default function RecurrenceSelector({
 
   return (
     <>
-      <div className="relative inline-block w-full" ref={dropdownRef}>
-        <div
-          className={`w-full px-2.5 py-2.5 border border-border rounded-lg bg-background text-sm cursor-pointer flex items-center justify-between min-h-[44px] transition-all duration-200 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+      <div
+        className="relative inline-block w-full"
+        ref={dropdownRef}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          data-form-control
+          className="form-control flex min-h-9 w-full items-center justify-between px-3 py-2 text-sm"
           onClick={handleTriggerClick}
+          disabled={disabled}
         >
           <span className="flex-1 text-left text-foreground">{displayText}</span>
           <div className="flex items-center justify-center w-6 h-6 shrink-0">
-            {hasValue && isHovered ? (
-              <button
-                type="button"
-                className="bg-destructive border-none rounded-full w-5 h-5 flex items-center justify-center cursor-pointer text-sm font-bold text-white leading-none hover:scale-110 transition-transform"
-                onClick={handleClearRecurrence}
-                title="停止重复"
-              >
-                ×
-              </button>
-            ) : (
-              <span className="text-xs text-muted-foreground select-none">▼</span>
-            )}
+            <ChevronDown className={`h-4 w-4 text-[oklch(var(--muted-foreground))] ${hasValue && isHovered ? "opacity-0" : ""}`} aria-hidden="true" />
           </div>
-        </div>
+        </button>
+
+        {hasValue && isHovered && !disabled && (
+          <button
+            type="button"
+            className="absolute right-3 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-destructive text-sm font-bold leading-none text-white transition-transform hover:scale-110"
+            onClick={handleClearRecurrence}
+            aria-label="停止重复"
+            title="停止重复"
+          >
+            ×
+          </button>
+        )}
 
         {isOpen && !disabled && (
-          <div className="absolute top-full left-0 right-0 z-[1000] bg-background border border-border rounded-lg mt-1 max-h-[300px] overflow-y-auto">
+          <div className="absolute bottom-full left-0 right-0 z-[1000] mb-1 max-h-[300px] overflow-y-auto rounded-md border border-[oklch(var(--border))] bg-[oklch(var(--background))] shadow-md" role="listbox">
             {recurrenceOptions.map((option, index) => (
               <div
                 key={index}
-                className={`px-4 py-3 cursor-pointer border-b border-border last:border-b-0 transition-colors duration-200 flex flex-col items-start hover:bg-muted ${option.value === value && value !== null && !option.isCustom ? "bg-foreground text-background" : ""}`}
+                role="option"
+                tabIndex={0}
+                aria-selected={option.value === value && value !== null && !option.isCustom}
+                className={`flex cursor-pointer flex-col items-start border-b border-[oklch(var(--border))] px-4 py-3 transition-colors duration-200 last:border-b-0 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(var(--ring))] ${option.value === value && value !== null && !option.isCustom ? "bg-foreground text-background" : ""}`}
                 onClick={() => handleOptionClick(option)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleOptionClick(option);
+                  }
+                }}
               >
                 <span className="text-sm font-medium">{option.label}</span>
                 {option.description && (
@@ -505,7 +524,7 @@ function CustomRecurrenceModal({
                     <select
                       value={weekPosition}
                       onChange={(e) => setWeekPosition(e.target.value as "first" | "last")}
-                      className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                      className="form-control px-3 py-2 text-sm"
                     >
                       {positionOptions.map((pos) => (
                         <option key={pos.value} value={pos.value}>
@@ -516,7 +535,7 @@ function CustomRecurrenceModal({
                     <select
                       value={selectedWeekday}
                       onChange={(e) => setSelectedWeekday(parseInt(e.target.value))}
-                      className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                      className="form-control px-3 py-2 text-sm"
                     >
                       {weekdayNames.map((day) => (
                         <option key={day.value} value={day.value}>
@@ -533,7 +552,7 @@ function CustomRecurrenceModal({
                   <select
                     value={workdayPosition}
                     onChange={(e) => setWorkdayPosition(e.target.value as "first" | "last")}
-                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                    className="form-control w-full px-3 py-2 text-sm"
                   >
                     <option value="first">第一个工作日</option>
                     <option value="last">最后一个工作日</option>
@@ -552,7 +571,7 @@ function CustomRecurrenceModal({
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                  className="px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                  className="form-control px-3 py-2 text-sm"
                 >
                   {monthNames.map((month, index) => (
                     <option key={index + 1} value={index + 1}>
@@ -580,7 +599,7 @@ function CustomRecurrenceModal({
                       setDateError(false);
                     }
                   }}
-                  className={`w-20 px-3 py-3 rounded-lg border bg-background text-center text-sm font-semibold ${dateError ? 'border-red-500' : 'border-border'}`}
+                  className={`form-control w-20 px-3 py-3 text-center text-sm font-semibold ${dateError ? 'border-red-500' : ''}`}
                 />
                 <span className="text-sm text-foreground">日</span>
               </div>
@@ -604,7 +623,7 @@ function CustomRecurrenceModal({
           {/* 重复基础设置 */}
           <div className="flex flex-col gap-4">
             <div>
-              <select className="w-full px-3 py-3 rounded-lg border border-border bg-muted/50 text-muted-foreground text-sm" disabled>
+              <select className="form-control w-full px-3 py-3 text-sm" disabled>
                 <option value="按到期日期">按到期日期</option>
               </select>
             </div>
@@ -631,12 +650,12 @@ function CustomRecurrenceModal({
                     setIntervalError(false);
                   }
                 }}
-                className={`w-20 px-3 py-3 rounded-lg border bg-background text-center text-sm font-semibold ${intervalError ? 'border-red-500' : 'border-border'}`}
+                className={`form-control w-20 px-3 py-3 text-center text-sm font-semibold ${intervalError ? 'border-red-500' : ''}`}
               />
               <select
                 value={frequency}
                 onChange={(e) => setFrequency(e.target.value)}
-                className="flex-1 px-3 py-3 rounded-lg border border-border bg-background text-foreground text-sm"
+                className="form-control flex-1 px-3 py-3 text-sm"
               >
                 {frequencyOptions.map((option) => (
                   <option key={option.value} value={option.value}>

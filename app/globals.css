@@ -183,6 +183,56 @@
 }
 
 /* ==========================================================================
+   FORM CONTROLS
+   ========================================================================== */
+
+@layer components {
+  .form-control {
+    border: 1px solid oklch(var(--input));
+    border-radius: var(--radius);
+    background-color: oklch(var(--background));
+    color: oklch(var(--foreground));
+    box-shadow: none;
+    outline: none;
+    cursor: text;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  .form-control:hover:not(:disabled):not(:focus) {
+    border-color: oklch(var(--foreground) / 0.28);
+  }
+
+  .form-control:focus,
+  .form-control:focus-visible,
+  [data-form-control]:focus,
+  [data-form-control]:focus-visible {
+    border-color: color-mix(in oklch, oklch(var(--border)) 60%, oklch(var(--muted-foreground)) 40%);
+    outline: none;
+    box-shadow: 0 0 0 3px oklch(var(--muted-foreground) / 0.08);
+  }
+
+  .form-control:disabled,
+  [data-form-control]:disabled,
+  [data-form-control][aria-disabled='true'] {
+    border-color: oklch(var(--border));
+    background-color: oklch(var(--muted) / 0.55);
+    color: oklch(var(--muted-foreground));
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
+
+  select.form-control,
+  [data-form-control] {
+    cursor: pointer;
+  }
+
+  [data-form-control][aria-disabled='true'] {
+    pointer-events: none;
+  }
+}
+
+/* ==========================================================================
    LAYOUT
    ========================================================================== */
 
@@ -2064,11 +2114,6 @@ span.shortcut-name {
    ========================================================================== */
 
 @media (max-width: 768px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px;
-  }
 
   .container {
     max-width: 100%;

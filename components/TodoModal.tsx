@@ -1,7 +1,7 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, CalendarDays } from 'lucide-react';
 
 interface TodoModalProps {
@@ -207,6 +208,15 @@ export default function TodoModal({
   const [editableTodo, setEditableTodo] = useState<Todo>(mergedInitialTodo);
   const isRecycled = !!editableTodo.deleted;
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const resizeContentTextarea = useCallback(() => {
+    const textarea = contentTextareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.max(44, textarea.scrollHeight)}px`;
+  }, []);
 
     
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
@@ -230,6 +240,10 @@ export default function TodoModal({
       window.requestAnimationFrame(() => titleInputRef.current?.focus());
     }
   }, [isOpen]);
+
+  useLayoutEffect(() => {
+    resizeContentTextarea();
+  }, [editableTodo.content, isOpen, resizeContentTextarea]);
 
   const handleSave = async () => {
     try {
@@ -405,11 +419,13 @@ export default function TodoModal({
             <div>
               <label htmlFor="content" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">备注</label>
               <Textarea
+                ref={contentTextareaRef}
                 id="content"
                 name="content"
                 value={editableTodo.content || ''}
                 onChange={handleInputChange}
                 rows={4}
+                className="min-h-24 resize-y overflow-auto"
                 readOnly={isRecycled}
               />
             </div>
@@ -417,35 +433,39 @@ export default function TodoModal({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="list_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">清单</label>
-                <select
-                  id="list_id"
-                  name="list_id"
-                  className="h-9 w-full rounded-md border border-[oklch(var(--input))] bg-[oklch(var(--background))] px-3 text-sm text-[oklch(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[oklch(var(--ring))]"
-                  value={editableTodo.list_id === null || editableTodo.list_id === undefined ? '' : String(editableTodo.list_id)}
-                  onChange={handleInputChange}
+                <Select
+                  value={editableTodo.list_id === null || editableTodo.list_id === undefined ? 'none' : String(editableTodo.list_id)}
+                  onValueChange={(value) => setEditableTodo((todo) => ({ ...todo, list_id: value === 'none' ? null : value }))}
                   disabled={isRecycled}
                 >
-                  <option value="">无清单</option>
-                  {lists.map(list => (
-                    <option key={list.id} value={String(list.id)}>{list.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger id="list_id" aria-label="清单">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">无清单</SelectItem>
+                    {lists.map(list => (
+                      <SelectItem key={list.id} value={String(list.id)}>{list.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label htmlFor="priority" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">优先级</label>
-                <select
-                  id="priority"
-                  name="priority"
-                  className="h-9 w-full rounded-md border border-[oklch(var(--input))] bg-[oklch(var(--background))] px-3 text-sm text-[oklch(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[oklch(var(--ring))]"
-                  value={editableTodo.priority}
-                  onChange={handleInputChange}
+                <Select
+                  value={String(editableTodo.priority)}
+                  onValueChange={(value) => setEditableTodo((todo) => ({ ...todo, priority: Number(value) }))}
                   disabled={isRecycled}
                 >
-                  <option value="0">无</option>
-                  <option value="1">低</option>
-                  <option value="2">中</option>
-                  <option value="3">高</option>
-                </select>
+                  <SelectTrigger id="priority" aria-label="优先级">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">无</SelectItem>
+                    <SelectItem value="1">低</SelectItem>
+                    <SelectItem value="2">中</SelectItem>
+                    <SelectItem value="3">高</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -484,19 +504,21 @@ export default function TodoModal({
 
             <div>
               <label htmlFor="goal_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">所属目标</label>
-              <select
-                id="goal_id"
-                name="goal_id"
-                value={editableTodo.goal_id ?? goalId ?? ''}
-                onChange={handleInputChange}
+              <Select
+                value={editableTodo.goal_id ?? goalId ?? 'none'}
+                onValueChange={(value) => setEditableTodo((todo) => ({ ...todo, goal_id: value === 'none' ? null : value }))}
                 disabled={isRecycled}
-                className="h-9 w-full rounded-md border border-[oklch(var(--input))] bg-[oklch(var(--background))] px-3 text-sm text-[oklch(var(--foreground))] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[oklch(var(--ring))]"
               >
-                <option value="">无目标</option>
-                {goals.map(goal => (
-                  <option key={goal.id} value={goal.id}>{goal.name}</option>
-                ))}
-              </select>
+                <SelectTrigger id="goal_id" aria-label="所属目标">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">无目标</SelectItem>
+                  {goals.map(goal => (
+                    <SelectItem key={goal.id} value={goal.id}>{goal.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
