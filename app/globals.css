@@ -94,12 +94,28 @@
     background-color: oklch(var(--background));
     font-size: 16px;
     color: oklch(var(--foreground));
+    min-height: 100%;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
     background-color: oklch(var(--background));
     color: oklch(var(--foreground));
     min-height: 100vh;
+    min-height: 100dvh;
+    overscroll-behavior-y: none;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role='button'],
+  [role='tab'] {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   ::placeholder {
@@ -1808,6 +1824,18 @@ span.shortcut-name {
   display: none;
 }
 
+.mobile-scroll-x {
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-app-nav {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-top: env(safe-area-inset-top);
+}
+
 /* ==========================================================================
    COLLAPSIBLE
    ========================================================================== */
@@ -1944,6 +1972,12 @@ span.shortcut-name {
    ========================================================================== */
 
 @media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
   .container {
     max-width: 100%;
     padding: 0 16px;

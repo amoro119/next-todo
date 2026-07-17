@@ -131,7 +131,7 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
         />
       </div>
 
-      <div className="md:hidden sticky top-0 z-40 w-full border-b border-[oklch(var(--border))] bg-[oklch(var(--background))]">
+      <div className="mobile-app-nav sticky top-0 z-40 w-full border-b border-[oklch(var(--border))] bg-[oklch(var(--background))] md:hidden">
         <div className="flex items-center justify-between px-4 py-2">
           <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>
           <Button
@@ -145,7 +145,7 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
             <Settings size={16} />
           </Button>
         </div>
-        <div className="flex overflow-x-auto px-4 pb-2 gap-2 scrollbar-none">
+        <div className="mobile-scroll-x flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
           {NAV_ITEMS.map(({ section, label, icon: Icon }) => (
             <Button
               key={section}

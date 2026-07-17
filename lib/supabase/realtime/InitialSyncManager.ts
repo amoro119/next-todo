@@ -196,6 +196,11 @@ export class InitialSyncManager {
       if (toUpload.length > 0) {
         onProgress?.({ table, phase: 'uploading', processed: 0, total: toUpload.length })
         const result = await upsertRecords(this.client, table, toUpload)
+
+        if (!result.success) {
+          throw new Error(result.error ?? `Upload failed for ${table}`)
+        }
+
         stats.uploaded += toUpload.length
         console.log(`[InitialSync] [${table}] Uploaded ${toUpload.length} records:`, result)
       }

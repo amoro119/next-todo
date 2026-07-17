@@ -1,16 +1,24 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RealtimeSyncTable, SyncRecord, SyncOperationResult } from './realtime/types'
 
-// Supabase 现有表没有 user_id / deleted_at / updated_at 字段
-// 上传前需要剥离这些字段，并将 deleted_at 映射为 deleted boolean
-function toSupabaseRecord(record: SyncRecord): Record<string, unknown> {
-  const { user_id, deleted_at, updated_at, ...rest } = record as Record<string, unknown>
+// Supabase 现有表没有 user_id / deleted_at / updated_at 字段。
+// todos 使用 deleted 标记软删除；lists/goals 的远端表不包含该字段。
+function toSupabaseRecord(
+  table: RealtimeSyncTable,
+  record: SyncRecord,
+): Record<string, unknown> {
+  const { user_id, deleted_at, updated_at, deleted, ...rest } = record as Record<string, unknown>
   void user_id
-  return {
+  const payload: Record<string, unknown> = {
     ...rest,
-    deleted: !!deleted_at,
     modified: updated_at || new Date().toISOString(),
   }
+
+  if (table === 'todos') {
+    payload.deleted = !!deleted_at || deleted === true
+  }
+
+  return payload
 }
 
 // 下载后将 Supabase 字段映射回 Dexie 字段
@@ -85,7 +93,7 @@ export async function upsertRecords(
   records: SyncRecord[],
 ): Promise<SyncOperationResult> {
   console.log(`[SyncOps] upsertRecords: ${table} count=${records.length}`)
-  const payload = records.map(toSupabaseRecord)
+  const payload = records.map((record) => toSupabaseRecord(table, record))
   const { data, error } = await client.from(table).upsert(payload)
 
   if (error) {

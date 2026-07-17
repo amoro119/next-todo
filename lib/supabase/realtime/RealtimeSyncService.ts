@@ -260,16 +260,21 @@ export class RealtimeSyncService {
 
     const onProgress: ProgressCallback = (progress) => {
       if (progress.phase === 'done') {
-        const now = new Date().toISOString()
-        setLastSyncTime(now)
-        this.setState({ lastSyncTime: now })
+        console.log(`[Sync] Initial sync table complete: ${progress.table}`)
       }
     }
 
-    await this.initialSyncManager!.performSync({
+    const stats = await this.initialSyncManager!.performSync({
       tables: this.config.tables,
       onProgress,
     })
+
+    if (stats.errors.length > 0) {
+      const details = stats.errors
+        .map(({ table, error }) => `[${table}] ${error}`)
+        .join('; ')
+      throw new Error(`Initial sync failed: ${details}`)
+    }
   }
 
   private async subscribeToChannels(): Promise<void> {

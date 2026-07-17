@@ -315,6 +315,23 @@ export default function TodoModal({
   };
 
   const panelTitle = isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情';
+  const deleteAction = (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button type="button" variant="destructive">删除</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除任务？</AlertDialogTitle>
+          <AlertDialogDescription>任务会移入回收站，你可以稍后恢复。</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>取消</AlertDialogCancel>
+          <AlertDialogAction className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]" onClick={handleDelete}>删除</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
   const panelContent = (
     <>
         {presentation === 'drawer' ? (
@@ -537,27 +554,21 @@ export default function TodoModal({
                 </div>
               </div>
             ) : (
-              <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button type="button" variant="destructive" className="order-2 w-full sm:order-1 sm:w-auto">删除</Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>删除任务？</AlertDialogTitle>
-                      <AlertDialogDescription>任务会移入回收站，你可以稍后恢复。</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>取消</AlertDialogCancel>
-                      <AlertDialogAction className="bg-[oklch(var(--destructive))] text-[oklch(var(--destructive-foreground))] hover:bg-[oklch(var(--destructive)/0.9)]" onClick={handleDelete}>删除</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-                <div className="order-1 grid grid-cols-2 gap-2 sm:order-2 sm:flex">
+              presentation === 'drawer' ? (
+                <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={onClose}>取消</Button>
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                    {deleteAction}
+                    <Button type="button" onClick={handleSave}>保存</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:justify-end">
+                  {deleteAction}
                   <Button type="button" variant="outline" onClick={onClose}>取消</Button>
                   <Button type="button" onClick={handleSave}>保存</Button>
                 </div>
-              </div>
+              )
             )
           ) : (
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:justify-end">

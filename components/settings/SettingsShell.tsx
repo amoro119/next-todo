@@ -55,7 +55,7 @@ export default function SettingsShell() {
       </nav>
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden md:contents">
-        <div className="md:hidden flex gap-2 px-4 py-3 pr-12 border-b border-[oklch(var(--border))] overflow-x-auto scrollbar-none shrink-0 sticky top-0 bg-[oklch(var(--background))] z-10 [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-32px),transparent)]">
+        <div className="mobile-scroll-x md:hidden flex shrink-0 sticky top-0 z-10 gap-2 overflow-x-auto border-b border-[oklch(var(--border))] bg-[oklch(var(--background))] px-4 py-3 pr-12 scrollbar-none [mask-image:linear-gradient(to_right,transparent,black_16px,black_calc(100%-32px),transparent)]">
           {NAV_ITEMS.map((item) => (
             <Button
               key={item.id}

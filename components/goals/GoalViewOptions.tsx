@@ -18,7 +18,7 @@ const TABS: { id: GoalView; label: string }[] = [
 
 const GoalViewOptions: React.FC<GoalViewOptionsProps> = ({ currentView, onViewChange, counts }) => {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none" role="tablist" aria-label="目标筛选">
+    <div className="mobile-scroll-x flex gap-2 overflow-x-auto pb-2 scrollbar-none" role="tablist" aria-label="目标筛选">
       {TABS.map((tab) => {
         const isActive = currentView === tab.id;
         return (

@@ -15,7 +15,7 @@ interface LayoutShellProps {
 export function LayoutShell({ children, onOpenSettings, onSectionChange }: LayoutShellProps) {
   return (
     <ToastProvider>
-      <div className="flex flex-col md:flex-row h-screen w-full overflow-hidden bg-[oklch(var(--background))]">
+      <div className="flex h-screen h-[100dvh] w-full flex-col overflow-hidden overscroll-none bg-[oklch(var(--background))] md:flex-row">
         <NavigationBar onOpenSettings={onOpenSettings} onSectionChange={onSectionChange} />
         <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
           {children}
