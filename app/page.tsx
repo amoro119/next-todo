@@ -244,7 +244,7 @@ export default function Page() {
           transition={{ duration: 0.15 }}
           className="flex h-full min-h-0 overflow-hidden"
         >
-        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${todoOps.selectedTodo ? 'sm:pr-5' : ''}`}>
+        <div className={`min-h-0 min-w-0 flex-1 overflow-hidden ${todoOps.selectedTodo ? 'sm:pr-5' : ''}`}>
           <CalendarView
             todos={todosWithListNames}
             currentDate={todoOps.currentDate}
@@ -253,6 +253,7 @@ export default function Page() {
             onOpenModal={todoOps.setSelectedTodo}
             onAddTodo={todoOps.handleAddTodoFromCalendar}
             onOpenCreateModal={todoOps.handleOpenCalendarCreateModal}
+            onCloseTodoDetails={() => todoOps.setSelectedTodo(null)}
           />
         </div>
         <TodoDetailsDrawer
