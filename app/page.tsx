@@ -248,6 +248,7 @@ export default function Page() {
           <CalendarView
             todos={todosWithListNames}
             currentDate={todoOps.currentDate}
+            selectedTodoId={todoOps.selectedTodo?.id}
             onDateChange={todoOps.setCurrentDate}
             onUpdateTodo={todoOps.handleUpdateTodo}
             onOpenModal={todoOps.setSelectedTodo}

@@ -34,6 +34,7 @@ export type CalendarDragPayload =
 interface CalendarViewProps {
   todos: Todo[]
   currentDate: Date
+  selectedTodoId?: string | null
   onDateChange: (newDate: Date) => void
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>
   onOpenModal: (todo: Todo) => void
@@ -204,15 +205,20 @@ function CalendarHeader({
 
 interface TodoPillProps {
   todo: Todo
+  selected?: boolean
   onOpen: (todo: Todo) => void
   onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo) => void
   onDragEnd: () => void
 }
 
-function TodoPill({ todo, onOpen, onDragStart, onDragEnd }: TodoPillProps) {
+function TodoPill({ todo, selected, onOpen, onDragStart, onDragEnd }: TodoPillProps) {
   const stateClassName = todo.completed
-    ? 'bg-[oklch(var(--calendar-task-completed-bg))] font-normal text-[oklch(var(--calendar-task-completed-foreground))] line-through hover:bg-[oklch(var(--calendar-task-completed-hover))]'
-    : 'bg-[oklch(var(--calendar-task-open-bg))] font-medium text-[oklch(var(--calendar-task-open-foreground))] hover:bg-[oklch(var(--calendar-task-open-hover))]'
+    ? selected
+      ? 'bg-[#fbdda6] font-normal text-[oklch(var(--calendar-task-completed-foreground))] line-through hover:bg-[#fbdda6]'
+      : 'bg-[oklch(var(--calendar-task-completed-bg))] font-normal text-[oklch(var(--calendar-task-completed-foreground))] line-through hover:bg-[oklch(var(--calendar-task-completed-hover))]'
+    : selected
+      ? 'bg-[#fbdda6] font-medium text-[oklch(var(--calendar-task-open-foreground))] hover:bg-[#fbdda6]'
+      : 'bg-[oklch(var(--calendar-task-open-bg))] font-medium text-[oklch(var(--calendar-task-open-foreground))] hover:bg-[oklch(var(--calendar-task-open-hover))]'
 
   return (
     <button
@@ -224,8 +230,9 @@ function TodoPill({ todo, onOpen, onDragStart, onDragEnd }: TodoPillProps) {
         event.stopPropagation()
         onOpen(todo)
       }}
-      className={`block min-h-7 w-full cursor-grab truncate rounded-[4px] px-2 py-1 text-left text-xs transition-[background-color,opacity] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${stateClassName}`}
+      className={`block min-h-7 w-full cursor-grab truncate rounded-[4px] px-2 py-1 text-left text-xs transition-[background-color,color,opacity] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${stateClassName}`}
       aria-label={`${todo.completed ? '已完成' : '未完成'}任务：${todo.title}`}
+      aria-pressed={selected}
     >
       {todo.list_name && <span className="mr-1 opacity-70">[{todo.list_name}]</span>}
       {todo.title}
@@ -236,6 +243,7 @@ function TodoPill({ todo, onOpen, onDragStart, onDragEnd }: TodoPillProps) {
 interface DayCellProps {
   date: Date
   todos: Todo[]
+  selectedTodoId?: string | null
   isCurrentMonth?: boolean
   selected?: boolean
   isDropTarget?: boolean
@@ -252,6 +260,7 @@ interface DayCellProps {
 function DayCell({
   date,
   todos,
+  selectedTodoId,
   isCurrentMonth = true,
   selected,
   isDropTarget,
@@ -338,6 +347,7 @@ function DayCell({
           <TodoPill
             key={todo.id}
             todo={todo}
+            selected={todo.id === selectedTodoId}
             onOpen={onOpenTodo}
             onDragStart={(event, item) => onDragStart(event, item, dateString)}
             onDragEnd={onDragEnd}
@@ -351,6 +361,7 @@ function DayCell({
 interface DaySchedulePanelProps {
   selectedDate: Date
   todos: Todo[]
+  selectedTodoId?: string | null
   isDropTarget: boolean
   onOpenTodo: (todo: Todo) => void
   onCreate: (date: string) => void
@@ -360,7 +371,7 @@ interface DaySchedulePanelProps {
   onDrop: (event: React.DragEvent<HTMLElement>, targetDate: string) => void
 }
 
-function DaySchedulePanel({ selectedDate, todos, isDropTarget, onOpenTodo, onCreate, onDragStart, onDragEnd, onDragOverDate, onDrop }: DaySchedulePanelProps) {
+function DaySchedulePanel({ selectedDate, todos, selectedTodoId, isDropTarget, onOpenTodo, onCreate, onDragStart, onDragEnd, onDragOverDate, onDrop }: DaySchedulePanelProps) {
   const dateString = format(selectedDate, 'yyyy-MM-dd')
   return (
     <section
@@ -392,6 +403,7 @@ function DaySchedulePanel({ selectedDate, todos, isDropTarget, onOpenTodo, onCre
             <TodoPill
               key={todo.id}
               todo={todo}
+              selected={todo.id === selectedTodoId}
               onOpen={onOpenTodo}
               onDragStart={(event, item) => onDragStart(event, item, dateString)}
               onDragEnd={onDragEnd}
@@ -416,6 +428,7 @@ function WeekView({
   selectedDate,
   todosByDate,
   dragOverDate,
+  selectedTodoId,
   hasKeyboardTask,
   onActivate,
   onOpenTodo,
@@ -470,6 +483,7 @@ function WeekView({
       <DaySchedulePanel
         selectedDate={selectedDate}
         todos={todosByDate[selectedDateString] || []}
+        selectedTodoId={selectedTodoId}
         isDropTarget={dragOverDate === selectedDateString}
         onOpenTodo={onOpenTodo}
         onCreate={onCreate}
@@ -631,6 +645,7 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, 
 export default function CalendarView({
   todos,
   currentDate,
+  selectedTodoId,
   onDateChange,
   onUpdateTodo,
   onOpenModal,
@@ -789,6 +804,7 @@ export default function CalendarView({
   }, [onCloseTodoDetails])
 
   const sharedDayProps = {
+    selectedTodoId,
     onActivate: activateDate,
     onOpenTodo: openTodo,
     onCreate: createTodo,
