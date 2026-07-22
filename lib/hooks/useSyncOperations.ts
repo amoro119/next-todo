@@ -1,16 +1,37 @@
 'use client'
 
-import { useCallback } from "react"
-import { v4 as uuid } from "uuid"
+import { useCallback, useState } from "react"
+import { v5 as uuidv5 } from "uuid"
 import { useStores } from "@/lib/stores/createStores"
-import { parseDidaCsv } from "@/lib/csvParser"
+import { parseDidaCsv, type ParsedDidaTodo } from "@/lib/csvParser"
 import { RRuleEngine } from "@/lib/recurring/RRuleEngine"
-import type { Todo, List } from "@/lib/types"
+import type { Todo, List } from "@/lib/db/types"
 import { useAppDialog } from "@/lib/hooks/useAppDialog"
+import { useDatabase } from "@/app/providers/DatabaseProvider"
+
+const IMPORT_BATCH_SIZE = 250
+
+function importSignature(todo: Pick<Todo, 'title' | 'created_time'>, listName: string | null): string {
+  return JSON.stringify([
+    todo.title.trim(),
+    todo.created_time ?? null,
+    listName?.trim() || null,
+  ])
+}
+
+function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
+  if (incoming.length === 0) return current
+  const merged = new Map(current.map((record) => [record.id, record]))
+  for (const record of incoming) merged.set(record.id, record)
+  return [...merged.values()]
+}
 
 export function useSyncOperations(todos: Todo[], lists: List[]) {
   const { todoStore, listStore } = useStores()
+  const { api } = useDatabase()
   const { alert, confirm } = useAppDialog()
+  const [isImporting, setIsImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState({ completed: 0, total: 0 })
 
   const handleImport = useCallback(
     async (file: File) => {
@@ -19,7 +40,8 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
         const content = e.target?.result as string
         if (!content) return
         try {
-          let todosToImport: Partial<Todo>[] = []
+          setIsImporting(true)
+          let todosToImport: ParsedDidaTodo[] = []
           if (file.name.endsWith(".csv")) {
             const { todos: parsedTodos, removedTodos } = parseDidaCsv(content)
             todosToImport = [...parsedTodos, ...removedTodos].map((t) => ({
@@ -72,36 +94,71 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
           }
 
           const listNames = new Set(todosToImport.map((t) => t.list_name).filter((s): s is string => !!s))
-          const listNameToId = new Map<string, string>()
+          const listNameToId = new Map(lists.map((list) => [list.name, list.id]))
+          const newLists: Partial<List>[] = []
           for (const listName of listNames) {
-            const list = lists.find((l: List) => l.name === listName)
-            if (!list) {
-              try {
-                const newList = { id: uuid(), name: listName, sort_order: lists.length, is_hidden: false, modified: new Date().toISOString() }
-                await listStore.getState().addList(newList)
-                listNameToId.set(listName, newList.id)
-              } catch (error) {
-                console.error(`Failed to create list "${listName}":`, error)
-              }
-            } else {
-              listNameToId.set(listName, list.id)
-            }
+            if (listNameToId.has(listName)) continue
+            const listId = uuidv5(`next-todo:dida-list:${listName}`, uuidv5.URL)
+            listNameToId.set(listName, listId)
+            newLists.push({
+              id: listId,
+              name: listName,
+              sort_order: lists.length + newLists.length,
+              is_hidden: false,
+            })
           }
 
-          let importedCount = 0
-          let skippedCount = 0
+          const listNameById = new Map(lists.map((list) => [list.id, list.name]))
+          const existingIds = new Set(todos.map((todo) => todo.id))
+          const existingSignatures = new Set(todos.map((todo) => (
+            importSignature(todo, todo.list_id ? listNameById.get(todo.list_id) ?? null : null)
+          )))
+          let duplicateCount = 0
+          const candidates: Partial<Todo>[] = []
           for (const todo of todosToImport) {
-            try {
-              const listId = todo.list_name ? listNameToId.get(todo.list_name) ?? null : null
-              const todoData = { ...todo, list_id: listId }
-              delete (todoData as Record<string, unknown>).list_name
-              await todoStore.getState().addTodo(todoData)
-              importedCount++
-            } catch (error) {
-              console.error(`Failed to import todo "${todo.title}":`, error)
-              skippedCount++
+            const listName = todo.list_name?.trim() || null
+            const signature = importSignature({
+              title: todo.title ?? '',
+              created_time: todo.created_time ?? null,
+            }, listName)
+            if ((todo.id && existingIds.has(todo.id)) || existingSignatures.has(signature)) {
+              duplicateCount += 1
+              continue
             }
+            existingSignatures.add(signature)
+            const todoData: Partial<Todo> = {
+              ...todo,
+              list_id: listName ? listNameToId.get(listName) ?? null : null,
+            }
+            delete (todoData as Record<string, unknown>).list_name
+            candidates.push(todoData)
           }
+
+          setImportProgress({ completed: 0, total: candidates.length })
+          const importedLists: List[] = []
+          const importedTodos: Todo[] = []
+          let skippedCount = duplicateCount
+          const batchCount = Math.max(1, Math.ceil(candidates.length / IMPORT_BATCH_SIZE))
+          for (let batchIndex = 0; batchIndex < batchCount; batchIndex++) {
+            const start = batchIndex * IMPORT_BATCH_SIZE
+            const batch = candidates.slice(start, start + IMPORT_BATCH_SIZE)
+            const result = await api.importBatch({
+              lists: batchIndex === 0 ? newLists : [],
+              todos: batch,
+            })
+            importedLists.push(...result.lists)
+            importedTodos.push(...result.todos)
+            skippedCount += result.skippedTodos
+            setImportProgress({
+              completed: Math.min(start + batch.length, candidates.length),
+              total: candidates.length,
+            })
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+          }
+
+          listStore.setState((state) => ({ lists: mergeById(state.lists, importedLists) }))
+          todoStore.setState((state) => ({ todos: mergeById(state.todos, importedTodos) }))
+          const importedCount = importedTodos.length
 
           const summary = `导入完成！成功导入 ${importedCount} 个项目${skippedCount > 0 ? `，${skippedCount} 个项目跳过` : ""}。`
           console.log(`[CSV Import] ${summary}`)
@@ -116,62 +173,30 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
             title: "导入失败",
             description: error instanceof Error ? error.message : "未知错误",
           })
+        } finally {
+          setIsImporting(false)
         }
       }
       reader.readAsText(file)
     },
-    [lists, listStore, todoStore, alert, confirm]
+    [todos, lists, api, listStore, todoStore, alert, confirm]
   )
 
   const handleExport = useCallback(async () => {
     try {
-      const allTodos = todos
-      const allLists = lists
-      let sqlContent = "-- Todo App Database Export\n"
-      sqlContent += `-- Export Date: ${new Date().toISOString()}\n\n`
-      sqlContent += "-- Clear existing data\n"
-      sqlContent += "DELETE FROM todos;\n"
-      sqlContent += "DELETE FROM lists;\n\n"
-      sqlContent += "-- Insert lists\n"
-      for (const list of allLists) {
-        const name = list.name.replace(/'/g, "''")
-        sqlContent += `INSERT INTO lists (id, name, sort_order, is_hidden, modified) VALUES ('${list.id}', '${name}', ${list.sort_order}, ${list.is_hidden}, '${list.modified || new Date().toISOString()}');\n`
-      }
-      sqlContent += "\n-- Insert todos\n"
-      for (const todo of allTodos) {
-        const title = todo.title.replace(/'/g, "''")
-        const content = todo.content ? todo.content.replace(/'/g, "''") : null
-        const tags = todo.tags ? todo.tags.replace(/'/g, "''") : null
-        const repeat = todo.repeat ? todo.repeat.replace(/'/g, "''") : null
-        const reminder = todo.reminder ? todo.reminder.replace(/'/g, "''") : null
-        sqlContent += `INSERT INTO todos (id, title, completed, deleted, sort_order, due_date, content, tags, priority, created_time, completed_time, start_date, list_id, repeat, reminder, is_recurring, recurring_parent_id, instance_number, next_due_date, modified) VALUES (`
-        sqlContent += `'${todo.id}', `
-        sqlContent += `'${title}', `
-        sqlContent += `${todo.completed}, `
-        sqlContent += `${todo.deleted}, `
-        sqlContent += `${todo.sort_order}, `
-        sqlContent += `${todo.due_date ? `'${todo.due_date}'` : "NULL"}, `
-        sqlContent += `${content ? `'${content}'` : "NULL"}, `
-        sqlContent += `${tags ? `'${tags}'` : "NULL"}, `
-        sqlContent += `${todo.priority}, `
-        sqlContent += `'${todo.created_time}', `
-        sqlContent += `${todo.completed_time ? `'${todo.completed_time}'` : "NULL"}, `
-        sqlContent += `${todo.start_date ? `'${todo.start_date}'` : "NULL"}, `
-        sqlContent += `${todo.list_id ? `'${todo.list_id}'` : "NULL"}, `
-        sqlContent += `${repeat ? `'${repeat}'` : "NULL"}, `
-        sqlContent += `${reminder ? `'${reminder}'` : "NULL"}, `
-        sqlContent += `${todo.is_recurring || false}, `
-        sqlContent += `${todo.recurring_parent_id ? `'${todo.recurring_parent_id}'` : "NULL"}, `
-        sqlContent += `${todo.instance_number ?? "NULL"}, `
-        sqlContent += `${todo.next_due_date ? `'${todo.next_due_date}'` : "NULL"}, `
-        sqlContent += `'${todo.modified || new Date().toISOString()}'`
-        sqlContent += ");\n"
-      }
-      const blob = new Blob([sqlContent], { type: "application/sql" })
+      const exportedAt = new Date().toISOString()
+      const backup = JSON.stringify({
+        format: 'next-todo-backup',
+        version: 2,
+        exportedAt,
+        lists,
+        todos,
+      }, null, 2)
+      const blob = new Blob([backup], { type: "application/json" })
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `todos-${new Date().toISOString().split("T")[0]}.sql`
+      a.download = `todos-${exportedAt.split("T")[0]}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -188,5 +213,7 @@ export function useSyncOperations(todos: Todo[], lists: List[]) {
   return {
     handleImport,
     handleExport,
+    isImporting,
+    importProgress,
   }
 }

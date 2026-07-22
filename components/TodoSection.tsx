@@ -33,7 +33,7 @@ interface TodoSectionProps {
   handleDeleteTodo: (id: string) => Promise<void>
   handleRestoreTodo: (id: string) => Promise<void>
   handlePermanentDeleteTodo: (id: string) => Promise<void>
-  handleSaveTodoDetails: (todo: Todo) => Promise<void>
+  handleSaveTodoDetails: (todo: Todo, dirtyPatch?: Partial<Todo>) => Promise<void>
   handleUpdateTodo: (id: string, u: Partial<Omit<Todo, "id" | "list_name">>) => Promise<void>
   handleCreateTodoForGoal: (d: Partial<Todo>) => Promise<void>
   handleEditGoal: (g: Goal) => void

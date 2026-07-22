@@ -12,9 +12,21 @@ export interface AuthResult {
   isService: boolean;
 }
 
+function timingSafeEqual(left: string, right: string): boolean {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index++) {
+    difference |= leftBytes[index] ^ rightBytes[index];
+  }
+  return difference === 0;
+}
+
 export async function verifyAuth(authHeader: string): Promise<AuthResult> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const openClawApiKey = Deno.env.get("OPENCLAW_API_KEY");
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Unauthorized: Supabase env not configured");
@@ -28,7 +40,18 @@ export async function verifyAuth(authHeader: string): Promise<AuthResult> {
   
   const token = match[1].trim();
 
-  // Create Supabase client with the provided token in Authorization header
+  // Public anon/publishable keys are never service credentials. OpenClaw uses
+  // an independently rotatable secret while database access retains anon-role
+  // permissions for the project's current shared-data deployment model.
+  if (openClawApiKey && timingSafeEqual(token, openClawApiKey)) {
+    return {
+      user: null,
+      supabase: createClient(supabaseUrl, supabaseAnonKey),
+      isService: true,
+    };
+  }
+
+  // Interactive callers may still authenticate with a real Supabase user JWT.
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     global: {
       headers: {
@@ -36,16 +59,6 @@ export async function verifyAuth(authHeader: string): Promise<AuthResult> {
       },
     },
   });
-
-  // If token matches Anon Key, allow as service call
-  // This is for OpenClaw and other backend services
-  if (token === supabaseAnonKey) {
-    return {
-      user: null,
-      supabase,
-      isService: true,
-    };
-  }
 
   // Otherwise, try to validate as user JWT
   try {

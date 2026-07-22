@@ -25,7 +25,8 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
   const [confirmClear, setConfirmClear] = useState(false)
   const [clearing, setClearing] = useState(false)
 
-  const { connectionStatus } = useSyncStatus()
+  const syncState = useSyncStatus()
+  const { connectionStatus } = syncState
   const { api } = useDatabase()
 
   const statusDot: Record<string, { color: string; label: string }> = {
@@ -33,6 +34,8 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
     connecting:   { color: 'bg-yellow-500', label: '连接中...' },
     disconnected: { color: 'bg-[oklch(var(--muted-foreground))]', label: '未连接' },
     error:        { color: 'bg-[oklch(var(--destructive))]', label: '连接错误' },
+    degraded:     { color: 'bg-yellow-500', label: '离线可用' },
+    blocked:      { color: 'bg-[oklch(var(--destructive))]', label: '需要升级同步协议' },
   }
   const status = statusDot[connectionStatus] ?? statusDot.disconnected
 
@@ -69,6 +72,19 @@ export default function SyncSettingsModal({ onClose }: SyncSettingsModalProps) {
             <span className={`inline-block h-2 w-2 rounded-full ${status.color}`} />
             <span>Supabase 连接状态：{status.label}</span>
           </div>
+
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-[oklch(var(--border))] p-3 text-xs">
+            <dt className="text-[oklch(var(--muted-foreground))]">协议版本</dt>
+            <dd className="text-right">{syncState.protocolVersion ?? '—'}</dd>
+            <dt className="text-[oklch(var(--muted-foreground))]">待同步 / 已阻塞</dt>
+            <dd className="text-right">{syncState.pendingOperations} / {syncState.blockedOperations}</dd>
+            <dt className="text-[oklch(var(--muted-foreground))]">最后快照</dt>
+            <dd className="text-right">{syncState.lastSnapshotTime ? new Date(syncState.lastSnapshotTime).toLocaleString() : '—'}</dd>
+            <dt className="text-[oklch(var(--muted-foreground))]">最后发送</dt>
+            <dd className="text-right">{syncState.lastDrainTime ? new Date(syncState.lastDrainTime).toLocaleString() : '—'}</dd>
+            <dt className="text-[oklch(var(--muted-foreground))]">下次重试</dt>
+            <dd className="text-right">{syncState.nextRetryAt ? new Date(syncState.nextRetryAt).toLocaleString() : '—'}</dd>
+          </dl>
 
           <div className="space-y-2">
             <label htmlFor="sync-settings-url" className="block text-sm font-medium text-[oklch(var(--foreground))]">Supabase URL</label>

@@ -1,7 +1,7 @@
 ---
 name: todo
 description: Next-todo task management skill. Create, complete, query tasks, and generate daily digests via the openclaw-ingest API.
-metadata: {"openclaw":{"requires":{"env":["NEXT_TODO_API_URL","NEXT_TODO_JWT"],"bins":["curl","jq"]}}}
+metadata: {"openclaw":{"requires":{"env":["NEXT_TODO_API_URL","OPENCLAW_API_KEY"],"bins":["curl","jq"]}}}
 ---
 
 # Todo Skill
@@ -47,7 +47,7 @@ event_id="evt_openclaw_$(date +%s%N)"
 
 # Create task
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"create\",
@@ -86,7 +86,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 ```bash
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"update\",
@@ -121,7 +121,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 ```bash
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"complete\",
@@ -155,7 +155,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 ```bash
 # Query all tasks (no limit, returns all)
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"query\",
@@ -164,7 +164,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 # Query with list filter (returns tasks from specific list, showing list_name)
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"query\",
@@ -174,7 +174,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 # Query with limit
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"query\",
@@ -184,7 +184,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 
 # Query specific task
 response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "{
     \"action\": \"query\",
@@ -211,7 +211,7 @@ echo "$response" | jq -r '.task | "\(.title)\n状态: \(.completed | if . then "
 
 ```bash
 curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
     "action": "digest"
@@ -223,7 +223,7 @@ curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
 ```bash
 # 先尝试服务端 digest
 response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-  -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+  -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{"action": "digest"}')
 
@@ -234,7 +234,7 @@ if echo "$response" | jq -e '.digest' > /dev/null 2>&1; then
 else
   # 兜底：本地生成摘要（只查询待完成任务）
   response=$(curl -s -X POST "${NEXT_TODO_API_URL}/openclaw-ingest" \
-    -H "Authorization: Bearer ${NEXT_TODO_JWT}" \
+    -H "Authorization: Bearer ${OPENCLAW_API_KEY}" \
     -H "Content-Type: application/json" \
     -d '{"action": "query", "status": "pending"}')
 

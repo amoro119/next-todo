@@ -170,6 +170,67 @@ function convertToUTC0(dateTimeStr: string | undefined): string | null {
   }
 }
 
+async function applySyncChange(
+  supabase: any,
+  input: {
+    table: 'todos' | 'lists' | 'goals';
+    recordId: string;
+    operationId: string;
+    operation: 'insert' | 'update' | 'delete' | 'restore';
+    expectedRevision: number | null;
+    patch: Record<string, unknown>;
+    baseValues: Record<string, unknown>;
+  },
+) {
+  const { data, error } = await supabase.rpc('sync_apply_change', {
+    p_table_name: input.table,
+    p_record_id: input.recordId,
+    p_operation_id: input.operationId,
+    p_device_id: 'openclaw-ingest',
+    p_expected_revision: input.expectedRevision,
+    p_operation: input.operation,
+    p_patch: input.patch,
+    p_base_values: input.baseValues,
+  });
+  if (error) throw new Error(error.message);
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result?.status || !result?.record) {
+    throw new Error('sync_apply_change returned an invalid response');
+  }
+  return result as {
+    status: 'applied' | 'partial' | 'conflict' | 'idempotent';
+    record: Record<string, unknown>;
+    applied_fields: string[];
+    rejected_fields: string[];
+  };
+}
+
+class SyncConflictError extends Error {
+  constructor(readonly result: Awaited<ReturnType<typeof applySyncChange>>) {
+    super(`Sync change was not fully applied: ${result.status}`);
+  }
+}
+
+function requireFullyApplied(result: Awaited<ReturnType<typeof applySyncChange>>) {
+  if (result.status === 'conflict'
+    || result.status === 'partial'
+    || result.rejected_fields.length > 0) {
+    throw new SyncConflictError(result);
+  }
+  return result;
+}
+
+async function deterministicUuid(value: string): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
+  );
+  const bytes = digest.slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   const parsed = updateTaskSchema.safeParse(body);
   if (!parsed.success) {
@@ -182,7 +243,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   // Check if task exists and is not deleted
   const { data: task, error: fetchError } = await supabase
     .from('todos')
-    .select('id, deleted')
+    .select('id, revision, deleted_at, title, content, due_date, start_date, priority, tags, list_id')
     .eq('id', task_id)
     .maybeSingle();
 
@@ -190,7 +251,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: fetchError.message }, 500);
   }
 
-  if (!task || task.deleted) {
+  if (!task || task.deleted_at) {
     return c.json({ error: 'Task not found' }, 404);
   }
 
@@ -211,9 +272,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   }
 
   // Build update data with only provided fields
-  const updateData: any = {
-    modified: new Date().toISOString(),
-  };
+  const updateData: Record<string, unknown> = {};
 
   if (title !== undefined) updateData.title = title;
   if (content !== undefined) updateData.content = content;
@@ -223,13 +282,30 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   if (tags !== undefined) updateData.tags = tags;
   if (list_id !== undefined) updateData.list_id = list_id;
 
-  const { error: updateError } = await supabase
-    .from('todos')
-    .update(updateData)
-    .eq('id', task_id);
-
-  if (updateError) {
-    return c.json({ error: updateError.message }, 500);
+  const baseValues = Object.fromEntries(
+    Object.keys(updateData).map((field) => [field, task[field]]),
+  );
+  try {
+    const result = await applySyncChange(supabase, {
+      table: 'todos',
+      recordId: task_id,
+      operationId: crypto.randomUUID(),
+      operation: 'update',
+      expectedRevision: task.revision,
+      patch: updateData,
+      baseValues,
+    });
+    requireFullyApplied(result);
+  } catch (error) {
+    if (error instanceof SyncConflictError) {
+      return c.json({
+        error: 'Task update conflicted with a newer server value',
+        status: error.result.status,
+        applied_fields: error.result.applied_fields,
+        rejected_fields: error.result.rejected_fields,
+      }, 409);
+    }
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 
   return c.json({
@@ -279,14 +355,13 @@ async function handleCreateTask(c: any, body: unknown, supabase: any) {
     });
   }
 
-  const taskId = crypto.randomUUID();
+  const taskId = existingEvent?.task_id
+    ?? await deterministicUuid(`openclaw-task:${requestData.event_id}`);
   const now = new Date().toISOString();
 
   const todoData: any = {
-    id: taskId,
     title: requestData.title,
     completed: false,
-    deleted: false,
     priority: requestData.priority,
     created_time: now,
     list_id: requestData.list_id ?? null,
@@ -296,20 +371,47 @@ async function handleCreateTask(c: any, body: unknown, supabase: any) {
     tags: requestData.tags ?? null,
   };
 
-  const { error: insertError } = await supabase.from('todos').insert(todoData);
+  await supabase.from('openclaw_events').upsert({
+    event_id: requestData.event_id,
+    source: requestData.source ?? null,
+    status: 'processing',
+    task_id: taskId,
+    error_message: null,
+    received_at: now,
+    payload: requestData,
+  }, { onConflict: 'event_id' });
 
-  if (insertError) {
+  try {
+    const result = await applySyncChange(supabase, {
+      table: 'todos',
+      recordId: taskId,
+      operationId: taskId,
+      operation: 'insert',
+      expectedRevision: null,
+      patch: todoData,
+      baseValues: {},
+    });
+    requireFullyApplied(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     await supabase.from('openclaw_events').upsert({
       event_id: requestData.event_id,
       source: requestData.source ?? null,
       status: 'failed',
-      task_id: null,
-      error_message: insertError.message,
+      task_id: taskId,
+      error_message: message,
       received_at: now,
       processed_at: new Date().toISOString(),
       payload: requestData,
     }, { onConflict: 'event_id' });
 
+    if (error instanceof SyncConflictError) {
+      return c.json({
+        error: 'Task creation conflicted with an existing record',
+        status: error.result.status,
+        rejected_fields: error.result.rejected_fields,
+      }, 409);
+    }
     return c.json({ error: 'Failed to create task' }, 500);
   }
 
@@ -342,7 +444,7 @@ async function handleCompleteTask(c: any, body: unknown, supabase: any) {
 
   const { data: task, error: fetchError } = await supabase
     .from('todos')
-    .select('id, completed, deleted')
+    .select('id, completed, completed_time, deleted_at, revision')
     .eq('id', task_id)
     .maybeSingle();
 
@@ -350,7 +452,7 @@ async function handleCompleteTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: fetchError.message }, 500);
   }
 
-  if (!task || task.deleted) {
+  if (!task || task.deleted_at) {
     return c.json({ error: 'Task not found' }, 404);
   }
 
@@ -362,17 +464,30 @@ async function handleCompleteTask(c: any, body: unknown, supabase: any) {
   }
 
   const now = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from('todos')
-    .update({
-      completed: true,
-      completed_time: now,
-      modified: now,
-    })
-    .eq('id', task_id);
-
-  if (updateError) {
-    return c.json({ error: updateError.message }, 500);
+  try {
+    const result = await applySyncChange(supabase, {
+      table: 'todos',
+      recordId: task_id,
+      operationId: crypto.randomUUID(),
+      operation: 'update',
+      expectedRevision: task.revision,
+      patch: { completed: true, completed_time: now },
+      baseValues: {
+        completed: task.completed,
+        completed_time: task.completed_time,
+      },
+    });
+    requireFullyApplied(result);
+  } catch (error) {
+    if (error instanceof SyncConflictError) {
+      return c.json({
+        error: 'Task completion conflicted with a newer server value',
+        status: error.result.status,
+        applied_fields: error.result.applied_fields,
+        rejected_fields: error.result.rejected_fields,
+      }, 409);
+    }
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 
   return c.json({

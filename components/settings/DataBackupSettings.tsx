@@ -7,7 +7,7 @@ import { useTodosQuery, useListsQuery } from '@/lib/hooks/useDexieQuery'
 export default function DataBackupSettings() {
   const { data: todos } = useTodosQuery()
   const { data: lists } = useListsQuery()
-  const { handleImport, handleExport } = useSyncOperations(todos, lists)
+  const { handleImport, handleExport, isImporting, importProgress } = useSyncOperations(todos, lists)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   return (
@@ -29,10 +29,11 @@ export default function DataBackupSettings() {
           }}
         />
         <button
+          disabled={isImporting}
           onClick={() => fileInputRef.current?.click()}
-          className="px-4 py-2 rounded-lg bg-[oklch(var(--primary))] text-[oklch(var(--primary-foreground))] text-sm font-medium hover:opacity-90 transition-opacity"
+          className="px-4 py-2 rounded-lg bg-[oklch(var(--primary))] text-[oklch(var(--primary-foreground))] text-sm font-medium hover:opacity-90 transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
         >
-          选择 CSV 文件
+          {isImporting ? `正在导入 ${importProgress.completed}/${importProgress.total}` : '选择 CSV 文件'}
         </button>
       </div>
 

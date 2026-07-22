@@ -1,12 +1,17 @@
 // lib/csvParser.ts
-import { Todo } from './types';
+import type { Todo } from './db/types';
 import { RRuleEngine } from './recurring/RRuleEngine';
 import { localDateToDbUTC } from './utils/dateUtils';
+import { v5 as uuidv5 } from 'uuid';
 
-interface ParsedCsvResult {
-  todos: Partial<Todo>[];
-  removedTodos: Partial<Todo>[];
+export type ParsedDidaTodo = Partial<Todo> & { list_name?: string | null };
+
+export interface ParsedCsvResult {
+  todos: ParsedDidaTodo[];
+  removedTodos: ParsedDidaTodo[];
 }
+
+const DIDA_IMPORT_NAMESPACE = uuidv5.URL;
 
 /**
  * Parses a full timestamp string (like '2025-06-30T16:00:00+0000') into a standard UTC ISO string.
@@ -59,7 +64,8 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
     const allRows = robustCsvParser(csvContent);
     let headerRowIndex = -1;
     for (let i = 0; i < allRows.length; i++) {
-        if (allRows[i][0] === 'Folder Name' && allRows[i][1] === 'List Name') {
+        if (allRows[i][0]?.replace(/^\uFEFF/, '') === 'Folder Name' && allRows[i][1] === 'List Name') {
+            allRows[i][0] = allRows[i][0].replace(/^\uFEFF/, '');
             headerRowIndex = i;
             break;
         }
@@ -82,16 +88,19 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
     const listNameIndex = headers.indexOf('List Name');
     const repeatIndex = headers.indexOf('Repeat');
     const reminderIndex = headers.indexOf('Reminder');
+    const taskIdIndex = headers.indexOf('taskId');
 
     if (titleIndex === -1 || statusIndex === -1) { throw new Error('CSV文件缺少必要的列: Title, Status'); }
 
-    const todos: Partial<Todo>[] = [];
-    const removedTodos: Partial<Todo>[] = [];
+    const todos: ParsedDidaTodo[] = [];
+    const removedTodos: ParsedDidaTodo[] = [];
 
-    const priorityMap: { [key: string]: number } = {'2': 3, '1': 2, '0': 1, '': 0};
+    // 滴答导出值为 0=无、1=低、3=中、5=高；本项目使用 0..3。
+    const priorityMap: Record<string, number> = {'0': 0, '1': 1, '3': 2, '5': 3, '': 0};
+    const listOrder = new Map<string, number>();
     
     for (const values of dataRows) {
-        if (values.length < headers.length || !values[titleIndex]) continue;
+        if (values.length < headers.length || values.every((value) => value === '')) continue;
 
         // --- CORRECTED DATE PARSING LOGIC ---
         const rawDueDateStr = dueDateIndex > -1 ? values[dueDateIndex] : undefined;
@@ -114,8 +123,25 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
         }
         // --- END OF CORRECTION ---
 
-        const completedTime = completedTimeIndex > -1 ? parseDateTime(values[completedTimeIndex]) : null;
         const status = values[statusIndex];
+        const parsedCompletedTime = completedTimeIndex > -1 ? parseDateTime(values[completedTimeIndex]) : null;
+        const createdTime = createdTimeIndex > -1
+            ? parseDateTime(values[createdTimeIndex])
+            : null;
+        const completed = status === '2';
+        const completedTime = completed ? parsedCompletedTime : null;
+        const deleted = status === '-1';
+        const listName = listNameIndex > -1 ? values[listNameIndex]?.trim() || null : null;
+        const nextSortOrder = listOrder.get(listName ?? '') ?? 0;
+        listOrder.set(listName ?? '', nextSortOrder + 1);
+        const sourceTaskId = taskIdIndex > -1 ? values[taskIdIndex]?.trim() : '';
+        const stableIdentity = [
+            'next-todo:dida',
+            sourceTaskId || `row-${nextSortOrder}`,
+            listName ?? '',
+            createdTime ?? '',
+            values[titleIndex]?.trim() ?? '',
+        ].join(':');
 
         // 处理重复任务字段
         const repeatStr = repeatIndex > -1 ? values[repeatIndex]?.trim() : '';
@@ -142,18 +168,21 @@ export function parseDidaCsv(csvContent: string): ParsedCsvResult {
         // 解析提醒设置
         const reminder = (reminderStr && reminderStr !== '') ? reminderStr : null;
 
-        const newTodo: Partial<Todo> = {
+        const newTodo: ParsedDidaTodo = {
+            id: uuidv5(stableIdentity, DIDA_IMPORT_NAMESPACE),
             title: values[titleIndex]?.trim() || '无标题',
-            deleted: status === '-1',
+            deleted,
+            deleted_at: deleted ? (parsedCompletedTime ?? createdTime ?? new Date(0).toISOString()) : null,
             completed_time: completedTime,
-            completed: Boolean(completedTime),
+            completed,
+            sort_order: nextSortOrder,
             due_date: dueDate,
             content: contentIndex > -1 ? values[contentIndex] || null : null,
             priority: priorityMap[priorityIndex > -1 ? values[priorityIndex] : ''] ?? 0,
             tags: tagsIndex > -1 ? values[tagsIndex] || null : null,
-            created_time: createdTimeIndex > -1 ? parseDateTime(values[createdTimeIndex]) : new Date().toISOString(),
+            created_time: createdTime ?? new Date(0).toISOString(),
             start_date: startDate,
-            list_name: listNameIndex > -1 ? values[listNameIndex] || null : null,
+            list_name: listName,
             
             // 重复任务相关字段
             repeat: repeat,

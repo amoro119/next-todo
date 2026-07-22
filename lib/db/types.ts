@@ -30,9 +30,11 @@ export interface Todo {
   goal_id: string | null;
   sort_order_in_goal: number | null;
 
-  // LWW conflict resolution
+  // 同步元数据；冲突只按服务器 revision/base values 判定
   updated_at: string;
   deleted_at: string | null;
+  revision?: number;
+  server_modified?: string | null;
 }
 
 export interface List {
@@ -42,9 +44,11 @@ export interface List {
   is_hidden: boolean;
   user_id: string;
 
-  // LWW conflict resolution
+  // 同步元数据；冲突只按服务器 revision/base values 判定
   updated_at: string;
   deleted_at: string | null;
+  revision?: number;
+  server_modified?: string | null;
 }
 
 export interface Goal {
@@ -59,9 +63,11 @@ export interface Goal {
   is_archived: boolean;
   user_id: string;
 
-  // LWW conflict resolution
+  // 同步元数据；冲突只按服务器 revision/base values 判定
   updated_at: string;
   deleted_at: string | null;
+  revision?: number;
+  server_modified?: string | null;
 }
 
 export interface GoalProgress {
@@ -70,19 +76,33 @@ export interface GoalProgress {
   todo_id: string;
   created_time: string;
 
-  // LWW conflict resolution
+  // 本地派生表元数据，不参与远端同步
   updated_at: string;
   deleted_at: string | null;
 }
 
 // Pending operation for offline sync queue
+export type PendingOperationType = 'insert' | 'update' | 'delete' | 'restore'
+export type PendingOperationStatus = 'pending' | 'in_flight' | 'blocked'
+
 export interface PendingOperation {
-  id: string
+  operationId: string
+  deviceId: string
   table: 'todos' | 'lists' | 'goals'
-  operation: 'insert' | 'update' | 'delete'
-  record: Record<string, unknown>
-  timestamp: string
+  recordId: string
+  operation: PendingOperationType
+  expectedRevision: number | null
+  patch: Record<string, unknown>
+  baseValues: Record<string, unknown>
+  generation: number
+  status: PendingOperationStatus
   retryCount: number
+  nextAttemptAt: string | null
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+  /** Legacy v1 payload retained for manual recovery only. */
+  legacyRecord?: Record<string, unknown>
 }
 
 export interface Meta {

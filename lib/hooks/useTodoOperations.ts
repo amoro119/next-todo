@@ -1,15 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { v4 as uuid } from "uuid"
+import { v4 as uuid, v5 as uuidv5 } from "uuid"
 import debounce from "lodash.debounce"
 import { db } from "@/lib/db/dexie"
 import { createDexieDatabaseAPI, type DatabaseAPI } from "@/lib/db/databaseAPI"
 import type { Todo as DbTodo } from "@/lib/db/types"
 import { useStores } from "@/lib/stores/createStores"
-import { supabase } from "@/lib/supabase/client"
-import { deleteRecordsFromSupabase } from "@/lib/supabase/syncOperations"
-import { RecurringTaskIntegration } from "@/lib/recurring/RecurringTaskIntegration"
+import { RecurringTaskGenerator } from "@/lib/recurring/RecurringTaskGenerator"
 import type { Todo, List, Goal } from "@/lib/types"
 import { useOptimizedInboxFilter, useOptimizedInboxSort } from "@/components/InboxPerformanceOptimizer"
 import { useAppDialog } from "@/lib/hooks/useAppDialog"
@@ -224,11 +222,6 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   const { todoStore, listStore } = useStores()
   const { alert, confirm } = useAppDialog()
 
-  // ── Init recurring task system ──────────────────────────────────
-  useEffect(() => {
-    RecurringTaskIntegration.initialize(api)
-  }, [api])
-
   // ── State ───────────────────────────────────────────────────────
   const [currentMode, setCurrentMode] = useState<"todo" | "goals">(() => {
     if (typeof window !== "undefined") {
@@ -280,6 +273,14 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
     setNewTodoTitle("")
     setNewGoalTitle("")
   }, [currentView])
+
+  // Keep the open details view attached to the live Dexie record. TodoModal
+  // preserves dirty fields and refreshes only untouched fields from this value.
+  useEffect(() => {
+    if (!selectedTodo) return
+    const latest = todos.find((todo) => todo.id === selectedTodo.id)
+    if (latest && latest !== selectedTodo) setSelectedTodo(latest)
+  }, [todos, selectedTodo])
 
   // Date cache cleanup
   useEffect(() => {
@@ -348,13 +349,40 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   const handleUpdateTodo = useCallback(
     async (todoId: string, updates: Partial<Omit<Todo, "id" | "list_name">>) => {
       if (!updates || Object.keys(updates).length === 0) return
-      await todoStore.getState().updateTodo(todoId, updates)
-      if (updates.completed === true) {
-        try { await RecurringTaskIntegration.handleTaskUpdate(todoId, updates, api) }
-        catch (error) { console.error('Failed to handle recurring task:', error) }
+      const current = todos.find((todo) => todo.id === todoId)
+      if (updates.completed === true
+        && current
+        && !current.completed
+        && RecurringTaskGenerator.isRecurringTask(current)) {
+        const completed = { ...current, ...updates } as Todo
+        const baseDate = new Date(current.due_date || current.created_time || Date.now())
+        const generation = RecurringTaskGenerator.handleRecurringTaskCompletion(completed, baseDate)
+        if (generation.shouldGenerateNext && generation.newRecurringTask) {
+          const occurrence = generation.newRecurringTask.due_date
+            ?? generation.newRecurringTask.start_date
+            ?? String(generation.newRecurringTask.instance_number ?? '')
+          const successorId = uuidv5(
+            `${todoId}:${occurrence}:${current.repeat ?? ''}`,
+            'ad8f4ca4-4df5-5f60-91ae-884508a52911',
+          )
+          const result = await api.completeTodoWithSuccessor(
+            todoId,
+            updates as Partial<DbTodo>,
+            { ...generation.newRecurringTask, id: successorId } as Partial<DbTodo>,
+          )
+          const storeTodos = todoStore.getState().todos
+          todoStore.getState().setTodos([
+            ...storeTodos.map((todo) => todo.id === todoId ? result.todo : todo),
+            ...storeTodos.some((todo) => todo.id === result.successor.id)
+              ? []
+              : [result.successor],
+          ])
+          return
+        }
       }
+      await todoStore.getState().updateTodo(todoId, updates)
     },
-    [api, todoStore]
+    [api, todoStore, todos]
   )
 
   const handleToggleComplete = useCallback(
@@ -403,18 +431,18 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       const recycledTodos = todos.filter((t: Todo) => t.deleted)
       const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId)
       if (!todoToDelete) return
-      await api.hardDeleteTodo(todoId)
+      // “永久删除”在多设备协议中仍写 tombstone；物理删除会导致离线设备复活记录。
+      await api.deleteTodo(todoId)
       todoStore.setState((s) => ({ todos: s.todos.filter((t) => t.id !== todoId) }))
-      if (supabase) await deleteRecordsFromSupabase(supabase, 'todos', [todoId])
       if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null)
     },
     [todos, selectedTodo, api, todoStore]
   )
 
   const handleSaveTodoDetails = useCallback(
-    async (updatedTodo: Todo) => {
+    async (updatedTodo: Todo, dirtyPatch?: Partial<Todo>) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { list_name: _, ...updateData } = updatedTodo
+      const { list_name: _, ...updateData } = dirtyPatch ?? updatedTodo
       await handleUpdateTodo(updatedTodo.id, updateData)
       setSelectedTodo(null)
       setSearchRefreshTrigger(prev => prev + 1)

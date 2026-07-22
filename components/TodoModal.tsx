@@ -29,7 +29,7 @@ interface TodoModalProps {
     listId?: string;
   };
   onClose: () => void;
-  onSubmit: (todoData: Todo) => void;
+  onSubmit: (todoData: Todo, dirtyPatch?: Partial<Todo>) => void | Promise<unknown>;
   onDelete?: (todoId: string) => void;
   onUpdate?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
   onRestore?: (todoId: string) => void;
@@ -206,9 +206,18 @@ export default function TodoModal({
   const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
   
   const [editableTodo, setEditableTodo] = useState<Todo>(mergedInitialTodo);
+  const dirtyFieldsRef = useRef(new Set<keyof Todo>());
+  const activeRecordIdRef = useRef<string | null>(initialData?.id ?? null);
   const isRecycled = !!editableTodo.deleted;
   const titleInputRef = useRef<HTMLInputElement>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const updateFields = useCallback((updates: Partial<Todo>) => {
+    for (const field of Object.keys(updates) as Array<keyof Todo>) {
+      dirtyFieldsRef.current.add(field);
+    }
+    setEditableTodo((current) => ({ ...current, ...updates }));
+  }, []);
 
   const resizeContentTextarea = useCallback(() => {
     const textarea = contentTextareaRef.current;
@@ -222,15 +231,28 @@ export default function TodoModal({
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
   useEffect(() => {
     if (mode === 'edit' && initialData) {
-      setEditableTodo({
-        ...initialTodo,
-        ...initialData
+      const recordChanged = activeRecordIdRef.current !== initialData.id;
+      if (recordChanged) {
+        dirtyFieldsRef.current.clear();
+        activeRecordIdRef.current = initialData.id ?? null;
+      }
+      const incoming = { ...initialTodo, ...initialData } as Todo;
+      setEditableTodo((current) => {
+        if (recordChanged) return incoming;
+        const merged = { ...current };
+        for (const [field, value] of Object.entries(incoming)) {
+          if (!dirtyFieldsRef.current.has(field as keyof Todo)) {
+            (merged as Record<string, unknown>)[field] = value;
+          }
+        }
+        return merged;
       });
     }
     // 当上下文改变时，更新默认值（主要用于创建模式）
     else if (mode === 'create') {
       const contextDefaults = getContextDefaults();
       const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
+      dirtyFieldsRef.current.clear();
       setEditableTodo(mergedInitialTodo);
     }
   }, [initialData, initialTodo, mode, getContextDefaults]);
@@ -247,7 +269,11 @@ export default function TodoModal({
 
   const handleSave = async () => {
     try {
-      await Promise.resolve(onSubmit(cleanTodoDates(editableTodo)));
+      const cleaned = cleanTodoDates(editableTodo);
+      const dirtyPatch = Object.fromEntries(
+        [...dirtyFieldsRef.current].map((field) => [field, cleaned[field]]),
+      ) as Partial<Todo>;
+      await Promise.resolve(onSubmit(cleaned, mode === 'edit' ? dirtyPatch : undefined));
       toast.success(mode === 'create' ? '任务已创建' : '任务已保存');
     } catch (error) {
       toast.error(mode === 'create' ? '创建任务失败' : '保存任务失败');
@@ -309,7 +335,7 @@ export default function TodoModal({
       finalValue = value === '' ? null : value;
     }
     
-    setEditableTodo(prev => ({ ...prev, [name]: finalValue }));
+    updateFields({ [name]: finalValue } as Partial<Todo>);
   };
 
   const handleToggleComplete = async () => {
@@ -319,11 +345,13 @@ export default function TodoModal({
       completed: !isCompleted,
       completed_time: isCompleted ? null : new Date().toISOString(),
     };
-    setEditableTodo(prev => ({ ...prev, ...updates }));
+    updateFields(updates);
     
     // 如果是编辑模式且提供了 onUpdate 回调，则调用它
     if (mode === 'edit' && onUpdate && editableTodo.id) {
       await onUpdate(editableTodo.id, updates);
+      dirtyFieldsRef.current.delete('completed');
+      dirtyFieldsRef.current.delete('completed_time');
     }
   };
 
@@ -435,7 +463,7 @@ export default function TodoModal({
                 <label htmlFor="list_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">清单</label>
                 <Select
                   value={editableTodo.list_id === null || editableTodo.list_id === undefined ? 'none' : String(editableTodo.list_id)}
-                  onValueChange={(value) => setEditableTodo((todo) => ({ ...todo, list_id: value === 'none' ? null : value }))}
+                  onValueChange={(value) => updateFields({ list_id: value === 'none' ? null : value })}
                   disabled={isRecycled}
                 >
                   <SelectTrigger id="list_id" aria-label="清单">
@@ -453,7 +481,7 @@ export default function TodoModal({
                 <label htmlFor="priority" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">优先级</label>
                 <Select
                   value={String(editableTodo.priority)}
-                  onValueChange={(value) => setEditableTodo((todo) => ({ ...todo, priority: Number(value) }))}
+                  onValueChange={(value) => updateFields({ priority: Number(value) })}
                   disabled={isRecycled}
                 >
                   <SelectTrigger id="priority" aria-label="优先级">
@@ -506,7 +534,7 @@ export default function TodoModal({
               <label htmlFor="goal_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">所属目标</label>
               <Select
                 value={editableTodo.goal_id ?? goalId ?? 'none'}
-                onValueChange={(value) => setEditableTodo((todo) => ({ ...todo, goal_id: value === 'none' ? null : value }))}
+                onValueChange={(value) => updateFields({ goal_id: value === 'none' ? null : value })}
                 disabled={isRecycled}
               >
                 <SelectTrigger id="goal_id" aria-label="所属目标">
@@ -551,23 +579,21 @@ export default function TodoModal({
                         }
                       }
 
-                      setEditableTodo(prev => ({
-                        ...prev,
+                      updateFields({
                         is_recurring: true,
                         repeat: rrule,
                         next_due_date: nextDueDate ? nextDueDate.toISOString() : null,
                         recurring_parent_id: null,
                         instance_number: null
-                      }));
+                      });
                     } else {
-                      setEditableTodo(prev => ({
-                        ...prev,
+                      updateFields({
                         is_recurring: false,
                         repeat: null,
                         next_due_date: null,
                         recurring_parent_id: null,
                         instance_number: null
-                      }));
+                      });
                     }
                   }}
                   disabled={isRecycled}

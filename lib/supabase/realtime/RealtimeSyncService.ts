@@ -1,27 +1,43 @@
-import type { SupabaseClient, RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import type {
+  RealtimeChannel,
+  RealtimePostgresChangesPayload,
+  SupabaseClient,
+} from '@supabase/supabase-js'
+import type { Table } from 'dexie'
 import type { TodoDatabase } from '@/lib/db/dexie'
+import type { PendingOperation } from '@/lib/db/types'
 import { InitialSyncManager, type ProgressCallback } from './InitialSyncManager'
-import { createOfflineQueue } from './offlineQueue'
-import type { OfflineQueue } from './offlineQueue'
-import { setLastSyncTime, resolveConflict } from './conflictResolver'
+import { createOfflineQueue, type OfflineQueue, type QueueProcessResult } from './offlineQueue'
 import {
   SYNC_TABLES,
   type RealtimeSyncTable,
   type RealtimeSyncState,
   type RealtimeSyncConfig,
-  type SyncRecord,
 } from './types'
-import { downloadRemoteChanges, uploadLocalChanges, fromSupabaseRow } from '../syncOperations'
-import { startLocalChangeListener } from './handlers/localChangeListener'
-
-import type { Table } from 'dexie'
+import {
+  applyPendingOperation,
+  fetchSyncCapabilities,
+  fromSupabaseRow,
+  SyncRpcError,
+} from '../syncOperations'
+import { mergeRemoteRecord } from './revisionMerge'
 
 export interface StateChangeCallback {
   (state: RealtimeSyncState): void
 }
 
-const MAX_RETRIES = 3
-const RETRY_DELAY_MS = 1000
+const CHANNEL_TIMEOUT_MS = 15_000
+
+function isRetryableSyncError(error: unknown): boolean {
+  if (error instanceof SyncRpcError) {
+    const code = error.code ?? ''
+    if (/^(22|23|42)/.test(code) || code === 'P0001' || code.startsWith('PGRST')) {
+      return false
+    }
+  }
+  const message = error instanceof Error ? error.message : String(error)
+  return !/protocol|capabilities|invalid|allowlist|forbidden|does not exist|requires|protected fields|violates/i.test(message)
+}
 
 export class RealtimeSyncService {
   private static instance: RealtimeSyncService | null = null
@@ -38,6 +54,13 @@ export class RealtimeSyncService {
   private config: RealtimeSyncConfig | null = null
   private channels = new Map<RealtimeSyncTable, RealtimeChannel>()
   private offlineQueue: OfflineQueue | null = null
+  private initialSyncManager: InitialSyncManager | null = null
+  private stateListeners = new Set<StateChangeCallback>()
+  private recordPipelines = new Map<string, Promise<void>>()
+  private recoveryPromise: Promise<void> | null = null
+  private isInitialized = false
+  private destroyed = false
+
   private state: RealtimeSyncState = {
     isConnected: false,
     isSyncing: false,
@@ -45,471 +68,368 @@ export class RealtimeSyncService {
     error: null,
     connectionStatus: 'disconnected',
     pendingOperations: 0,
+    blockedOperations: 0,
+    protocolVersion: null,
+    lastSnapshotTime: null,
+    lastDrainTime: null,
+    nextRetryAt: null,
+    blockedReason: null,
+    channelStates: {},
   }
-  private stateListeners = new Set<StateChangeCallback>()
-  private isInitialized = false
-  private initialSyncManager: InitialSyncManager | null = null
-  private stopLocalChangeListener: (() => void) | null = null
 
-  /** Initialize the sync service: initial sync + realtime subscriptions */
+  private readonly onVisibilityChange = () => {
+    if (document.visibilityState === 'visible') void this.recover('visibility')
+  }
+
   async initialize(
     client: SupabaseClient,
     db: TodoDatabase,
     config?: Partial<RealtimeSyncConfig>,
   ): Promise<void> {
-    if (this.isInitialized) {
-      console.log('[Sync] Already initialized, skipping')
-      return
-    }
-
-    console.log('[Sync] Initializing...', { tables: config?.tables ?? [...SYNC_TABLES] })
-
+    if (this.isInitialized) return
+    this.isInitialized = true
+    this.destroyed = false
     this.client = client
     this.db = db
     this.config = {
       tables: config?.tables ?? [...SYNC_TABLES],
-      retryDelay: config?.retryDelay ?? RETRY_DELAY_MS,
-      maxRetries: config?.maxRetries ?? MAX_RETRIES,
+      retryDelay: config?.retryDelay ?? 1_000,
+      maxRetries: config?.maxRetries,
     }
-
-    this.offlineQueue = createOfflineQueue(db)
+    this.offlineQueue = createOfflineQueue(db, () => this.refreshQueueState())
     this.initialSyncManager = new InitialSyncManager(client, db)
-
-    // Recover any pending operations from previous session
-    await this.offlineQueue.processQueueOnStart(async (op) => {
-      const result = await uploadLocalChanges(client, op.table, [
-        op.record as SyncRecord,
-      ])
-      console.log(`[Sync] Recovery upload ${result.success ? 'succeeded' : 'failed'} for ${op.table}`)
-      return result.success
-    })
-
-    this.setState({ connectionStatus: 'connecting', isSyncing: true })
-
-    try {
-      console.log('[Sync] Running initial sync...')
-      await this.runInitialSync()
-      console.log('[Sync] Initial sync complete')
-
-      console.log('[Sync] Subscribing to channels...')
-      await this.subscribeToChannels()
-
-      this.stopLocalChangeListener = startLocalChangeListener({
-        client,
-        offlineQueue: this.offlineQueue!,
-        onUpload: (table, record) => this.uploadChange(table, record),
-      })
-
-      const now = new Date().toISOString()
-      setLastSyncTime(now)
-      this.setState({
-        isConnected: true,
-        isSyncing: false,
-        connectionStatus: 'connected',
-        lastSyncTime: now,
-        pendingOperations: await this.offlineQueue?.getQueueLength() ?? 0,
-        error: null,
-      })
-
-      this.isInitialized = true
-      console.log('[Sync] Initialization complete')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[Sync] Initialization failed:', message)
-      this.setState({
-        connectionStatus: 'error',
-        isSyncing: false,
-        error: message,
-      })
-      throw err
-    }
-  }
-
-  /** Subscribe to state changes. Returns an unsubscribe function. */
-  subscribeToStateChanges(callback: StateChangeCallback): () => void {
-    this.stateListeners.add(callback)
-    try {
-      callback({ ...this.state })
-    } catch {
-    }
-    return () => {
-      this.stateListeners.delete(callback)
-    }
-  }
-
-  /** Return a snapshot of the current sync state */
-  getState(): RealtimeSyncState {
-    return { ...this.state }
-  }
-
-  /** Manually trigger a full sync cycle */
-  async sync(): Promise<void> {
-    if (!this.client || !this.db || !this.config) {
-      console.warn('[Sync] sync() called but not initialized')
-      return
-    }
-
-    if (this.state.isSyncing) {
-      console.log('[Sync] Sync already in progress, skipping')
-      return
-    }
-
-    console.log('[Sync] Starting manual sync...')
-    this.setState({ isSyncing: true, error: null })
-
-    try {
-      if (this.offlineQueue) {
-        const queueLength = await this.offlineQueue.getQueueLength()
-        console.log(`[Sync] Processing ${queueLength} offline operations...`)
-        await this.offlineQueue.processQueue(async (op) => {
-          const result = await uploadLocalChanges(this.client!, op.table, [
-            op.record as SyncRecord,
-          ])
-          console.log(`[Sync] Offline upload ${result.success ? 'succeeded' : 'failed'} for ${op.table}`, result)
-          return result.success
-        })
-      }
-
-      const since = this.state.lastSyncTime ?? '1970-01-01T00:00:00Z'
-      console.log(`[Sync] Fetching remote changes since ${since}`)
-      for (const table of this.config.tables) {
-        console.log(`[Sync] Merging remote changes for table: ${table}`)
-        await this.mergeRemoteChanges(table, since)
-      }
-
-      const now = new Date().toISOString()
-      setLastSyncTime(now)
-      this.setState({
-        lastSyncTime: now,
-        pendingOperations: await this.offlineQueue?.getQueueLength() ?? 0,
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[Sync] Manual sync failed:', message)
-      this.setState({ error: message })
-    } finally {
-      this.setState({ isSyncing: false })
-    }
-  }
-
-  /** Upload a local change to Supabase immediately, or enqueue if offline */
-  async uploadChange(table: RealtimeSyncTable, record: Record<string, unknown>): Promise<void> {
-    if (!this.client || !this.config) {
-      console.warn('[Sync] uploadChange called but not initialized')
-      return
-    }
-
-    const syncRecord = record as SyncRecord
-    console.log(`[Sync] uploadChange: ${table} id=${syncRecord.id}`, { online: window.navigator.onLine })
-
-    if (typeof window !== 'undefined' && window.navigator.onLine) {
-      const result = await uploadLocalChanges(this.client, table, [syncRecord])
-      console.log(`[Sync] uploadChange result for ${table}:`, result)
-      if (!result.success) {
-        console.log(`[Sync] Enqueuing offline operation for ${table}`)
-        await this.offlineQueue?.enqueue({
-          table,
-          operation: 'update',
-          record: syncRecord as Record<string, unknown>,
-        })
-      }
-    } else {
-      console.log(`[Sync] Offline - enqueuing operation for ${table}`)
-      await this.offlineQueue?.enqueue({
-        table,
-        operation: 'update',
-        record: syncRecord as Record<string, unknown>,
-      })
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.onVisibilityChange)
     }
 
     this.setState({
-      pendingOperations: await this.offlineQueue?.getQueueLength() ?? 0,
+      connectionStatus: 'connecting',
+      isSyncing: true,
+      error: null,
+      blockedReason: null,
     })
+
+    try {
+      const capabilities = await fetchSyncCapabilities(client)
+      this.setState({ protocolVersion: capabilities.protocol_version })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.setState({
+        connectionStatus: 'blocked',
+        isConnected: false,
+        isSyncing: false,
+        error: message,
+        blockedReason: 'upgrade-required',
+        pendingOperations: await this.offlineQueue.getQueueLength(),
+        blockedOperations: await this.offlineQueue.getBlockedCount(),
+      })
+      return
+    }
+
+    try {
+      await this.subscribeToChannels()
+      await this.runSnapshot()
+      await this.offlineQueue.processQueueOnStart((operation) => this.uploadPending(operation))
+      const now = new Date().toISOString()
+      const pendingOperations = await this.offlineQueue.getQueueLength()
+      const blockedOperations = await this.offlineQueue.getBlockedCount()
+      const healthy = pendingOperations === 0 && blockedOperations === 0
+      this.setState({
+        isConnected: healthy,
+        isSyncing: false,
+        connectionStatus: blockedOperations > 0
+          ? 'blocked'
+          : pendingOperations > 0 ? 'degraded' : 'connected',
+        lastSyncTime: now,
+        lastDrainTime: healthy ? now : this.state.lastDrainTime,
+        nextRetryAt: await this.offlineQueue.getNextAttemptAt(),
+        pendingOperations,
+        blockedOperations,
+        blockedReason: blockedOperations === 0 ? null : 'operation-blocked',
+        error: null,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.setState({
+        connectionStatus: 'degraded',
+        isConnected: false,
+        isSyncing: false,
+        error: message,
+        pendingOperations: await this.offlineQueue.getQueueLength(),
+        blockedOperations: await this.offlineQueue.getBlockedCount(),
+      })
+    }
   }
 
-  /** Disconnect all realtime channels and tear down resources */
-  disconnect(): void {
-    this.channels.forEach((channel) => {
-      try {
-        channel.unsubscribe()
-      } catch {
-      }
-    })
-    this.channels.clear()
+  subscribeToStateChanges(callback: StateChangeCallback): () => void {
+    this.stateListeners.add(callback)
+    callback({ ...this.state, channelStates: { ...this.state.channelStates } })
+    return () => this.stateListeners.delete(callback)
+  }
 
+  getState(): RealtimeSyncState {
+    return { ...this.state, channelStates: { ...this.state.channelStates } }
+  }
+
+  async sync(): Promise<void> {
+    await this.recover('manual')
+  }
+
+  /** Kept as a compatibility shim; local writes are already durable in DatabaseAPI. */
+  async uploadChange(): Promise<void> {
+    await this.drainOutbox()
+  }
+
+  disconnect(): void {
+    this.destroyed = true
+    for (const channel of this.channels.values()) {
+      void channel.unsubscribe()
+    }
+    this.channels.clear()
     this.offlineQueue?.destroy()
     this.offlineQueue = null
-
-    this.stopLocalChangeListener?.()
-    this.stopLocalChangeListener = null
-
     this.initialSyncManager?.abort()
     this.initialSyncManager = null
-
+    this.recordPipelines.clear()
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange)
+    }
+    this.isInitialized = false
     this.setState({
       isConnected: false,
       isSyncing: false,
       connectionStatus: 'disconnected',
+      channelStates: {},
     })
-
-    this.isInitialized = false
   }
 
-  private async runInitialSync(): Promise<void> {
-    if (!this.client || !this.db || !this.config) return
+  private async recover(reason: string): Promise<void> {
+    if (this.destroyed || !this.client || !this.db || !this.config) return
+    if (this.state.blockedReason === 'upgrade-required') return
+    if (this.recoveryPromise) return this.recoveryPromise
 
-    const onProgress: ProgressCallback = (progress) => {
-      if (progress.phase === 'done') {
-        console.log(`[Sync] Initial sync table complete: ${progress.table}`)
+    this.recoveryPromise = (async () => {
+      this.setState({ isSyncing: true, error: null })
+      try {
+        if (!this.allChannelsSubscribed()) await this.subscribeToChannels()
+        await this.runSnapshot()
+        await this.drainOutbox()
+        const now = new Date().toISOString()
+        const blockedOperations = this.offlineQueue
+          ? await this.offlineQueue.getBlockedCount()
+          : 0
+        const pendingOperations = this.offlineQueue
+          ? await this.offlineQueue.getQueueLength()
+          : 0
+        const healthy = pendingOperations === 0 && blockedOperations === 0
+        this.setState({
+          isConnected: healthy,
+          isSyncing: false,
+          connectionStatus: blockedOperations > 0
+            ? 'blocked'
+            : pendingOperations > 0 ? 'degraded' : 'connected',
+          lastSyncTime: now,
+          pendingOperations,
+          blockedOperations,
+          blockedReason: blockedOperations === 0 ? null : 'operation-blocked',
+          error: null,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(`[Sync] ${reason} recovery failed:`, message)
+        this.setState({
+          isConnected: false,
+          isSyncing: false,
+          connectionStatus: 'degraded',
+          error: message,
+        })
       }
-    }
+    })().finally(() => {
+      this.recoveryPromise = null
+    })
+    return this.recoveryPromise
+  }
 
-    const stats = await this.initialSyncManager!.performSync({
+  private async runSnapshot(): Promise<void> {
+    if (!this.initialSyncManager || !this.config) return
+    const onProgress: ProgressCallback = () => undefined
+    await this.initialSyncManager.performSync({
       tables: this.config.tables,
       onProgress,
     })
+    const now = new Date().toISOString()
+    this.setState({ lastSnapshotTime: now, lastSyncTime: now })
+  }
 
-    if (stats.errors.length > 0) {
-      const details = stats.errors
-        .map(({ table, error }) => `[${table}] ${error}`)
-        .join('; ')
-      throw new Error(`Initial sync failed: ${details}`)
+  private async drainOutbox(): Promise<void> {
+    if (!this.offlineQueue) return
+    await this.offlineQueue.processQueue((operation) => this.uploadPending(operation))
+    const pendingOperations = await this.offlineQueue.getQueueLength()
+    const blockedOperations = await this.offlineQueue.getBlockedCount()
+    const healthy = pendingOperations === 0 && blockedOperations === 0
+    this.setState({
+      ...(healthy ? { lastDrainTime: new Date().toISOString() } : {}),
+      pendingOperations,
+      blockedOperations,
+      nextRetryAt: await this.offlineQueue.getNextAttemptAt(),
+    })
+  }
+
+  private async refreshQueueState(): Promise<void> {
+    if (!this.offlineQueue || this.destroyed) return
+    const pendingOperations = await this.offlineQueue.getQueueLength()
+    const blockedOperations = await this.offlineQueue.getBlockedCount()
+    const nextRetryAt = await this.offlineQueue.getNextAttemptAt()
+    const healthy = blockedOperations === 0 && pendingOperations === 0
+      && this.allChannelsSubscribed() && this.state.lastSnapshotTime !== null
+    this.setState({
+      pendingOperations,
+      blockedOperations,
+      nextRetryAt,
+      ...(blockedOperations > 0
+        ? {
+            isConnected: false,
+            connectionStatus: 'blocked' as const,
+            blockedReason: 'operation-blocked',
+          }
+        : pendingOperations > 0
+          ? {
+              isConnected: false,
+              connectionStatus: 'degraded' as const,
+              blockedReason: null,
+            }
+          : healthy
+            ? {
+                isConnected: true,
+                connectionStatus: 'connected' as const,
+                blockedReason: null,
+                error: null,
+              }
+            : {}),
+    })
+  }
+
+  private async uploadPending(operation: PendingOperation): Promise<QueueProcessResult> {
+    if (!this.client || !this.db) return { success: false, retryable: true }
+    try {
+      const response = await applyPendingOperation(this.client, operation)
+      await this.db.transaction(
+        'rw',
+        [this.db.table(operation.table), this.db.pendingOperations],
+        async () => {
+          const current = await this.db!.pendingOperations.get(operation.operationId)
+          if (current && current.generation === operation.generation) {
+            await this.db!.pendingOperations.delete(operation.operationId)
+          }
+          await mergeRemoteRecord(this.db!, operation.table, response.record)
+        },
+      )
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const retryable = isRetryableSyncError(error)
+      return { success: false, retryable, error: message }
     }
   }
 
   private async subscribeToChannels(): Promise<void> {
     if (!this.client || !this.config) return
+    for (const channel of this.channels.values()) void channel.unsubscribe()
+    this.channels.clear()
 
-    const { tables } = this.config
-    console.log(`[Sync] Subscribing to ${tables.length} channels:`, tables)
+    await Promise.all(this.config.tables.map((table) => new Promise<void>((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true
+          reject(new Error(`Realtime subscription timed out for ${table}`))
+        }
+      }, CHANNEL_TIMEOUT_MS)
 
-    for (const table of tables) {
-      console.log(`[Sync] Subscribing to channel: db-${table}-changes`)
-      const channel = this.client
+      const channel = this.client!
         .channel(`db-${table}-changes`)
         .on(
           'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table,
-          },
+          { event: '*', schema: 'public', table },
           (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
-            console.log(`[Sync] Realtime event on ${table}:`, payload.eventType, payload.new ?? payload.old)
             this.handleRealtimeEvent(table, payload)
           },
         )
-        .subscribe((status, err) => {
-          console.log(`[Sync] Channel db-${table}-changes status: ${status}`, err ? { error: err.message } : '')
-          this.handleChannelStatus(table, status, err)
+        .subscribe((status, error) => {
+          this.setChannelState(table, status)
+          if (status === 'SUBSCRIBED' && !settled) {
+            settled = true
+            clearTimeout(timer)
+            resolve()
+          } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !settled) {
+            settled = true
+            clearTimeout(timer)
+            reject(error ?? new Error(`Realtime ${status} for ${table}`))
+          } else if (status === 'SUBSCRIBED' && this.isInitialized && !this.state.isSyncing) {
+            void this.recover(`channel-${table}-resubscribed`)
+          } else if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
+            && settled
+            && this.isInitialized
+            && !this.state.isSyncing) {
+            void this.recover(`channel-${table}-${status.toLowerCase()}`)
+          }
         })
 
       this.channels.set(table, channel)
-    }
+    })))
   }
 
-  private handleChannelStatus(
-    table: RealtimeSyncTable,
-    status: string,
-    err?: Error,
-  ): void {
-    console.log(`[Sync] handleChannelStatus for ${table}: ${status}`, err ? { error: err.message } : '')
-    switch (status) {
-      case 'SUBSCRIBED':
-        this.setState({ connectionStatus: 'connected', isConnected: true, error: null })
-        break
-      case 'CHANNEL_ERROR':
-        this.setState({
-          connectionStatus: 'error',
-          error: err?.message ?? `Channel error on table ${table}`,
-        })
-        break
-      case 'TIMED_OUT':
-        this.setState({
-          error: `Realtime subscription timed out for table ${table}`,
-        })
-        break
-      case 'CLOSED':
-        this.setState({ connectionStatus: 'disconnected', isConnected: false })
-        break
-      default:
-        break
-    }
+  private setChannelState(table: RealtimeSyncTable, status: string): void {
+    this.setState({
+      channelStates: { ...this.state.channelStates, [table]: status },
+      ...(status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'
+        ? { isConnected: false, connectionStatus: 'degraded' as const }
+        : {}),
+    })
   }
 
+  private allChannelsSubscribed(): boolean {
+    if (!this.config) return false
+    return this.config.tables.every((table) => this.state.channelStates[table] === 'SUBSCRIBED')
+  }
 
   private handleRealtimeEvent(
     table: RealtimeSyncTable,
-    rawPayload: RealtimePostgresChangesPayload<Record<string, unknown>>,
+    payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
   ): void {
-    const { eventType, new: newRecord, old: oldRecord } = rawPayload
-    console.log(
-      `[Sync] RealtimeEvent: table=${table} event=${eventType}`,
-      {
-        newId: (newRecord as Record<string, unknown>)?.id ?? '(none)',
-        oldId: (oldRecord as Record<string, unknown>)?.id ?? '(none)',
-        newKeys: newRecord ? Object.keys(newRecord) : [],
-        hasModified: newRecord ? 'modified' in newRecord : false,
-        hasUpdatedAt: newRecord ? 'updated_at' in newRecord : false,
-      },
-    )
-
-    const dexieTable = this.getDexieTable(table)
-    if (!dexieTable) {
-      console.warn(`[Sync] No dexie table found for ${table}`)
+    if (payload.eventType === 'DELETE') {
+      // Protocol v2 uses UPDATE tombstones. A physical delete means the snapshot must repair state.
+      void this.recover(`unexpected-delete-${table}`)
       return
     }
-
-    try {
-      if (eventType === 'DELETE') {
-        void this.applyRemoteDelete(table, dexieTable, rawPayload)
-      } else if (eventType === 'INSERT' || eventType === 'UPDATE') {
-        void this.applyRemoteUpsert(table, dexieTable, rawPayload)
-      }
-    } catch (err) {
-      console.error(`[Sync] handleRealtimeEvent ${table} ${eventType} error:`, err)
-    }
-  }
-
-  private async applyRemoteUpsert(
-    table: RealtimeSyncTable,
-    dexieTable: Table,
-    payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
-  ): Promise<void> {
-    // Normalize raw Realtime payload: Supabase uses `modified`/`deleted`,
-    // but the sync layer expects `updated_at`/`deleted_at` (Dexie format).
     const raw = payload.new as Record<string, unknown> | undefined
-    const remote = raw ? fromSupabaseRow(raw) : null
-    if (!remote?.id) {
-      console.warn('[Sync] applyRemoteUpsert: no remote id after normalization')
-      return
-    }
-
-    console.log(
-      `[Sync] applyRemoteUpsert: ${table} id=${remote.id}`,
-      { updated_at: remote.updated_at, deleted_at: remote.deleted_at },
-    )
-
-    try {
-      const local = await dexieTable.get(remote.id)
-      const localSyncRecord: SyncRecord | null = local
-        ? (local as unknown as SyncRecord)
-        : null
-
-      console.log(`[Sync] applyRemoteUpsert: ${remote.id}`, { local: !!localSyncRecord, remote })
-      const winner = resolveConflict(localSyncRecord, remote)
-      if (winner) {
-        await dexieTable.put(winner as never)
-        console.log(`[Sync] applyRemoteUpsert: stored winner ${winner.id}`)
-      } else {
-        console.log(`[Sync] applyRemoteUpsert: no winner for ${remote.id}`)
-      }
-    } catch (err) {
-      console.error(`[Sync] applyRemoteUpsert failed for ${remote.id}:`, err)
-    }
+    if (!raw?.id || !this.db) return
+    const remote = fromSupabaseRow(raw)
+    const key = `${table}:${remote.id}`
+    const previous = this.recordPipelines.get(key) ?? Promise.resolve()
+    const next = previous
+      .catch(() => undefined)
+      .then(async () => {
+        if (!this.db) return
+        await this.db.transaction(
+          'rw',
+          [this.db.table(table), this.db.pendingOperations],
+          () => mergeRemoteRecord(this.db!, table, remote),
+        )
+      })
+      .finally(() => {
+        if (this.recordPipelines.get(key) === next) this.recordPipelines.delete(key)
+      })
+    this.recordPipelines.set(key, next)
   }
-
-  private async applyRemoteDelete(
-    table: RealtimeSyncTable,
-    dexieTable: Table,
-    payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
-  ): Promise<void> {
-    const raw = payload.old as Record<string, unknown> | undefined
-    const old = raw ? fromSupabaseRow(raw) : null
-    if (!old?.id) {
-      console.warn('[Sync] applyRemoteDelete: no old id after normalization')
-      return
-    }
-
-    console.log(
-      `[Sync] applyRemoteDelete: ${table} id=${old.id}`,
-      { updated_at: old.updated_at },
-    )
-
-    try {
-      const local = await dexieTable.get(old.id)
-      if (local) {
-        const now = new Date().toISOString()
-        const updated = {
-          ...(local as Record<string, unknown>),
-          deleted_at: now,
-          updated_at: now,
-        }
-        await dexieTable.put(updated as never)
-        console.log(`[Sync] applyRemoteDelete: soft-deleted ${old.id}`)
-      } else {
-        console.log(`[Sync] applyRemoteDelete: local record ${old.id} not found`)
-      }
-    } catch (err) {
-      console.error(`[Sync] applyRemoteDelete failed for ${old.id}:`, err)
-    }
-  }
-
-  private async mergeRemoteChanges(table: RealtimeSyncTable, since: string): Promise<void> {
-    if (!this.client || !this.config) return
-
-    const dexieTable = this.getDexieTable(table)
-    if (!dexieTable) return
-
-    console.log(`[Sync] mergeRemoteChanges: ${table} since=${since}`)
-    const changes = await downloadRemoteChanges(this.client, table, since)
-    console.log(`[Sync] mergeRemoteChanges: ${table} received ${changes.length} changes`)
-
-    let applied = 0
-    for (const remote of changes) {
-      try {
-        const local = await dexieTable.get(remote.id)
-        const localSyncRecord: SyncRecord | null = local
-          ? (local as unknown as SyncRecord)
-          : null
-
-        const winner = resolveConflict(localSyncRecord, remote)
-        if (winner) {
-          await dexieTable.put(winner as never)
-          applied++
-        }
-      } catch (err) {
-        console.error(`[Sync] mergeRemoteChanges: failed to apply ${remote.id}:`, err)
-      }
-    }
-    console.log(`[Sync] mergeRemoteChanges: ${table} applied ${applied}/${changes.length} changes`)
-  }
-
 
   getDexieTable(table: RealtimeSyncTable): Table | null {
-    switch (table) {
-      case 'todos':
-        return this.db?.todos ?? null
-      case 'lists':
-        return this.db?.lists ?? null
-      case 'goals':
-        return this.db?.goals ?? null
-      default:
-        return null
-    }
+    return this.db?.table(table) ?? null
   }
 
   private setState(partial: Partial<RealtimeSyncState>): void {
-    const prev = this.state.connectionStatus
     this.state = { ...this.state, ...partial }
-    if (prev !== this.state.connectionStatus) {
-      console.log(`[Sync] State change: ${prev} → ${this.state.connectionStatus}`, {
-        isConnected: this.state.isConnected,
-        isSyncing: this.state.isSyncing,
-        pendingOperations: this.state.pendingOperations,
-        error: this.state.error,
-      })
-    }
-    this.notifyListeners()
-  }
-
-  private notifyListeners(): void {
-    const snapshot = { ...this.state }
-    this.stateListeners.forEach((cb) => {
-      try {
-        cb(snapshot)
-      } catch {
-      }
-    })
+    const snapshot = this.getState()
+    for (const listener of this.stateListeners) listener(snapshot)
   }
 }

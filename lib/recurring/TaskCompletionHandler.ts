@@ -8,7 +8,7 @@ import { RecurringTaskGenerator } from './RecurringTaskGenerator';
  */
 export class TaskCompletionHandler {
   private static instance: TaskCompletionHandler;
-  private completionCallbacks: Array<(result: TaskCompletionResult) => void> = [];
+  private completionCallbacks: Array<(result: TaskCompletionResult) => void | Promise<void>> = [];
 
   private constructor() {}
 
@@ -23,7 +23,7 @@ export class TaskCompletionHandler {
    * 注册任务完成回调
    * @param callback 回调函数
    */
-  onTaskCompletion(callback: (result: TaskCompletionResult) => void): void {
+  onTaskCompletion(callback: (result: TaskCompletionResult) => void | Promise<void>): void {
     this.completionCallbacks.push(callback);
   }
 
@@ -31,7 +31,7 @@ export class TaskCompletionHandler {
    * 移除任务完成回调
    * @param callback 要移除的回调函数
    */
-  removeTaskCompletionCallback(callback: (result: TaskCompletionResult) => void): void {
+  removeTaskCompletionCallback(callback: (result: TaskCompletionResult) => void | Promise<void>): void {
     const index = this.completionCallbacks.indexOf(callback);
     if (index > -1) {
       this.completionCallbacks.splice(index, 1);
@@ -70,13 +70,13 @@ export class TaskCompletionHandler {
     }
 
     // 通知所有回调
-    this.completionCallbacks.forEach(callback => {
+    await Promise.all(this.completionCallbacks.map(async callback => {
       try {
-        callback(result);
+        await callback(result);
       } catch (error) {
         console.error('Error in task completion callback:', error);
       }
-    });
+    }));
 
     return result;
   }

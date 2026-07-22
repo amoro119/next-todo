@@ -9,7 +9,13 @@ export type RealtimeSyncTable = typeof SYNC_TABLES[number]
 export const DEFAULT_USER_ID = 'default_user'
 
 // Connection status
-export type RealtimeConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
+export type RealtimeConnectionStatus =
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'degraded'
+  | 'blocked'
+  | 'error'
 
 // Sync state
 export interface RealtimeSyncState {
@@ -19,17 +25,16 @@ export interface RealtimeSyncState {
   error: string | null
   connectionStatus: RealtimeConnectionStatus
   pendingOperations: number
+  blockedOperations: number
+  protocolVersion: number | null
+  lastSnapshotTime: string | null
+  lastDrainTime: string | null
+  nextRetryAt: string | null
+  blockedReason: string | null
+  channelStates: Partial<Record<RealtimeSyncTable, string>>
 }
 
-// Pending operation for offline queue
-export interface PendingOperation {
-  id: string
-  table: RealtimeSyncTable
-  operation: 'insert' | 'update' | 'delete'
-  record: Record<string, unknown>
-  timestamp: string
-  retryCount: number
-}
+export type { PendingOperation } from '@/lib/db/types'
 
 // Result of a sync operation
 export interface SyncOperationResult {
@@ -51,5 +56,7 @@ export interface SyncRecord {
   user_id?: string
   updated_at: string
   deleted_at: string | null
+  revision?: number
+  server_modified?: string | null
   [key: string]: unknown
 }

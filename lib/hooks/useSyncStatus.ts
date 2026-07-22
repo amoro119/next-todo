@@ -12,6 +12,13 @@ export function useSyncStatus(): RealtimeSyncState {
     error: null,
     connectionStatus: 'disconnected',
     pendingOperations: 0,
+    blockedOperations: 0,
+    protocolVersion: null,
+    lastSnapshotTime: null,
+    lastDrainTime: null,
+    nextRetryAt: null,
+    blockedReason: null,
+    channelStates: {},
   })
 
   useEffect(() => {

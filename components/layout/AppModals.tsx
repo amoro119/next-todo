@@ -41,7 +41,7 @@ export interface AppModalsProps {
 
   selectedTodo: Todo | null
   showSelectedTodoModal: boolean
-  onSaveTodoDetails: (todoData: Todo) => Promise<void>
+  onSaveTodoDetails: (todoData: Todo, dirtyPatch?: Partial<Todo>) => Promise<void>
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>
   onCloseSelectedTodo: () => void
   onDeleteTodo: (todoId: string) => Promise<void>

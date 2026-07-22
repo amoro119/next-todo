@@ -70,3 +70,12 @@ supabase/migrations/
 supabase/.temp/
 .codex-audit/
 .impeccable/
+
+# Supabase migrations are the canonical server schema.
+!supabase/migrations/
+!supabase/migrations/*.sql
+
+# Keep the audited sync implementation plan versioned; other local specs stay ignored.
+!spec/
+spec/*
+!spec/PLAN.md

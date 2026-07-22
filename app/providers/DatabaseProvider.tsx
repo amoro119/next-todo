@@ -37,6 +37,9 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         await initializeDatabase()
         console.log('[DatabaseProvider] Database initialized')
 
+        // Local-first invariant: remote sync health must never gate access to Dexie.
+        if (!cancelled) setIsReady(true)
+
         const todosBefore = await db.todos.toArray()
         const listsBefore = await db.lists.toArray()
         const goalsBefore = await db.goals.toArray()
@@ -55,8 +58,11 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
           if (syncConfig.enabled) {
             console.log('[DatabaseProvider] Supabase client available, initializing realtime sync...')
             const service = RealtimeSyncService.getInstance()
-            await service.initialize(supabase, db)
-            console.log('[DatabaseProvider] Realtime sync initialized')
+            void service.initialize(supabase, db)
+              .then(() => console.log('[DatabaseProvider] Realtime sync initialized'))
+              .catch((syncError) => {
+                console.error('[DatabaseProvider] Realtime sync unavailable:', syncError)
+              })
           } else {
             console.log('[DatabaseProvider] Sync disabled:', syncConfig.reason)
           }
@@ -75,7 +81,6 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
           todos_no_deleted_at: todosAfter.filter(t => t.deleted_at === undefined).length,
         })
 
-        if (!cancelled) setIsReady(true)
       } catch (err) {
         console.error('[DatabaseProvider] Initialization failed:', err)
         if (!cancelled) {

@@ -1,56 +1,93 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { RealtimeSyncTable, SyncRecord, SyncOperationResult } from './realtime/types'
-
-// Supabase 现有表没有 user_id / deleted_at / updated_at 字段。
-// todos 使用 deleted 标记软删除；lists/goals 的远端表不包含该字段。
-function toSupabaseRecord(
-  table: RealtimeSyncTable,
-  record: SyncRecord,
-): Record<string, unknown> {
-  const { user_id, deleted_at, updated_at, deleted, ...rest } = record as Record<string, unknown>
-  void user_id
-  const payload: Record<string, unknown> = {
-    ...rest,
-    modified: updated_at || new Date().toISOString(),
-  }
-
-  if (table === 'todos') {
-    payload.deleted = !!deleted_at || deleted === true
-  }
-
-  return payload
-}
+import type { RealtimeSyncTable, SyncRecord } from './realtime/types'
+import type { PendingOperation } from '@/lib/db/types'
 
 // 下载后将 Supabase 字段映射回 Dexie 字段
 export function fromSupabaseRow(row: Record<string, unknown>): SyncRecord {
+  if (!Number.isFinite(Number(row.revision)) || Number(row.revision) < 1) {
+    throw new Error('sync-protocol-v2-record-missing-revision')
+  }
+  const modified = (row.modified as string | null) ?? null
+  if (!modified) throw new Error('sync-protocol-v2-record-missing-modified')
+  const deletedAt = (row.deleted_at as string | null | undefined)
+    ?? (row.deleted ? modified : null)
   return {
     ...row,
     user_id: 'default_user',
-    deleted: !!row.deleted,
-    deleted_at: row.deleted ? new Date().toISOString() : null,
-    updated_at: (row.modified as string) || new Date().toISOString(),
+    deleted: deletedAt != null,
+    deleted_at: deletedAt,
+    updated_at: modified,
+    revision: Number(row.revision),
+    server_modified: modified,
   } as unknown as SyncRecord
 }
 
-export async function fetchRemoteLatestTimestamp(
-  client: SupabaseClient,
-  table: RealtimeSyncTable,
-): Promise<string | null> {
-  console.log(`[SyncOps] fetchRemoteLatestTimestamp: ${table}`)
-  const { data, error } = await client
-    .from(table)
-    .select('modified')
-    .order('modified', { ascending: false })
-    .limit(1)
-    .single()
+export interface SyncCapabilities {
+  protocol_version: number
+  min_client_version: string
+  tables: RealtimeSyncTable[]
+  features: string[]
+}
 
-  if (error) {
-    console.error(`[SyncOps] fetchRemoteLatestTimestamp failed for ${table}:`, error.message)
-    return null
+export interface SyncApplyResult {
+  status: 'applied' | 'partial' | 'conflict' | 'idempotent'
+  record: SyncRecord
+  applied_fields: string[]
+  rejected_fields: string[]
+}
+
+export class SyncRpcError extends Error {
+  readonly code?: string
+  readonly details?: string
+  readonly hint?: string
+
+  constructor(error: { message: string; code?: string; details?: string; hint?: string }) {
+    super(error.message)
+    this.name = 'SyncRpcError'
+    this.code = error.code
+    this.details = error.details
+    this.hint = error.hint
   }
-  const result = (data as { modified: string } | null)?.modified ?? null
-  console.log(`[SyncOps] fetchRemoteLatestTimestamp: ${table} = ${result}`)
-  return result
+}
+
+function firstRpcRow<T>(data: unknown): T | null {
+  if (Array.isArray(data)) return (data[0] as T | undefined) ?? null
+  return (data as T | null) ?? null
+}
+
+export async function fetchSyncCapabilities(
+  client: SupabaseClient,
+): Promise<SyncCapabilities> {
+  const { data, error } = await client.rpc('sync_capabilities')
+  if (error) throw new Error(`sync-capabilities-unavailable: ${error.message}`)
+  const capabilities = firstRpcRow<SyncCapabilities>(data)
+  if (!capabilities || capabilities.protocol_version !== 2) {
+    throw new Error('sync-protocol-v2-required')
+  }
+  return capabilities
+}
+
+export async function applyPendingOperation(
+  client: SupabaseClient,
+  operation: PendingOperation,
+): Promise<SyncApplyResult> {
+  const { data, error } = await client.rpc('sync_apply_change', {
+    p_table_name: operation.table,
+    p_record_id: operation.recordId,
+    p_operation_id: operation.operationId,
+    p_device_id: operation.deviceId,
+    p_expected_revision: operation.expectedRevision,
+    p_operation: operation.operation,
+    p_patch: operation.patch,
+    p_base_values: operation.baseValues,
+  })
+  if (error) throw new SyncRpcError(error)
+  const result = firstRpcRow<Omit<SyncApplyResult, 'record'> & { record: Record<string, unknown> }>(data)
+  if (!result?.record) throw new Error('sync-apply-change-returned-no-record')
+  return {
+    ...result,
+    record: fromSupabaseRow(result.record),
+  }
 }
 
 export async function fetchRemoteAllRecords(
@@ -73,7 +110,7 @@ export async function fetchRemoteAllRecords(
 
     if (error) {
       console.error(`[SyncOps] fetchRemoteAllRecords failed for ${table} at offset ${offset}:`, error.message)
-      break
+      throw new Error(`Snapshot download failed for ${table} at offset ${offset}: ${error.message}`)
     }
 
     const batch = (data as Record<string, unknown>[] | null) ?? []
@@ -84,109 +121,5 @@ export async function fetchRemoteAllRecords(
   }
 
   console.log(`[SyncOps] fetchRemoteAllRecords: ${table} total returned ${allRecords.length} records`)
-  return allRecords
-}
-
-export async function upsertRecords(
-  client: SupabaseClient,
-  table: RealtimeSyncTable,
-  records: SyncRecord[],
-): Promise<SyncOperationResult> {
-  console.log(`[SyncOps] upsertRecords: ${table} count=${records.length}`)
-  const payload = records.map((record) => toSupabaseRecord(table, record))
-  const { data, error } = await client.from(table).upsert(payload)
-
-  if (error) {
-    console.error(`[SyncOps] upsertRecords failed for ${table}:`, error.message)
-    return { success: false, error: error.message }
-  }
-
-  const rows = (data as SyncRecord[] | null) ?? records
-  console.log(`[SyncOps] upsertRecords: ${table} succeeded, affectedRows=${rows.length}`)
-  return { success: true, affectedRows: rows.length }
-}
-
-export async function markRecordsAsDeleted(
-  client: SupabaseClient,
-  table: RealtimeSyncTable,
-  ids: string[],
-): Promise<SyncOperationResult> {
-  console.log(`[SyncOps] markRecordsAsDeleted: ${table} ids=${ids.length}`)
-  const { error } = await client
-    .from(table)
-    .update({ deleted: true, modified: new Date().toISOString() })
-    .in('id', ids)
-
-  if (error) {
-    console.error(`[SyncOps] markRecordsAsDeleted failed for ${table}:`, error.message)
-    return { success: false, error: error.message }
-  }
-  console.log(`[SyncOps] markRecordsAsDeleted: ${table} succeeded`)
-  return { success: true }
-}
-
-export async function deleteRecordsFromSupabase(
-  client: SupabaseClient,
-  table: RealtimeSyncTable,
-  ids: string[],
-): Promise<SyncOperationResult> {
-  console.log(`[SyncOps] deleteRecordsFromSupabase: ${table} ids=${ids.length}`)
-  const { error } = await client
-    .from(table)
-    .delete()
-    .in('id', ids)
-
-  if (error) {
-    console.error(`[SyncOps] deleteRecordsFromSupabase failed for ${table}:`, error.message)
-    return { success: false, error: error.message }
-  }
-  console.log(`[SyncOps] deleteRecordsFromSupabase: ${table} succeeded`)
-  return { success: true }
-}
-
-export async function uploadLocalChanges(
-  client: SupabaseClient,
-  table: RealtimeSyncTable,
-  records: SyncRecord[],
-): Promise<SyncOperationResult> {
-  console.log(`[SyncOps] uploadLocalChanges: ${table} count=${records.length}`)
-  const result = await upsertRecords(client, table, records)
-  console.log(`[SyncOps] uploadLocalChanges: ${table} result=`, result)
-  return result
-}
-
-export async function downloadRemoteChanges(
-  client: SupabaseClient,
-  table: RealtimeSyncTable,
-  since: string,
-): Promise<SyncRecord[]> {
-  console.log(`[SyncOps] downloadRemoteChanges: ${table} since=${since}`)
-
-  const BATCH_SIZE = 1000
-  let offset = 0
-  let hasMore = true
-  const allRecords: SyncRecord[] = []
-
-  while (hasMore) {
-    const { data, error } = await client
-      .from(table)
-      .select('*')
-      .gt('modified', since)
-      .order('modified', { ascending: true })
-      .range(offset, offset + BATCH_SIZE - 1)
-
-    if (error) {
-      console.error(`[SyncOps] downloadRemoteChanges failed for ${table} at offset ${offset}:`, error.message)
-      break
-    }
-
-    const batch = (data as Record<string, unknown>[] | null) ?? []
-    allRecords.push(...batch.map(fromSupabaseRow))
-    console.log(`[SyncOps] downloadRemoteChanges: ${table} batch offset=${offset}, received ${batch.length} records`)
-    offset += BATCH_SIZE
-    hasMore = batch.length === BATCH_SIZE
-  }
-
-  console.log(`[SyncOps] downloadRemoteChanges: ${table} total returned ${allRecords.length} records`)
   return allRecords
 }
