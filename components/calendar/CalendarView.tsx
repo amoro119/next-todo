@@ -662,6 +662,7 @@ export default function CalendarView({
   const [keyboardTaskId, setKeyboardTaskId] = useState<string | null>(null)
   const [isScheduleOpen, setIsScheduleOpen] = useState(false)
   const [todayFocusRequest, setTodayFocusRequest] = useState(0)
+  const [isCalendarScrolled, setIsCalendarScrolled] = useState(false)
   const calendarRef = useRef<HTMLElement>(null)
 
   useEffect(() => setMode(isDesktop ? 'month' : 'week'), [isDesktop])
@@ -716,6 +717,11 @@ export default function CalendarView({
     onOpenCreateModal?.(date)
     if (!onOpenCreateModal) onAddTodo(date)
   }, [onAddTodo, onOpenCreateModal])
+
+  const handleCalendarScroll = useCallback((event: React.UIEvent<HTMLElement>) => {
+    const nextScrolled = event.currentTarget.scrollTop > 0
+    setIsCalendarScrolled((current) => current === nextScrolled ? current : nextScrolled)
+  }, [])
 
   const monthDays = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentDate), { weekStartsOn: 0 })
@@ -817,9 +823,9 @@ export default function CalendarView({
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-background">
-      <main ref={calendarRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <main ref={calendarRef} onScroll={handleCalendarScroll} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
         <div className="mx-auto w-full">
-          <div className="-mx-4 -mt-4 sticky top-0 z-30 flex flex-col bg-background/95 px-4 pt-4 backdrop-blur-sm sm:-mx-6 sm:-mt-5 sm:px-6 sm:pt-5 lg:-mx-8 lg:px-8">
+          <div className="-mx-4 sticky top-0 z-30 flex flex-col bg-background/95 px-4 pt-4 backdrop-blur-sm sm:-mx-6 sm:px-6 sm:pt-5 lg:-mx-8 lg:px-8">
             <CalendarHeader
               currentDate={currentDate}
               mode={mode}
@@ -830,15 +836,18 @@ export default function CalendarView({
               onModeChange={setMode}
               onToggleSchedule={toggleSchedule}
             />
-          </div>
 
-          {mode === 'month' && (
-            <>
-              <div className="grid grid-cols-7 bg-muted/30" role="row">
+            {mode === 'month' && (
+              <div className={`grid grid-cols-7 border-b bg-muted/30 ${isCalendarScrolled ? 'border-[oklch(var(--border))]' : 'border-transparent'}`} role="row">
                 {WEEKDAYS.map((day) => (
                   <div key={day} role="columnheader" className="py-2 text-center text-xs font-medium text-muted-foreground">{day}</div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {mode === 'month' && (
+            <>
               <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-lg border border-[oklch(var(--border))] bg-[oklch(var(--border))]" role="grid" aria-label="月视图">
                 {monthDays.map((day) => {
                   const dateString = format(day, 'yyyy-MM-dd')
