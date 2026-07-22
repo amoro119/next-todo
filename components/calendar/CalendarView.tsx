@@ -214,10 +214,10 @@ interface TodoPillProps {
 function TodoPill({ todo, selected, onOpen, onDragStart, onDragEnd }: TodoPillProps) {
   const stateClassName = todo.completed
     ? selected
-      ? 'bg-[#fbdda6] font-normal text-[oklch(var(--calendar-task-completed-foreground))] line-through hover:bg-[#fbdda6]'
+      ? 'bg-[#fbdda6] font-normal text-[oklch(var(--calendar-task-selected-foreground))] line-through hover:bg-[#fbdda6]'
       : 'bg-[oklch(var(--calendar-task-completed-bg))] font-normal text-[oklch(var(--calendar-task-completed-foreground))] line-through hover:bg-[oklch(var(--calendar-task-completed-hover))]'
     : selected
-      ? 'bg-[#fbdda6] font-medium text-[oklch(var(--calendar-task-open-foreground))] hover:bg-[#fbdda6]'
+      ? 'bg-[#fbdda6] font-medium text-[oklch(var(--calendar-task-selected-foreground))] hover:bg-[#fbdda6]'
       : 'bg-[oklch(var(--calendar-task-open-bg))] font-medium text-[oklch(var(--calendar-task-open-foreground))] hover:bg-[oklch(var(--calendar-task-open-hover))]'
 
   return (
@@ -809,6 +809,11 @@ export default function CalendarView({
     setKeyboardTaskId(null)
   }, [onCloseTodoDetails])
 
+  const closeScheduleFromOutside = useCallback(() => {
+    setIsScheduleOpen(false)
+    setKeyboardTaskId(null)
+  }, [])
+
   const sharedDayProps = {
     selectedTodoId,
     onActivate: activateDate,
@@ -823,7 +828,7 @@ export default function CalendarView({
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden bg-background">
-      <main ref={calendarRef} onScroll={handleCalendarScroll} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background px-4 py-4 sm:px-6 sm:py-5 lg:px-8">
+      <main ref={calendarRef} onPointerDown={isScheduleOpen ? closeScheduleFromOutside : undefined} onScroll={handleCalendarScroll} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-background px-4 pb-4 sm:px-6 sm:pb-5 lg:px-8">
         <div className="mx-auto w-full">
           <div className="-mx-4 sticky top-0 z-30 flex flex-col bg-background/95 px-4 pt-4 backdrop-blur-sm sm:-mx-6 sm:px-6 sm:pt-5 lg:-mx-8 lg:px-8">
             <CalendarHeader

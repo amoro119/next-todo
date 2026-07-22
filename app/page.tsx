@@ -244,7 +244,10 @@ export default function Page() {
           transition={{ duration: 0.15 }}
           className="flex h-full min-h-0 overflow-hidden"
         >
-        <div className={`min-h-0 min-w-0 flex-1 overflow-hidden ${todoOps.selectedTodo ? 'sm:pr-5' : ''}`}>
+        <div
+          className={`min-h-0 min-w-0 flex-1 overflow-hidden ${todoOps.selectedTodo ? 'sm:pr-5' : ''}`}
+          onPointerDown={todoOps.selectedTodo ? () => todoOps.setSelectedTodo(null) : undefined}
+        >
           <CalendarView
             todos={todosWithListNames}
             currentDate={todoOps.currentDate}
