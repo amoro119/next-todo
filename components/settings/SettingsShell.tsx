@@ -8,11 +8,13 @@ import ListsSettings from './ListsSettings'
 import DataBackupSettings from './DataBackupSettings'
 import SyncSettings from './SyncSettings'
 import AboutSettings from './AboutSettings'
+import AISettings from './AISettings'
 
-type SettingsPage = 'general' | 'lists' | 'data' | 'sync' | 'about'
+type SettingsPage = 'general' | 'ai' | 'lists' | 'data' | 'sync' | 'about'
 
 const NAV_ITEMS: { id: SettingsPage; label: string;}[] = [
   { id: 'general', label: '通用' },
+  { id: 'ai', label: 'AI 服务' },
   { id: 'lists', label: '清单管理'},
   { id: 'data', label: '数据与备份' },
   { id: 'sync', label: '同步设置' },
@@ -25,6 +27,7 @@ export default function SettingsShell() {
   const renderPage = () => {
     switch (activePage) {
       case 'general': return <GeneralSettings />
+      case 'ai': return <AISettings />
       case 'lists': return <ListsSettings />
       case 'data': return <DataBackupSettings />
       case 'sync': return <SyncSettings />

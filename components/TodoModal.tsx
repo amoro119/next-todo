@@ -12,7 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, CalendarDays } from 'lucide-react';
+import {
+  AIServiceError,
+  decomposeTask,
+  getAIErrorMessage,
+  hasAIConfig,
+  mergeDecompositionBlock,
+} from '@/lib/ai';
+import { ArrowLeft, CalendarDays, LoaderCircle, WandSparkles } from 'lucide-react';
 
 interface TodoModalProps {
   isOpen?: boolean;
@@ -211,6 +218,9 @@ export default function TodoModal({
   const isRecycled = !!editableTodo.deleted;
   const titleInputRef = useRef<HTMLInputElement>(null);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const decompositionControllerRef = useRef<AbortController | null>(null);
+  const decompositionRequestIdRef = useRef(0);
+  const [isDecomposing, setIsDecomposing] = useState(false);
 
   const updateFields = useCallback((updates: Partial<Todo>) => {
     for (const field of Object.keys(updates) as Array<keyof Todo>) {
@@ -266,6 +276,18 @@ export default function TodoModal({
   useLayoutEffect(() => {
     resizeContentTextarea();
   }, [editableTodo.content, isOpen, resizeContentTextarea]);
+
+  useEffect(() => {
+    decompositionRequestIdRef.current += 1;
+    decompositionControllerRef.current?.abort();
+    decompositionControllerRef.current = null;
+    setIsDecomposing(false);
+  }, [initialData?.id, isOpen]);
+
+  useEffect(() => () => {
+    decompositionRequestIdRef.current += 1;
+    decompositionControllerRef.current?.abort();
+  }, []);
 
   const handleSave = async () => {
     try {
@@ -352,6 +374,71 @@ export default function TodoModal({
       await onUpdate(editableTodo.id, updates);
       dirtyFieldsRef.current.delete('completed');
       dirtyFieldsRef.current.delete('completed_time');
+    }
+  };
+
+  const handleDecomposeTask = async () => {
+    if (isRecycled || isDecomposing || !editableTodo.title.trim()) return;
+
+    if (!hasAIConfig()) {
+      toast.error('请先在设置 > AI 服务中完成配置');
+      return;
+    }
+
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.error('当前处于离线状态，无法调用 AI 服务');
+      return;
+    }
+
+    decompositionControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestId = decompositionRequestIdRef.current + 1;
+    decompositionRequestIdRef.current = requestId;
+    decompositionControllerRef.current = controller;
+    setIsDecomposing(true);
+
+    try {
+      const listName = lists.find((list) => list.id === editableTodo.list_id)?.name
+        ?? editableTodo.list_name
+        ?? null;
+      const goalName = goals.find((goal) => goal.id === editableTodo.goal_id)?.name
+        ?? editableTodo.goal_name
+        ?? null;
+
+      const steps = await decomposeTask(
+        {
+          title: editableTodo.title,
+          notes: editableTodo.content ?? '',
+          listName,
+          goalName,
+          startDate: editableTodo.start_date,
+          dueDate: editableTodo.due_date,
+        },
+        controller.signal,
+      );
+
+      if (requestId !== decompositionRequestIdRef.current || controller.signal.aborted) return;
+
+      dirtyFieldsRef.current.add('content');
+      setEditableTodo((current) => ({
+        ...current,
+        content: mergeDecompositionBlock(current.content ?? '', steps),
+      }));
+      toast.success('已生成拆解步骤，保存任务后生效');
+    } catch (error) {
+      if (
+        requestId !== decompositionRequestIdRef.current
+        || controller.signal.aborted
+        || (error instanceof AIServiceError && error.code === 'cancelled')
+      ) {
+        return;
+      }
+      toast.error(getAIErrorMessage(error));
+    } finally {
+      if (requestId === decompositionRequestIdRef.current) {
+        decompositionControllerRef.current = null;
+        setIsDecomposing(false);
+      }
     }
   };
 
@@ -446,16 +533,39 @@ export default function TodoModal({
 
             <div>
               <label htmlFor="content" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">备注</label>
-              <Textarea
-                ref={contentTextareaRef}
-                id="content"
-                name="content"
-                value={editableTodo.content || ''}
-                onChange={handleInputChange}
-                rows={4}
-                className="min-h-24 resize-y overflow-auto"
-                readOnly={isRecycled}
-              />
+              <div className="relative">
+                <Textarea
+                  ref={contentTextareaRef}
+                  id="content"
+                  name="content"
+                  value={editableTodo.content || ''}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className={`min-h-24 resize-none overflow-hidden ${isRecycled ? '' : 'pb-12 pr-14'}`}
+                  readOnly={isRecycled}
+                />
+                {!isRecycled && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleDecomposeTask}
+                    disabled={!editableTodo.title.trim() || isDecomposing}
+                    aria-label={isDecomposing ? '正在 AI 拆解任务' : 'AI 拆解任务'}
+                    title={editableTodo.title.trim() ? 'AI 拆解任务' : '请先填写任务标题'}
+                    className="absolute bottom-1 right-1 h-11 w-11 bg-[oklch(var(--background)/0.92)] text-[oklch(var(--muted-foreground))] hover:text-[oklch(var(--foreground))] md:h-8 md:w-8"
+                  >
+                    {isDecomposing ? (
+                      <LoaderCircle className="animate-spin" aria-hidden="true" />
+                    ) : (
+                      <WandSparkles aria-hidden="true" />
+                    )}
+                  </Button>
+                )}
+              </div>
+              <span className="sr-only" role="status" aria-live="polite">
+                {isDecomposing ? '正在生成任务拆解步骤' : ''}
+              </span>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
