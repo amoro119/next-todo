@@ -15,6 +15,7 @@
     "next:build": "next build",
     "lint": "next lint",
     "test": "vitest run",
+    "test:db-migration": "vitest run lib/db/__tests__/legacyMigration.test.ts --environment node",
     "test:watch": "vitest",
     "write-server": "echo \"'write-server' is deprecated, use Supabase Edge Functions instead.\" && exit 0"
   },
@@ -82,6 +83,7 @@
     "dotenv-cli": "^8.0.0",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^26.1.0",
     "portfinder": "^1.0.37",
     "postcss": "^8.5.6",

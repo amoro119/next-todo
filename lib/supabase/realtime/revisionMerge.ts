@@ -55,6 +55,24 @@ export async function mergeRemoteRecord(
     .where('[table+recordId]')
     .equals([table, remote.id])
     .sortBy('createdAt')
+  const hasQuarantinedLegacyOperation = pending.some((operation) => (
+    operation.status === 'blocked'
+      && operation.lastError === 'legacy-operation-requires-review'
+  ))
+
+  // A protocol-v1 operation contains the intended whole local record but no
+  // trustworthy base values. Keep the materialized local record unchanged
+  // until that operation is reviewed; otherwise the first snapshot would
+  // silently replace the unsynced edit with the server copy.
+  if (local && hasQuarantinedLegacyOperation) {
+    return {
+      applied: false,
+      ignoredAsStale: false,
+      rejectedFields: [],
+      record: local,
+    }
+  }
+
   const materialized: SyncRecord = table === 'todos'
     ? { ...remote, deleted: remote.deleted_at != null }
     : { ...remote }
@@ -65,6 +83,11 @@ export async function mergeRemoteRecord(
       ...original,
       patch: { ...original.patch },
       baseValues: { ...original.baseValues },
+    }
+
+    if (operation.status === 'blocked'
+      && operation.lastError === 'legacy-operation-requires-review') {
+      continue
     }
 
     if (operation.operation === 'insert') {
