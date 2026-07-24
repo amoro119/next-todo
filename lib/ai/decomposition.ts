@@ -111,26 +111,35 @@ async function requestChatCompletion(
   }, REQUEST_TIMEOUT_MS)
 
   try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
-    if (validation.config.apiKey) {
-      headers.Authorization = `Bearer ${validation.config.apiKey}`
-    }
-
-    const response = await fetch(validation.config.endpoint, {
+    // 浏览器直连第三方 AI 服务会被 CORS 拦截，改为请求同源服务端代理转发
+    const response = await fetch('/api/ai/chat', {
       method: 'POST',
-      headers,
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
+        endpoint: validation.config.endpoint,
+        apiKey: validation.config.apiKey,
         model: validation.config.model,
         messages,
-        stream: false,
       }),
       signal: controller.signal,
     })
 
     if (!response.ok) {
-      throw mapHttpError(response.status)
+      let message: string | undefined
+      try {
+        const payload = (await response.json()) as { error?: unknown }
+        if (typeof payload?.error === 'string' && payload.error) {
+          message = payload.error
+        }
+      } catch {
+        // 非 JSON 错误响应，使用状态码映射的默认提示
+      }
+      const mapped = mapHttpError(response.status)
+      throw message
+        ? new AIServiceError(mapped.code, message, response.status)
+        : mapped
     }
 
     let payload: unknown
