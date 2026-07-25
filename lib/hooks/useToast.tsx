@@ -42,11 +42,22 @@ const ToastContext = React.createContext<{
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = React.useReducer(toastReducer, { toasts: [] })
+  const timersRef = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
 
   const toast = React.useCallback((t: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).slice(2)
     dispatch({ type: 'ADD', toast: { ...t, id } })
-    setTimeout(() => dispatch({ type: 'REMOVE', id }), t.duration ?? 3000)
+    const timer = setTimeout(() => {
+      timersRef.current.delete(timer)
+      dispatch({ type: 'REMOVE', id })
+    }, t.duration ?? 3000)
+    timersRef.current.add(timer)
+  }, [])
+
+  // Provider 卸载时清除所有挂起的自动移除定时器
+  React.useEffect(() => () => {
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current.clear()
   }, [])
 
   const dismiss = React.useCallback((id: string) => {

@@ -4,21 +4,52 @@
 import { useEffect, useRef, useCallback } from 'react';
 
 // INP优化器 - 专门针对Interaction to Next Paint优化
+interface QueuedTask {
+  owner: object | null;
+  task: () => void;
+}
+
 class INPOptimizer {
-  private interactionQueue: Array<() => void> = [];
+  private interactionQueue: QueuedTask[] = [];
   private isProcessing = false;
   private frameDeadline = 0;
+  private pendingRafId: number | null = null;
+  // 每个 owner 的 debounce 定时器，cleanup(owner) 时一并取消
+  private ownerTimers = new Map<object, Set<ReturnType<typeof setTimeout>>>();
   private readonly TARGET_INP = 200; // 目标INP时间（毫秒）
   private readonly TIME_SLICE = 5; // 每个时间片的长度（毫秒）
 
+  private trackTimer(owner: object | null, timer: ReturnType<typeof setTimeout>) {
+    if (!owner) return;
+    let timers = this.ownerTimers.get(owner);
+    if (!timers) {
+      timers = new Set();
+      this.ownerTimers.set(owner, timers);
+    }
+    timers.add(timer);
+  }
+
+  private untrackTimer(owner: object | null, timer: ReturnType<typeof setTimeout>) {
+    if (!owner) return;
+    const timers = this.ownerTimers.get(owner);
+    if (timers) {
+      timers.delete(timer);
+      if (timers.size === 0) this.ownerTimers.delete(owner);
+    }
+  }
+
   // 调度交互处理
-  scheduleInteraction(callback: () => void, priority: 'high' | 'normal' | 'low' = 'normal') {
+  scheduleInteraction(
+    callback: () => void,
+    priority: 'high' | 'normal' | 'low' = 'normal',
+    owner: object | null = null
+  ) {
     if (priority === 'high') {
       // 高优先级任务立即执行
       this.executeWithTimeSlicing(callback);
     } else {
       // 普通和低优先级任务加入队列
-      this.interactionQueue.push(callback);
+      this.interactionQueue.push({ owner, task: callback });
       this.processQueue();
     }
   }
@@ -51,15 +82,16 @@ class INPOptimizer {
 
   private processQueueChunk = () => {
     while (this.interactionQueue.length > 0 && performance.now() < this.frameDeadline) {
-      const task = this.interactionQueue.shift();
-      if (task) {
-        this.executeWithTimeSlicing(task);
+      const item = this.interactionQueue.shift();
+      if (item) {
+        this.executeWithTimeSlicing(item.task);
       }
     }
 
     if (this.interactionQueue.length > 0) {
       // 还有任务，继续在下一帧处理
-      requestAnimationFrame(() => {
+      this.pendingRafId = requestAnimationFrame(() => {
+        this.pendingRafId = null;
         this.frameDeadline = performance.now() + this.TIME_SLICE;
         this.processQueueChunk();
       });
@@ -69,7 +101,7 @@ class INPOptimizer {
   };
 
   // 批量处理DOM更新
-  batchDOMUpdates(updates: Array<() => void>) {
+  batchDOMUpdates(updates: Array<() => void>, owner: object | null = null) {
     const batchUpdate = () => {
       updates.forEach(update => {
         try {
@@ -80,31 +112,39 @@ class INPOptimizer {
       });
     };
 
-    this.scheduleInteraction(batchUpdate, 'normal');
+    this.scheduleInteraction(batchUpdate, 'normal', owner);
   }
 
   // 优化事件处理器
   optimizeEventHandler<T extends Event>(
     handler: (event: T) => void,
-    options: { 
+    options: {
       debounce?: number;
       throttle?: number;
       priority?: 'high' | 'normal' | 'low';
-    } = {}
+    } = {},
+    owner: object | null = null
   ) {
     const { debounce, throttle, priority = 'normal' } = options;
-    let timeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let lastExecution = 0;
 
     return (event: T) => {
       const now = performance.now();
-      
+
       // 防抖处理
       if (debounce) {
-        if (timeoutId) clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-          this.scheduleInteraction(() => handler(event), priority);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          this.untrackTimer(owner, timeoutId);
+        }
+        const timer = setTimeout(() => {
+          this.untrackTimer(owner, timer);
+          timeoutId = null;
+          this.scheduleInteraction(() => handler(event), priority, owner);
         }, debounce);
+        timeoutId = timer;
+        this.trackTimer(owner, timer);
         return;
       }
 
@@ -114,14 +154,32 @@ class INPOptimizer {
       }
 
       lastExecution = now;
-      this.scheduleInteraction(() => handler(event), priority);
+      this.scheduleInteraction(() => handler(event), priority, owner);
     };
   }
 
-  // 清理资源
-  cleanup() {
-    this.interactionQueue = [];
-    this.isProcessing = false;
+  // 清理资源：传入 owner 时只移除该消费者的排队任务与 debounce 定时器，
+  // 不影响其他仍挂载的组件；队列清空后取消挂起的 rAF，避免帧回调持有闭包
+  cleanup(owner?: object) {
+    if (owner) {
+      this.interactionQueue = this.interactionQueue.filter((item) => item.owner !== owner);
+      const timers = this.ownerTimers.get(owner);
+      if (timers) {
+        timers.forEach(clearTimeout);
+        this.ownerTimers.delete(owner);
+      }
+    } else {
+      this.interactionQueue = [];
+      this.ownerTimers.forEach((timers) => timers.forEach(clearTimeout));
+      this.ownerTimers.clear();
+    }
+    if (this.interactionQueue.length === 0) {
+      if (this.pendingRafId != null) {
+        cancelAnimationFrame(this.pendingRafId);
+        this.pendingRafId = null;
+      }
+      this.isProcessing = false;
+    }
   }
 }
 
@@ -131,34 +189,40 @@ const inpOptimizer = new INPOptimizer();
 // React Hook for INP optimization
 export function useINPOptimization() {
   const optimizerRef = useRef(inpOptimizer);
+  // 每个 hook 实例独立的 owner 令牌，卸载时只清理自己的排队任务
+  const ownerRef = useRef<object | null>(null);
+  if (ownerRef.current === null) {
+    ownerRef.current = {};
+  }
 
   useEffect(() => {
     const optimizer = optimizerRef.current;
+    const owner = ownerRef.current;
     return () => {
-      optimizer.cleanup();
+      optimizer.cleanup(owner ?? undefined);
     };
   }, []);
 
   const scheduleInteraction = useCallback((
-    callback: () => void, 
+    callback: () => void,
     priority: 'high' | 'normal' | 'low' = 'normal'
   ) => {
-    optimizerRef.current.scheduleInteraction(callback, priority);
+    optimizerRef.current.scheduleInteraction(callback, priority, ownerRef.current);
   }, []);
 
   const batchDOMUpdates = useCallback((updates: Array<() => void>) => {
-    optimizerRef.current.batchDOMUpdates(updates);
+    optimizerRef.current.batchDOMUpdates(updates, ownerRef.current);
   }, []);
 
   const optimizeEventHandler = useCallback(<T extends Event>(
     handler: (event: T) => void,
-    options: { 
+    options: {
       debounce?: number;
       throttle?: number;
       priority?: 'high' | 'normal' | 'low';
     } = {}
   ) => {
-    return optimizerRef.current.optimizeEventHandler(handler, options);
+    return optimizerRef.current.optimizeEventHandler(handler, options, ownerRef.current);
   }, []);
 
   return {
@@ -180,6 +244,15 @@ export function useOptimizedClick<T = HTMLElement>(
 ) {
   const { scheduleInteraction } = useINPOptimization();
   const { debounce = 0, preventDefault = false, stopPropagation = false, priority = 'high' } = options;
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 卸载时取消挂起的 debounce，避免卸载后仍调度任务
+  useEffect(() => () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+  }, []);
 
   return useCallback((event: React.MouseEvent<T>) => {
     if (preventDefault) event.preventDefault();
@@ -189,12 +262,11 @@ export function useOptimizedClick<T = HTMLElement>(
 
     if (debounce > 0) {
       // 防抖处理
-      const timeoutId = setTimeout(() => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        debounceTimerRef.current = null;
         scheduleInteraction(executeHandler, priority);
       }, debounce);
-      
-      // 清理函数
-      return () => clearTimeout(timeoutId);
     } else {
       // 立即调度
       scheduleInteraction(executeHandler, priority);

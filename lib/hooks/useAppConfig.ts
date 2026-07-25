@@ -33,12 +33,12 @@ export const useAppConfig = (): AppConfig => {
     window.addEventListener('syncConfigChanged', handleSyncConfigChange);
 
     // 使用现有的网络状态监控系统
-    networkStatusManager.onNetworkChange(() => updateConfig());
+    const unsubscribeNetwork = networkStatusManager.onNetworkChange(() => updateConfig());
 
     return () => {
       window.removeEventListener('userStateChanged', handleUserStateChange);
       window.removeEventListener('syncConfigChanged', handleSyncConfigChange);
-      // 注意：networkStatusManager 的监听器会在组件卸载时自动清理
+      unsubscribeNetwork();
     };
   }, []);
 
