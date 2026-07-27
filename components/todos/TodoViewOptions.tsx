@@ -22,10 +22,11 @@ export function TodoViewOptions({
   recycledTodos,
   todayCount = 0,
 }: TodoViewOptionsProps) {
+  const orderedLists = [...lists].sort((a, b) => a.sort_order - b.sort_order)
   const pills = [
     { label: '今天', view: 'today', count: todayCount },
     { label: '收件箱', view: 'inbox', count: uncompletedTodos.length },
-    ...lists.map((list) => ({
+    ...orderedLists.map((list) => ({
       label: list.name,
       view: list.name,
       count: todosByList[list.name] ?? 0,
