@@ -42,10 +42,22 @@ export async function mergeRemoteRecord(
 ): Promise<MergeOutcome> {
   const dexieTable = getTable(db, table)
   const local = await dexieTable.get(remote.id) as SyncRecord | undefined
-  if (local && Number(local.revision ?? 0) > Number(remote.revision ?? 0)) {
+  const localRevision = Number(local?.revision ?? 0)
+  const remoteRevision = Number(remote.revision ?? 0)
+  if (local && localRevision > remoteRevision) {
     return {
       applied: false,
       ignoredAsStale: true,
+      rejectedFields: [],
+      record: local,
+    }
+  }
+  // 同一服务端 revision 表示同一份不可变版本。RPC 回执与 Realtime
+  // 回声可能先后携带它；第二次写入只会制造无意义的 Dexie liveQuery 刷新。
+  if (local && localRevision === remoteRevision) {
+    return {
+      applied: false,
+      ignoredAsStale: false,
       rejectedFields: [],
       record: local,
     }

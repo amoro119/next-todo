@@ -203,24 +203,31 @@ export default function TodoDetailsDrawer({
 
   return (
     <>
-      {todo && (
+      {displayTodo && (
         <div
           role="separator"
           aria-label="调整任务详情宽度"
           aria-orientation="vertical"
+          aria-hidden={!todo}
           aria-valuemin={MIN_DRAWER_WIDTH}
           aria-valuemax={MAX_DRAWER_WIDTH}
           aria-valuenow={Math.round(drawerWidth)}
           aria-valuetext={`${Math.round(drawerWidth)} 像素`}
-          tabIndex={0}
+          tabIndex={todo ? 0 : -1}
           title="拖动调整详情宽度；双击重置"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerEnd}
-          onPointerCancel={handlePointerEnd}
-          onKeyDown={handleResizeKeyDown}
-          onDoubleClick={() => setDrawerWidth(constrainDrawerWidth(DEFAULT_DRAWER_WIDTH))}
-          className={`group relative hidden h-full w-4 shrink-0 touch-none cursor-col-resize select-none outline-none md:block focus-visible:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${isResizing ? 'z-10' : ''}`}
+          onPointerDown={todo ? handlePointerDown : undefined}
+          onPointerMove={todo ? handlePointerMove : undefined}
+          onPointerUp={todo ? handlePointerEnd : undefined}
+          onPointerCancel={todo ? handlePointerEnd : undefined}
+          onKeyDown={todo ? handleResizeKeyDown : undefined}
+          onDoubleClick={
+            todo
+              ? () => setDrawerWidth(constrainDrawerWidth(DEFAULT_DRAWER_WIDTH))
+              : undefined
+          }
+          className={`group relative hidden h-full w-4 shrink-0 touch-none cursor-col-resize select-none outline-none md:block focus-visible:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+            !todo ? 'pointer-events-none' : ''
+          } ${isResizing ? 'z-10' : ''}`}
         >
           <span
             className={`pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 transition-colors ${isResizing ? 'bg-[oklch(var(--primary))]' : 'bg-[oklch(var(--border))] group-hover:bg-[oklch(var(--foreground)/0.5)] group-focus:bg-[oklch(var(--primary))]'}`}
@@ -247,17 +254,13 @@ export default function TodoDetailsDrawer({
         ref={drawerRef}
         role={isDesktop ? 'complementary' : 'dialog'}
         aria-modal={isDesktop ? undefined : true}
-        className="fixed inset-x-0 bottom-0 z-50 flex h-[min(92dvh,760px)] w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border-t border-[oklch(var(--border))] bg-[oklch(var(--background))] shadow-2xl will-change-transform md:relative md:inset-auto md:z-auto md:block md:h-full md:w-auto md:shrink-0 md:rounded-none md:border-0 md:shadow-none"
+        className="fixed inset-x-0 bottom-0 z-50 flex h-[min(92dvh,760px)] w-full min-h-0 flex-col overflow-hidden rounded-t-2xl border-t border-[oklch(var(--border))] bg-[oklch(var(--background))] shadow-2xl md:relative md:inset-auto md:z-auto md:block md:h-full md:w-auto md:shrink-0 md:rounded-none md:border-0 md:shadow-none"
         style={{
-          width: isDesktop ? (todo ? drawerCssWidth : 0) : '100%',
+          // 桌面端只在打开和退出完成时各触发布局一次；逐帧动画 width
+          // 会迫使日历网格及其所有任务节点持续重新布局。
+          width: isDesktop ? (displayTodo ? drawerCssWidth : 0) : '100%',
           visibility: displayTodo ? 'visible' : 'hidden',
           pointerEvents: todo ? 'auto' : 'none',
-          transition: isDesktop ? (isResizing ? 'none' : 'width 320ms cubic-bezier(0.22, 1, 0.36, 1)') : 'none',
-        }}
-        onTransitionEnd={(event) => {
-          if (event.target === event.currentTarget && event.propertyName === 'width' && !todo) {
-            setMountedTodo(null)
-          }
         }}
         aria-hidden={!todo}
         aria-label={displayTodo ? `任务详情：${displayTodo.title}` : undefined}
@@ -270,12 +273,12 @@ export default function TodoDetailsDrawer({
                 ? { opacity: todo ? 1 : 0, x: todo ? 0 : '100%' }
                 : { opacity: todo ? 1 : 0, y: todo ? sheetOffset : '100%' }}
               onAnimationComplete={() => {
-                if (!isDesktop && !todo) setMountedTodo(null)
+                if (!todo) setMountedTodo(null)
               }}
               transition={todo
                 ? MOBILE_SHEET_ENTER_TRANSITION
                 : { duration: 0.24, ease: [0.4, 0, 1, 1] }}
-              className="h-full w-full md:w-auto"
+              className="h-full w-full will-change-transform md:w-auto"
               style={isDesktop ? { width: drawerCssWidth, minWidth: drawerCssWidth } : undefined}
             >
               <TodoModal

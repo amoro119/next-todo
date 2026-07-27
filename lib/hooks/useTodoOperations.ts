@@ -238,7 +238,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   const [newTodoTitle, setNewTodoTitle] = useState("")
   const [newTodoDate, setNewTodoDate] = useState<string | null>(null)
   const [newGoalTitle, setNewGoalTitle] = useState("")
-  const [selectedTodo, setSelectedTodo] = useState<Todo | null>(null)
+  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null)
   const [slogan, setSlogan] = useState("今日事今日毕，勿将今事待明日!.☕")
   const [originalSlogan, setOriginalSlogan] = useState(slogan)
@@ -274,13 +274,15 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
     setNewGoalTitle("")
   }, [currentView])
 
-  // Keep the open details view attached to the live Dexie record. TodoModal
-  // preserves dirty fields and refreshes only untouched fields from this value.
-  useEffect(() => {
-    if (!selectedTodo) return
-    const latest = todos.find((todo) => todo.id === selectedTodo.id)
-    if (latest && latest !== selectedTodo) setSelectedTodo(latest)
-  }, [todos, selectedTodo])
+  // 只保存稳定的记录 ID。Dexie 每次同步都会返回新的对象实例；直接把对象
+  // 放进 state 会在每次回写后再触发一次 setState 和整页重渲染。
+  const selectedTodo = useMemo(
+    () => selectedTodoId ? todos.find((todo) => todo.id === selectedTodoId) ?? null : null,
+    [selectedTodoId, todos],
+  )
+  const setSelectedTodo = useCallback((todo: Todo | null) => {
+    setSelectedTodoId(todo?.id ?? null)
+  }, [])
 
   // Date cache cleanup
   useEffect(() => {
@@ -406,11 +408,11 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       const todoToDelete = todos.find((t: Todo) => t.id === todoId)
       if (!todoToDelete) return
       setLastAction({ type: "delete", data: todoToDelete })
-      if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null)
+      if (selectedTodoId === todoId) setSelectedTodo(null)
       await todoStore.getState().updateTodo(todoId, { deleted: true })
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [todos, selectedTodo, todoStore]
+    [todos, selectedTodoId, setSelectedTodo, todoStore]
   )
 
   const handleRestoreTodo = useCallback(
@@ -419,11 +421,11 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       const todoToRestore = recycledTodos.find((t: Todo) => t.id === todoId)
       if (!todoToRestore) return
       setLastAction({ type: "restore", data: todoToRestore })
-      if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null)
+      if (selectedTodoId === todoId) setSelectedTodo(null)
       await todoStore.getState().updateTodo(todoId, { deleted: false })
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [todos, selectedTodo, todoStore]
+    [todos, selectedTodoId, setSelectedTodo, todoStore]
   )
 
   const handlePermanentDeleteTodo = useCallback(
@@ -434,9 +436,9 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       // “永久删除”在多设备协议中仍写 tombstone；物理删除会导致离线设备复活记录。
       await api.deleteTodo(todoId)
       todoStore.setState((s) => ({ todos: s.todos.filter((t) => t.id !== todoId) }))
-      if (selectedTodo && selectedTodo.id === todoId) setSelectedTodo(null)
+      if (selectedTodoId === todoId) setSelectedTodo(null)
     },
-    [todos, selectedTodo, api, todoStore]
+    [todos, selectedTodoId, setSelectedTodo, api, todoStore]
   )
 
   const handleSaveTodoDetails = useCallback(
@@ -447,7 +449,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       setSelectedTodo(null)
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [handleUpdateTodo]
+    [handleUpdateTodo, setSelectedTodo]
   )
 
   // ── List CRUD handlers ──────────────────────────────────────────

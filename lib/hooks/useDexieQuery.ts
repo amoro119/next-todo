@@ -23,11 +23,6 @@ export function useTodosQuery(listId?: string): QueryResult<Todo> {
     [listId],
   )
 
-  if (data !== undefined) {
-    const deletedCount = data.filter(t => t.deleted_at !== null).length
-    console.log(`[useDexieQuery] useTodosQuery returned ${data.length} todos (${deletedCount} soft-deleted)`)
-  }
-
   return {
     data: data ?? [],
     isLoading: data === undefined,
