@@ -245,7 +245,6 @@ interface DayCellProps {
   todos: Todo[]
   selectedTodoId?: string | null
   isCurrentMonth?: boolean
-  selected?: boolean
   isDropTarget?: boolean
   hasKeyboardTask?: boolean
   onActivate: (date: Date) => void
@@ -262,7 +261,6 @@ function DayCell({
   todos,
   selectedTodoId,
   isCurrentMonth = true,
-  selected,
   isDropTarget,
   hasKeyboardTask,
   onActivate,
@@ -277,28 +275,25 @@ function DayCell({
   const dayStateClassName = isCurrentMonth
     ? 'bg-[var(--calendar-current-month-bg)]'
     : 'bg-[var(--calendar-other-month-bg)] text-muted-foreground'
-  const dateMarkerClassName = selected
-    ? 'bg-[oklch(var(--foreground))] text-[oklch(var(--background))]'
-    : isToday(date)
-      ? 'text-foreground ring-1 ring-inset ring-foreground'
-      : isCurrentMonth
-        ? 'text-foreground hover:bg-muted'
-        : 'text-muted-foreground hover:bg-muted'
+  const dateMarkerClassName = isToday(date)
+    ? 'bg-[oklch(var(--foreground))] font-semibold text-[oklch(var(--background))] shadow-sm'
+    : isCurrentMonth
+      ? 'text-foreground'
+      : 'text-muted-foreground'
 
   return (
     <div
       role="gridcell"
-      aria-selected={selected}
       aria-label={`${dateString}${hasKeyboardTask ? '，按回车将所选任务安排到此日期' : ''}`}
-      tabIndex={0}
+      tabIndex={hasKeyboardTask ? 0 : undefined}
       onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return
+        if (!hasKeyboardTask || event.target !== event.currentTarget) return
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault()
           onActivate(date)
         }
       }}
-      onClick={() => onActivate(date)}
+      onClick={hasKeyboardTask ? () => onActivate(date) : undefined}
       onDragOver={(event) => {
         event.preventDefault()
         event.dataTransfer.dropEffect = 'move'
@@ -313,19 +308,30 @@ function DayCell({
       className={`group min-h-[112px] p-2 text-left transition-[background-color,box-shadow] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${dayStateClassName} ${isDropTarget ? 'z-10 bg-[oklch(var(--accent))] shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)]' : ''} ${hasKeyboardTask ? 'cursor-copy' : ''}`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-medium transition-colors ${dateMarkerClassName}`}
-          onClick={(event) => {
-            event.stopPropagation()
-            onActivate(date)
-          }}
-          onKeyDown={(event) => event.stopPropagation()}
-          aria-label={`${hasKeyboardTask ? '安排到' : '选择'} ${dateString}`}
-          aria-current={isToday(date) ? 'date' : undefined}
-        >
-          {format(date, 'd')}
-        </button>
+        {hasKeyboardTask ? (
+          <button
+            type="button"
+            className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-medium transition-colors hover:bg-muted ${dateMarkerClassName}`}
+            onClick={(event) => {
+              event.stopPropagation()
+              onActivate(date)
+            }}
+            onKeyDown={(event) => event.stopPropagation()}
+            aria-label={`安排到 ${dateString}`}
+            aria-current={isToday(date) ? 'date' : undefined}
+          >
+            {format(date, 'd')}
+          </button>
+        ) : (
+          <time
+            dateTime={dateString}
+            aria-current={isToday(date) ? 'date' : undefined}
+            aria-label={isToday(date) ? `今天，${dateString}` : undefined}
+            className={`flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-medium ${dateMarkerClassName}`}
+          >
+            {format(date, 'd')}
+          </time>
+        )}
         {isCurrentMonth && !hasKeyboardTask && (
           <Button
             type="button"
@@ -437,7 +443,7 @@ function WeekView({
   onDragEnd,
   onDragOverDate,
   onDrop,
-}: Omit<React.ComponentProps<typeof DayCell>, 'date' | 'todos' | 'isCurrentMonth' | 'selected' | 'isDropTarget'> & {
+}: Omit<React.ComponentProps<typeof DayCell>, 'date' | 'todos' | 'isCurrentMonth' | 'isDropTarget'> & {
   currentDate: Date
   selectedDate: Date
   todosByDate: Record<string, Todo[]>
@@ -909,7 +915,6 @@ export default function CalendarView({
                       date={day}
                       todos={todosByDate[dateString] || []}
                       isCurrentMonth={isSameMonth(day, currentDate)}
-                      selected={isSameDay(day, selectedDate)}
                       isDropTarget={dragOverDate === dateString}
                       {...sharedDayProps}
                     />
