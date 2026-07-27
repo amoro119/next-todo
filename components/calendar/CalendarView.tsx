@@ -17,7 +17,7 @@ import {
   startOfWeek,
 } from 'date-fns'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Todo } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -582,8 +582,20 @@ interface ScheduleDrawerProps {
 }
 
 function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, onClose, onOpenTodo, onSelectForKeyboard, onDragStart, onDragEnd }: ScheduleDrawerProps) {
+  const [searchQuery, setSearchQuery] = useState('')
   const { unscheduled, scheduled } = useMemo(() => groupTodosForSchedule(todos), [todos])
   const total = unscheduled.length + scheduled.length
+  const normalizedQuery = searchQuery.trim().toLocaleLowerCase()
+  const matchesSearch = useCallback((todo: Todo) => {
+    if (!normalizedQuery) return true
+    return [todo.title, todo.list_name]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery))
+  }, [normalizedQuery])
+  const filteredUnscheduled = useMemo(() => unscheduled.filter(matchesSearch), [matchesSearch, unscheduled])
+  const filteredScheduled = useMemo(() => scheduled.filter(matchesSearch), [matchesSearch, scheduled])
+  const filteredTotal = filteredUnscheduled.length + filteredScheduled.length
+  const isSearching = normalizedQuery.length > 0
 
   return (
     <motion.aside
@@ -596,14 +608,44 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, 
       transition={{ duration: reducedMotion ? 0.1 : 0.2, ease: [0.22, 1, 0.36, 1] }}
       className="hidden h-full w-[360px] shrink-0 flex-col border-l border-[oklch(var(--border))] bg-background lg:flex"
     >
-      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[oklch(var(--border))] px-4 py-4">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">日程安排</h2>
-          <p className="mt-1 text-xs text-muted-foreground">拖到日历设置截止日 · {total} 项未完成</p>
+      <header className="shrink-0 border-b border-[oklch(var(--border))] px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-foreground">日程安排</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              拖到日历设置截止日 · {isSearching ? `${filteredTotal} 项匹配` : `${total} 项未完成`}
+            </p>
+          </div>
+          <Button type="button" variant="ghost" size="icon" className="-mr-2 -mt-2 h-9 w-9" onClick={onClose} aria-label="关闭日程安排">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
         </div>
-        <Button type="button" variant="ghost" size="icon" className="-mr-2 -mt-2 h-9 w-9" onClick={onClose} aria-label="关闭日程安排">
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
+        {total > 0 && (
+          <div className="relative mt-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input
+              type="text"
+              role="searchbox"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              aria-label="搜索日程安排中的任务"
+              placeholder="搜索任务或清单"
+              className="form-control h-9 w-full pl-9 pr-9 text-sm placeholder:text-muted-foreground"
+            />
+            {searchQuery && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0.5 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setSearchQuery('')}
+                aria-label="清除日程任务搜索"
+              >
+                <X className="h-3.5 w-3.5" aria-hidden="true" />
+              </Button>
+            )}
+          </div>
+        )}
       </header>
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
         {total === 0 ? (
@@ -611,12 +653,17 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, 
             <p className="text-sm font-medium text-foreground">所有任务都已完成</p>
             <p className="mt-1 text-xs text-muted-foreground">新增任务后会出现在这里。</p>
           </div>
+        ) : isSearching && filteredTotal === 0 ? (
+          <div className="rounded-lg border border-dashed border-[oklch(var(--border))] px-4 py-10 text-center" role="status">
+            <p className="text-sm font-medium text-foreground">没有匹配的任务</p>
+            <p className="mt-1 text-xs text-muted-foreground">换个关键词试试。</p>
+          </div>
         ) : (
           <>
             <ScheduleGroup
               title="未安排"
-              emptyText="没有待安排的任务"
-              todos={unscheduled}
+              emptyText={isSearching ? '未安排中没有匹配任务' : '没有待安排的任务'}
+              todos={filteredUnscheduled}
               keyboardTaskId={keyboardTaskId}
               draggingTaskId={draggingTaskId}
               onOpen={onOpenTodo}
@@ -626,8 +673,8 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, 
             />
             <ScheduleGroup
               title="已安排"
-              emptyText="还没有已安排的任务"
-              todos={scheduled}
+              emptyText={isSearching ? '已安排中没有匹配任务' : '还没有已安排的任务'}
+              todos={filteredScheduled}
               keyboardTaskId={keyboardTaskId}
               draggingTaskId={draggingTaskId}
               onOpen={onOpenTodo}
