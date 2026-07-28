@@ -446,10 +446,10 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { list_name: _, ...updateData } = dirtyPatch ?? updatedTodo
       await handleUpdateTodo(updatedTodo.id, updateData)
-      setSelectedTodo(null)
+      if (currentView !== "calendar") setSelectedTodo(null)
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [handleUpdateTodo, setSelectedTodo]
+    [currentView, handleUpdateTodo, setSelectedTodo]
   )
 
   // ── List CRUD handlers ──────────────────────────────────────────
