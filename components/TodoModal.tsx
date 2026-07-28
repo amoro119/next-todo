@@ -1,9 +1,13 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
+import LiveMarkdownEditor from './markdown/LiveMarkdownEditor';
+import MarkdownMindmap from './markdown/MarkdownMindmap';
+import MarkdownPreview from './markdown/MarkdownPreview';
+import { normalizeTaskListMarkers } from './markdown/markdownSecurity';
 import { RRuleEngine } from '../lib/recurring/RRuleEngine';
 import { toast } from 'sonner';
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AIServiceError,
   decomposeTask,
@@ -19,7 +24,7 @@ import {
   hasAIConfig,
   mergeDecompositionBlock,
 } from '@/lib/ai';
-import { ArrowLeft, CalendarDays, LoaderCircle, WandSparkles } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CodeXml, LoaderCircle, Map, Text, WandSparkles } from 'lucide-react';
 
 interface TodoModalProps {
   isOpen?: boolean;
@@ -217,10 +222,12 @@ export default function TodoModal({
   const activeRecordIdRef = useRef<string | null>(initialData?.id ?? null);
   const isRecycled = !!editableTodo.deleted;
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
   const decompositionControllerRef = useRef<AbortController | null>(null);
   const decompositionRequestIdRef = useRef(0);
+  const mindmapFocusRestoreRef = useRef<HTMLElement | null>(null);
   const [isDecomposing, setIsDecomposing] = useState(false);
+  const [noteMode, setNoteMode] = useState<'rich-text' | 'source' | 'mindmap'>('rich-text');
+  const [isMindmapExpanded, setIsMindmapExpanded] = useState(false);
 
   const updateFields = useCallback((updates: Partial<Todo>) => {
     for (const field of Object.keys(updates) as Array<keyof Todo>) {
@@ -229,15 +236,6 @@ export default function TodoModal({
     setEditableTodo((current) => ({ ...current, ...updates }));
   }, []);
 
-  const resizeContentTextarea = useCallback(() => {
-    const textarea = contentTextareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.max(44, textarea.scrollHeight)}px`;
-  }, []);
-
-    
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
   useEffect(() => {
     if (mode === 'edit' && initialData) {
@@ -273,15 +271,13 @@ export default function TodoModal({
     }
   }, [isOpen]);
 
-  useLayoutEffect(() => {
-    resizeContentTextarea();
-  }, [editableTodo.content, isOpen, resizeContentTextarea]);
-
   useEffect(() => {
     decompositionRequestIdRef.current += 1;
     decompositionControllerRef.current?.abort();
     decompositionControllerRef.current = null;
     setIsDecomposing(false);
+    setNoteMode('rich-text');
+    setIsMindmapExpanded(false);
   }, [initialData?.id, isOpen]);
 
   useEffect(() => () => {
@@ -359,6 +355,27 @@ export default function TodoModal({
     
     updateFields({ [name]: finalValue } as Partial<Todo>);
   };
+
+  const handleNoteChange = useCallback((content: string) => {
+    if (isRecycled) return;
+    updateFields({ content });
+  }, [isRecycled, updateFields]);
+
+  const handleNoteError = useCallback(() => {
+    setNoteMode('source');
+    toast.error('富文本转换失败，已切换到 Markdown 源码');
+  }, []);
+
+  const handleNoteModeChange = useCallback((nextMode: typeof noteMode) => {
+    if (nextMode === 'rich-text') {
+      const currentContent = editableTodo.content ?? '';
+      const normalizedContent = normalizeTaskListMarkers(currentContent);
+      if (normalizedContent !== currentContent) {
+        updateFields({ content: normalizedContent });
+      }
+    }
+    setNoteMode(nextMode);
+  }, [editableTodo.content, updateFields]);
 
   const handleToggleComplete = async () => {
     if (isRecycled) return;
@@ -443,13 +460,32 @@ export default function TodoModal({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey && mode === 'create') {
+    if (
+      e.key === 'Enter'
+      && !e.shiftKey
+      && mode === 'create'
+      && e.target === titleInputRef.current
+      && !e.nativeEvent.isComposing
+    ) {
       e.preventDefault();
       if (editableTodo.title.trim()) {
         handleSave();
       }
     }
   };
+
+  const handleMindmapExpandedChange = useCallback((expanded: boolean) => {
+    if (expanded) {
+      mindmapFocusRestoreRef.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      setIsMindmapExpanded(true);
+      return;
+    }
+
+    setIsMindmapExpanded(false);
+    window.requestAnimationFrame(() => mindmapFocusRestoreRef.current?.focus());
+  }, []);
 
   const panelTitle = isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情';
   const deleteAction = (
@@ -483,7 +519,7 @@ export default function TodoModal({
               onPointerCancel={onSheetPointerCancel}
               style={{ touchAction: 'none' }}
             />
-            <Button type="button" className="w-4" variant="ghost" size="icon" onClick={onClose} aria-label="返回任务列表">
+            <Button type="button" className="h-11 w-11 md:h-9 md:w-9" variant="ghost" size="icon" onClick={onClose} aria-label="返回任务列表">
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
             <h1 className="truncate text-base font-semibold text-[oklch(var(--foreground))]">{panelTitle}</h1>
@@ -531,44 +567,89 @@ export default function TodoModal({
               )}
             </div>
 
-            <div>
-              <label htmlFor="content" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">备注</label>
-              <div className="relative">
-                <Textarea
-                  ref={contentTextareaRef}
-                  id="content"
-                  name="content"
-                  value={editableTodo.content || ''}
-                  onChange={handleInputChange}
-                  rows={4}
-                  className={`min-h-24 resize-none overflow-hidden ${isRecycled ? '' : 'pb-12 pr-14'}`}
-                  readOnly={isRecycled}
-                />
+            <div className="todo-note-section">
+              <div className="todo-note-section__header">
+                <span className="text-sm font-medium text-[oklch(var(--foreground))]">备注</span>
                 {!isRecycled && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleDecomposeTask}
-                    disabled={!editableTodo.title.trim() || isDecomposing}
-                    aria-label={isDecomposing ? '正在 AI 拆解任务' : 'AI 拆解任务'}
-                    title={editableTodo.title.trim() ? 'AI 拆解任务' : '请先填写任务标题'}
-                    className="absolute bottom-1 right-1 h-11 w-11 bg-[oklch(var(--background)/0.92)] text-[oklch(var(--muted-foreground))] hover:text-[oklch(var(--foreground))] md:h-8 md:w-8"
-                  >
-                    {isDecomposing ? (
-                      <LoaderCircle className="animate-spin" aria-hidden="true" />
-                    ) : (
-                      <WandSparkles aria-hidden="true" />
-                    )}
-                  </Button>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Tabs
+                      value={noteMode}
+                      onValueChange={(value) => handleNoteModeChange(value as typeof noteMode)}
+                    >
+                      <TabsList
+                        className="todo-note-tabs"
+                        aria-label="备注显示模式"
+                      >
+                        <TabsTrigger value="rich-text" className="todo-note-tabs__trigger">
+                          <Text aria-hidden="true" />
+                          富文本
+                        </TabsTrigger>
+                        <TabsTrigger value="source" className="todo-note-tabs__trigger">
+                          <CodeXml aria-hidden="true" />
+                          源码
+                        </TabsTrigger>
+                        <TabsTrigger value="mindmap" className="todo-note-tabs__trigger">
+                          <Map aria-hidden="true" />
+                          导图
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleDecomposeTask}
+                      disabled={!editableTodo.title.trim() || isDecomposing}
+                      aria-label={isDecomposing ? '正在 AI 拆解任务' : 'AI 拆解任务'}
+                      title={editableTodo.title.trim() ? 'AI 拆解任务' : '请先填写任务标题'}
+                      className="todo-note-ai-button"
+                    >
+                      {isDecomposing ? (
+                        <LoaderCircle className="animate-spin" aria-hidden="true" />
+                      ) : (
+                        <WandSparkles aria-hidden="true" />
+                      )}
+                    </Button>
+                  </div>
                 )}
               </div>
+
+              {isRecycled ? (
+                <MarkdownPreview markdown={editableTodo.content ?? ''} />
+              ) : noteMode === 'mindmap' ? (
+                <MarkdownMindmap
+                  markdown={editableTodo.content ?? ''}
+                  rootLabel={editableTodo.title}
+                  expanded={false}
+                  onExpandedChange={handleMindmapExpandedChange}
+                />
+              ) : noteMode === 'source' ? (
+                <Textarea
+                  id="content"
+                  name="content"
+                  aria-label="备注"
+                  value={editableTodo.content ?? ''}
+                  onChange={handleInputChange}
+                  placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
+                  rows={10}
+                  className="todo-note-source"
+                  spellCheck={false}
+                />
+              ) : (
+                <LiveMarkdownEditor
+                  value={editableTodo.content ?? ''}
+                  recordKey={`${mode}:${initialData?.id ?? 'new'}`}
+                  onChange={handleNoteChange}
+                  onError={handleNoteError}
+                />
+              )}
+
               <span className="sr-only" role="status" aria-live="polite">
                 {isDecomposing ? '正在生成任务拆解步骤' : ''}
               </span>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="todo-note-section__metadata grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="list_id" className="mb-1 block text-sm font-medium text-[oklch(var(--foreground))]">清单</label>
                 <Select
@@ -753,6 +834,17 @@ export default function TodoModal({
             </div>
           )}
         </DialogFooter>
+
+        {isMindmapExpanded ? (
+          <div className="todo-mindmap-overlay">
+            <MarkdownMindmap
+              markdown={editableTodo.content ?? ''}
+              rootLabel={editableTodo.title}
+              expanded
+              onExpandedChange={handleMindmapExpandedChange}
+            />
+          </div>
+        ) : null}
     </>
   );
 
@@ -760,7 +852,7 @@ export default function TodoModal({
     return (
       <section
         aria-label={panelTitle}
-        className="grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[oklch(var(--background))]"
+        className="relative grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[oklch(var(--background))]"
         onKeyDown={handleKeyDown}
       >
         {panelContent}

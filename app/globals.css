@@ -1568,17 +1568,161 @@ span.shortcut-name {
 }
 
 /* ==========================================================================
-   MARKDOWN PREVIEW
+   TASK MARKDOWN / PREVIEW / MINDMAP
    ========================================================================== */
 
+.todo-note-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.todo-note-section__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.todo-note-tabs {
+  height: 36px;
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--muted) / 0.7);
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.todo-note-tabs__trigger {
+  min-height: 30px;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: normal;
+  box-shadow: none;
+}
+
+.todo-note-tabs__trigger[data-state='active'] {
+  border-color: oklch(var(--border));
+  box-shadow: none;
+}
+
+.todo-note-tabs__trigger svg {
+  width: 14px;
+  height: 14px;
+}
+
+.todo-note-ai-button {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  color: oklch(var(--muted-foreground));
+}
+
+.todo-note-ai-button:hover {
+  color: oklch(var(--foreground));
+}
+
+.todo-note-source {
+  min-height: 240px;
+  max-height: min(42dvh, 420px);
+  resize: vertical;
+  overflow: auto;
+  border-radius: var(--radius);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.todo-note-ai-button svg,
+.task-mindmap__toolbar button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.todo-note-section__metadata {
+  margin-top: 8px;
+}
+
+.todo-note-tabs::-webkit-scrollbar,
+.markdown-preview pre::-webkit-scrollbar,
+.markdown-preview table::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+  height: 6px;
+}
+
+.todo-note-tabs::-webkit-scrollbar-thumb,
+.markdown-preview pre::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: oklch(var(--muted-foreground) / 0.45);
+}
+
+.todo-note-tabs::-webkit-scrollbar-track {
+  background: oklch(var(--muted) / 0.55);
+}
+
 .markdown-preview {
-  min-height: 80px;
-  padding: 10px;
+  width: 100%;
+  max-width: 70ch;
+  min-height: 196px;
+  padding: 12px 16px;
+  color: oklch(var(--foreground));
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.markdown-preview {
+  max-width: none;
+  min-height: 96px;
   border: 1px solid oklch(var(--border));
   border-radius: var(--radius);
   background: oklch(var(--background));
+  overflow: auto;
+}
+
+.live-markdown-editor {
+  min-height: 240px;
+  max-height: min(42dvh, 420px);
   cursor: text;
-  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  caret-color: oklch(var(--foreground));
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.live-markdown-editor:focus,
+.live-markdown-editor:focus-visible {
+  border-color: color-mix(in oklch, oklch(var(--border)) 60%, oklch(var(--muted-foreground)) 40%);
+  outline: none;
+  box-shadow: 0 0 0 3px oklch(var(--muted-foreground) / 0.08);
+}
+
+.live-markdown-editor[data-empty='true']::before {
+  color: oklch(var(--muted-foreground));
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.live-markdown-editor a {
+  cursor: text;
+}
+
+.live-markdown-editor input[type='checkbox'] {
+  cursor: pointer;
 }
 
 .markdown-preview h1,
@@ -1587,33 +1731,97 @@ span.shortcut-name {
 .markdown-preview h4,
 .markdown-preview h5,
 .markdown-preview h6 {
-  margin-top: 1.2em;
-  margin-bottom: 0.8em;
+  margin: 16px 0 8px;
+  color: oklch(var(--foreground));
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-align: left;
+  text-wrap: balance;
+}
+
+.markdown-preview h1 {
+  font-size: 1rem;
   font-weight: 600;
 }
 
+.markdown-preview h2 {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.markdown-preview h3 {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview h6 {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.markdown-preview > :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview > :last-child {
+  margin-bottom: 0;
+}
+
 .markdown-preview p {
-  margin-bottom: 1em;
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .markdown-preview ul,
 .markdown-preview ol {
-  padding-left: 2em;
-  margin-bottom: 1em;
+  margin: 0 0 8px;
+  padding-left: 24px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.markdown-preview ul {
+  list-style: disc;
+}
+
+.markdown-preview ol {
+  list-style: decimal;
 }
 
 .markdown-preview li {
-  margin-bottom: 0.4em;
+  margin: 2px 0;
+  padding: 0;
+  list-style: inherit;
+}
+
+.markdown-preview li:has(> input[type='checkbox']) {
+  list-style: none;
+}
+
+.markdown-preview input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0 6px 0 -22px;
+  vertical-align: -3px;
+  accent-color: oklch(var(--foreground));
 }
 
 .markdown-preview blockquote {
-  border-left: 4px solid oklch(var(--border));
-  padding-left: 1em;
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid oklch(var(--border));
+  border-radius: 6px;
+  background: oklch(var(--muted) / 0.5);
   color: oklch(var(--muted-foreground));
-  margin: 1em 0;
 }
 
 .markdown-preview pre {
+  max-width: 100%;
+  margin: 8px 0;
   background-color: oklch(var(--muted));
   padding: 12px;
   border-radius: 8px;
@@ -1627,10 +1835,214 @@ span.shortcut-name {
 }
 
 .markdown-preview code {
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
   background-color: oklch(var(--muted));
   padding: 2px 4px;
   border-radius: 4px;
+}
+
+.markdown-preview table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 8px 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.markdown-preview th,
+.markdown-preview td {
+  min-width: 96px;
+  padding: 6px 8px;
+  border: 1px solid oklch(var(--border));
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-preview th {
+  background: oklch(var(--muted) / 0.55);
+  font-weight: 600;
+}
+
+.markdown-preview a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-preview--empty {
+  display: grid;
+  place-items: center;
+  color: oklch(var(--muted-foreground));
+}
+
+.task-mindmap {
+  display: grid;
+  min-width: 0;
+  min-height: 280px;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid oklch(var(--border));
+  border-radius: var(--radius);
+  background: oklch(var(--background));
+}
+
+.task-mindmap__toolbar {
+  z-index: 2;
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid oklch(var(--border));
+  background: oklch(var(--muted) / 0.55);
+  padding: 4px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.task-mindmap__title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  padding-inline: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-mindmap__controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.task-mindmap__toolbar button {
+  width: 36px;
+  height: 36px;
+}
+
+.task-mindmap__canvas {
+  position: relative;
+  min-width: 0;
+  min-height: clamp(236px, 42dvh, 436px);
+  overflow: hidden;
+}
+
+.task-mindmap__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: clamp(236px, 42dvh, 436px);
+  --markmap-font: 400 0.875rem/1.5 var(--font-sans);
+  --markmap-text-color: oklch(var(--foreground));
+  --markmap-code-bg: oklch(var(--muted));
+  --markmap-code-color: oklch(var(--foreground));
+  --markmap-circle-open-bg: oklch(var(--background));
+}
+
+.task-mindmap__svg .markmap-node[data-depth='0'] {
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 600;
+}
+
+.task-mindmap__svg .markmap-node[data-depth='1'] {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.task-mindmap__svg .markmap-node[data-depth]:not([data-depth='0']):not([data-depth='1']) {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+.task-mindmap__status {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: oklch(var(--background) / 0.92);
+  color: oklch(var(--muted-foreground));
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.task-mindmap__status--error {
+  color: oklch(var(--destructive));
+}
+
+.todo-mindmap-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  min-width: 0;
+  min-height: 0;
+  background: oklch(var(--background));
+}
+
+.todo-mindmap-overlay .task-mindmap {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.todo-mindmap-overlay .task-mindmap__canvas,
+.todo-mindmap-overlay .task-mindmap__svg {
+  min-height: 0;
+  height: 100%;
+}
+
+@media (max-width: 480px) {
+  .todo-note-section__header {
+    align-items: flex-start;
+  }
+
+  .todo-note-section__header > div {
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .todo-note-tabs {
+    height: 44px;
+  }
+
+  .todo-note-tabs__trigger,
+  .todo-note-ai-button,
+  .task-mindmap__toolbar button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .todo-note-tabs__trigger {
+    padding-inline: 8px;
+  }
+
+  .todo-note-tabs__trigger svg {
+    display: none;
+  }
+
+  .todo-note-source {
+    font-size: 1rem;
+  }
+
+  .markdown-preview {
+    font-size: 1rem;
+  }
+
+  .live-markdown-editor {
+    min-height: 220px;
+  }
 }
 
 /* ==========================================================================
