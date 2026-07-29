@@ -230,7 +230,7 @@ function TodoPill({ todo, selected, onOpen, onDragStart, onDragEnd }: TodoPillPr
         event.stopPropagation()
         onOpen(todo)
       }}
-      className={`block min-h-7 w-full cursor-grab truncate rounded-[4px] px-2 py-1 text-left text-xs transition-[background-color,color,opacity] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${stateClassName}`}
+      className={`block min-h-7 w-full cursor-grab truncate rounded-[4px] px-2 py-1 text-left text-xs transition-[background-color,color,opacity] data-[calendar-dragging=true]:opacity-45 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${stateClassName}`}
       aria-label={`${todo.completed ? '已完成' : '未完成'}任务：${todo.title}`}
       aria-pressed={selected}
     >
@@ -245,14 +245,13 @@ interface DayCellProps {
   todos: Todo[]
   selectedTodoId?: string | null
   isCurrentMonth?: boolean
-  isDropTarget?: boolean
   hasKeyboardTask?: boolean
   onActivate: (date: Date) => void
   onOpenTodo: (todo: Todo) => void
   onCreate: (date: string) => void
   onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo, sourceDate: string) => void
   onDragEnd: () => void
-  onDragOverDate: (date: string | null) => void
+  onDragOverTarget: (target: HTMLElement | null) => void
   onDrop: (event: React.DragEvent<HTMLElement>, targetDate: string) => void
 }
 
@@ -261,14 +260,13 @@ function DayCell({
   todos,
   selectedTodoId,
   isCurrentMonth = true,
-  isDropTarget,
   hasKeyboardTask,
   onActivate,
   onOpenTodo,
   onCreate,
   onDragStart,
   onDragEnd,
-  onDragOverDate,
+  onDragOverTarget,
   onDrop,
 }: DayCellProps) {
   const dateString = format(date, 'yyyy-MM-dd')
@@ -297,15 +295,15 @@ function DayCell({
       onDragOver={(event) => {
         event.preventDefault()
         event.dataTransfer.dropEffect = 'move'
-        onDragOverDate(dateString)
+        onDragOverTarget(event.currentTarget)
       }}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-        onDragOverDate(null)
+        onDragOverTarget(null)
       }}
       onDrop={(event) => onDrop(event, dateString)}
       data-calendar-today={isToday(date) && isCurrentMonth ? 'true' : undefined}
-      className={`group min-h-[112px] p-2 text-left transition-[background-color,box-shadow] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${dayStateClassName} ${isDropTarget ? 'z-10 bg-[oklch(var(--accent))] shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)]' : ''} ${hasKeyboardTask ? 'cursor-copy' : ''}`}
+      className={`group min-h-[112px] p-2 text-left transition-[background-color,box-shadow] data-[calendar-drop-target=true]:z-10 data-[calendar-drop-target=true]:bg-[oklch(var(--accent))] data-[calendar-drop-target=true]:shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${dayStateClassName} ${hasKeyboardTask ? 'cursor-copy' : ''}`}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         {hasKeyboardTask ? (
@@ -368,28 +366,28 @@ interface DaySchedulePanelProps {
   selectedDate: Date
   todos: Todo[]
   selectedTodoId?: string | null
-  isDropTarget: boolean
   onOpenTodo: (todo: Todo) => void
   onCreate: (date: string) => void
   onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo, sourceDate: string) => void
   onDragEnd: () => void
-  onDragOverDate: (date: string | null) => void
+  onDragOverTarget: (target: HTMLElement | null) => void
   onDrop: (event: React.DragEvent<HTMLElement>, targetDate: string) => void
 }
 
-function DaySchedulePanel({ selectedDate, todos, selectedTodoId, isDropTarget, onOpenTodo, onCreate, onDragStart, onDragEnd, onDragOverDate, onDrop }: DaySchedulePanelProps) {
+function DaySchedulePanel({ selectedDate, todos, selectedTodoId, onOpenTodo, onCreate, onDragStart, onDragEnd, onDragOverTarget, onDrop }: DaySchedulePanelProps) {
   const dateString = format(selectedDate, 'yyyy-MM-dd')
   return (
     <section
-      className={`rounded-lg bg-muted/20 p-4 transition-[background-color,box-shadow] sm:p-5 ${isDropTarget ? 'bg-[oklch(var(--accent))] shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)]' : ''}`}
+      className="rounded-lg bg-muted/20 p-4 transition-[background-color,box-shadow] data-[calendar-drop-target=true]:bg-[oklch(var(--accent))] data-[calendar-drop-target=true]:shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)] sm:p-5"
       data-calendar-today={isToday(selectedDate) ? 'true' : undefined}
       onDragOver={(event) => {
         event.preventDefault()
-        onDragOverDate(dateString)
+        event.dataTransfer.dropEffect = 'move'
+        onDragOverTarget(event.currentTarget)
       }}
       onDragLeave={(event) => {
         if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-        onDragOverDate(null)
+        onDragOverTarget(null)
       }}
       onDrop={(event) => onDrop(event, dateString)}
     >
@@ -433,7 +431,6 @@ function WeekView({
   currentDate,
   selectedDate,
   todosByDate,
-  dragOverDate,
   selectedTodoId,
   hasKeyboardTask,
   onActivate,
@@ -441,13 +438,12 @@ function WeekView({
   onCreate,
   onDragStart,
   onDragEnd,
-  onDragOverDate,
+  onDragOverTarget,
   onDrop,
-}: Omit<React.ComponentProps<typeof DayCell>, 'date' | 'todos' | 'isCurrentMonth' | 'isDropTarget'> & {
+}: Omit<React.ComponentProps<typeof DayCell>, 'date' | 'todos' | 'isCurrentMonth'> & {
   currentDate: Date
   selectedDate: Date
   todosByDate: Record<string, Todo[]>
-  dragOverDate: string | null
 }) {
   const days = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(currentDate, { weekStartsOn: 0 }), index))
   const selectedDateString = format(selectedDate, 'yyyy-MM-dd')
@@ -456,7 +452,6 @@ function WeekView({
       <div className="grid grid-cols-7 gap-1 rounded-lg border border-[oklch(var(--border))] bg-muted/30 p-1" role="grid" aria-label="周视图">
         {days.map((day) => {
           const dateString = format(day, 'yyyy-MM-dd')
-          const isActiveDropTarget = dragOverDate === dateString
           return (
             <button
               type="button"
@@ -471,14 +466,17 @@ function WeekView({
               onDragOver={(event) => {
                 event.preventDefault()
                 event.dataTransfer.dropEffect = 'move'
-                onDragOverDate(dateString)
+                onDragOverTarget(event.currentTarget)
               }}
-              onDragLeave={() => onDragOverDate(null)}
+              onDragLeave={(event) => {
+                if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                onDragOverTarget(null)
+              }}
               onDrop={(event) => onDrop(event, dateString)}
               data-calendar-today={isToday(day) ? 'true' : undefined}
               aria-pressed={isSameDay(day, selectedDate)}
               aria-label={`${hasKeyboardTask ? '安排到' : '选择'} ${dateString}`}
-              className={`min-h-11 rounded-md px-1 py-2 text-xs transition-[background-color,box-shadow,color] [&_span]:pointer-events-none ${isSameDay(day, selectedDate) ? 'bg-[oklch(var(--foreground))] text-[oklch(var(--background))]' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} ${isActiveDropTarget ? '!bg-[oklch(var(--accent))] !text-[oklch(var(--foreground))] shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)]' : ''} ${hasKeyboardTask ? 'cursor-copy' : ''}`}
+              className={`min-h-11 rounded-md px-1 py-2 text-xs transition-[background-color,box-shadow,color] data-[calendar-drop-target=true]:!bg-[oklch(var(--accent))] data-[calendar-drop-target=true]:!text-[oklch(var(--foreground))] data-[calendar-drop-target=true]:shadow-[inset_0_0_0_1px_oklch(var(--muted-foreground)/0.24)] [&_span]:pointer-events-none ${isSameDay(day, selectedDate) ? 'bg-[oklch(var(--foreground))] text-[oklch(var(--background))]' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} ${hasKeyboardTask ? 'cursor-copy' : ''}`}
             >
               <span className="block">{WEEKDAYS[day.getDay()]}</span>
               <span className="mt-0.5 block font-semibold">{format(day, 'd')}</span>
@@ -490,12 +488,11 @@ function WeekView({
         selectedDate={selectedDate}
         todos={todosByDate[selectedDateString] || []}
         selectedTodoId={selectedTodoId}
-        isDropTarget={dragOverDate === selectedDateString}
         onOpenTodo={onOpenTodo}
         onCreate={onCreate}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onDragOverDate={onDragOverDate}
+        onDragOverTarget={onDragOverTarget}
         onDrop={onDrop}
       />
     </div>
@@ -505,14 +502,13 @@ function WeekView({
 interface ScheduleTaskRowProps {
   todo: Todo
   selected: boolean
-  dragging: boolean
   onOpen: (todo: Todo) => void
   onSelectForKeyboard: (todo: Todo) => void
   onDragStart: (event: React.DragEvent<HTMLButtonElement>, todo: Todo) => void
   onDragEnd: () => void
 }
 
-function ScheduleTaskRow({ todo, selected, dragging, onOpen, onSelectForKeyboard, onDragStart, onDragEnd }: ScheduleTaskRowProps) {
+function ScheduleTaskRow({ todo, selected, onOpen, onSelectForKeyboard, onDragStart, onDragEnd }: ScheduleTaskRowProps) {
   const dueDate = dbUTCToDisplayDate(todo.due_date)
   return (
     <button
@@ -528,7 +524,7 @@ function ScheduleTaskRow({ todo, selected, dragging, onOpen, onSelectForKeyboard
         onSelectForKeyboard(todo)
       }}
       onClick={() => onOpen(todo)}
-      className={`group flex w-full cursor-grab items-start rounded-md border px-3 py-2.5 text-left transition-[background-color,border-color,opacity] active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${selected ? 'border-foreground bg-accent' : 'border-[oklch(var(--border))] bg-background hover:bg-muted/60'} ${dragging ? 'opacity-45' : ''}`}
+      className={`group flex w-full cursor-grab items-start rounded-md border px-3 py-2.5 text-left transition-[background-color,border-color,opacity] data-[calendar-dragging=true]:opacity-45 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${selected ? 'border-foreground bg-accent' : 'border-[oklch(var(--border))] bg-background hover:bg-muted/60'}`}
     >
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{todo.title}</span>
@@ -541,15 +537,14 @@ function ScheduleTaskRow({ todo, selected, dragging, onOpen, onSelectForKeyboard
   )
 }
 
-interface ScheduleGroupProps extends Omit<ScheduleTaskRowProps, 'todo' | 'selected' | 'dragging'> {
+interface ScheduleGroupProps extends Omit<ScheduleTaskRowProps, 'todo' | 'selected'> {
   title: string
   emptyText: string
   todos: Todo[]
   keyboardTaskId: string | null
-  draggingTaskId: string | null
 }
 
-function ScheduleGroup({ title, emptyText, todos, keyboardTaskId, draggingTaskId, ...rowProps }: ScheduleGroupProps) {
+function ScheduleGroup({ title, emptyText, todos, keyboardTaskId, ...rowProps }: ScheduleGroupProps) {
   return (
     <section aria-labelledby={`schedule-group-${title}`}>
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -563,7 +558,6 @@ function ScheduleGroup({ title, emptyText, todos, keyboardTaskId, draggingTaskId
               key={todo.id}
               todo={todo}
               selected={keyboardTaskId === todo.id}
-              dragging={draggingTaskId === todo.id}
               {...rowProps}
             />
           ))}
@@ -579,7 +573,6 @@ interface ScheduleDrawerProps {
   todos: Todo[]
   reducedMotion: boolean
   keyboardTaskId: string | null
-  draggingTaskId: string | null
   onClose: () => void
   onOpenTodo: (todo: Todo) => void
   onSelectForKeyboard: (todo: Todo) => void
@@ -587,7 +580,7 @@ interface ScheduleDrawerProps {
   onDragEnd: () => void
 }
 
-function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, onClose, onOpenTodo, onSelectForKeyboard, onDragStart, onDragEnd }: ScheduleDrawerProps) {
+function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, onClose, onOpenTodo, onSelectForKeyboard, onDragStart, onDragEnd }: ScheduleDrawerProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const { unscheduled, scheduled } = useMemo(() => groupTodosForSchedule(todos), [todos])
   const total = unscheduled.length + scheduled.length
@@ -671,7 +664,6 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, 
               emptyText={isSearching ? '未安排中没有匹配任务' : '没有待安排的任务'}
               todos={filteredUnscheduled}
               keyboardTaskId={keyboardTaskId}
-              draggingTaskId={draggingTaskId}
               onOpen={onOpenTodo}
               onSelectForKeyboard={onSelectForKeyboard}
               onDragStart={onDragStart}
@@ -682,7 +674,6 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, draggingTaskId, 
               emptyText={isSearching ? '已安排中没有匹配任务' : '还没有已安排的任务'}
               todos={filteredScheduled}
               keyboardTaskId={keyboardTaskId}
-              draggingTaskId={draggingTaskId}
               onOpen={onOpenTodo}
               onSelectForKeyboard={onSelectForKeyboard}
               onDragStart={onDragStart}
@@ -710,13 +701,14 @@ export default function CalendarView({
   const prefersReducedMotion = useReducedMotion()
   const [mode, setMode] = useState<CalendarMode>('month')
   const [selectedDate, setSelectedDate] = useState(currentDate)
-  const [dragState, setDragState] = useState<CalendarDragPayload | null>(null)
-  const [dragOverDate, setDragOverDate] = useState<string | null>(null)
   const [keyboardTaskId, setKeyboardTaskId] = useState<string | null>(null)
   const [isScheduleOpen, setIsScheduleOpen] = useState(false)
   const [todayFocusRequest, setTodayFocusRequest] = useState(0)
   const [isCalendarScrolled, setIsCalendarScrolled] = useState(false)
   const calendarRef = useRef<HTMLElement>(null)
+  const dragPayloadRef = useRef<CalendarDragPayload | null>(null)
+  const draggedElementRef = useRef<HTMLElement | null>(null)
+  const dropTargetRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => setMode(isDesktop ? 'month' : 'week'), [isDesktop])
   useEffect(() => setSelectedDate(currentDate), [currentDate])
@@ -791,8 +783,13 @@ export default function CalendarView({
     [todos, visibleDates]
   )
 
+  const todosById = useMemo(
+    () => new Map(todos.map((todo) => [todo.id, todo])),
+    [todos]
+  )
+
   const applyDrop = useCallback(async (payload: CalendarDragPayload, targetDate: string) => {
-    const todo = todos.find((item) => item.id === payload.todoId)
+    const todo = todosById.get(payload.todoId)
     if (!todo) return
     try {
       const updates = payload.origin === 'drawer'
@@ -804,22 +801,38 @@ export default function CalendarView({
         description: error instanceof Error ? error.message : '请稍后重试',
       })
     }
-  }, [onUpdateTodo, todos])
+  }, [onUpdateTodo, todosById])
+
+  const setDropTarget = useCallback((nextTarget: HTMLElement | null) => {
+    const currentTarget = dropTargetRef.current
+    if (currentTarget === nextTarget) return
+    currentTarget?.removeAttribute('data-calendar-drop-target')
+    nextTarget?.setAttribute('data-calendar-drop-target', 'true')
+    dropTargetRef.current = nextTarget
+  }, [])
+
+  const clearDragState = useCallback(() => {
+    dragPayloadRef.current = null
+    draggedElementRef.current?.removeAttribute('data-calendar-dragging')
+    draggedElementRef.current = null
+    setDropTarget(null)
+  }, [setDropTarget])
 
   const handleDrop = useCallback((event: React.DragEvent<HTMLElement>, targetDate: string) => {
     event.preventDefault()
-    const payload = dragState || readDragPayload(event)
-    setDragOverDate(null)
-    setDragState(null)
+    const payload = dragPayloadRef.current || readDragPayload(event)
+    clearDragState()
     if (payload) void applyDrop(payload, targetDate)
-  }, [applyDrop, dragState])
+  }, [applyDrop, clearDragState])
 
   const handleCalendarDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>, todo: Todo, sourceDate: string) => {
     const payload: CalendarDragPayload = { origin: 'calendar', todoId: todo.id, sourceDate }
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData(CALENDAR_DRAG_MIME, JSON.stringify(payload))
     event.dataTransfer.setData('text/plain', JSON.stringify(payload))
-    setDragState(payload)
+    dragPayloadRef.current = payload
+    draggedElementRef.current = event.currentTarget
+    event.currentTarget.setAttribute('data-calendar-dragging', 'true')
   }, [])
 
   const handleDrawerDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>, todo: Todo) => {
@@ -828,13 +841,12 @@ export default function CalendarView({
     event.dataTransfer.setData(CALENDAR_DRAG_MIME, JSON.stringify(payload))
     event.dataTransfer.setData('text/plain', JSON.stringify(payload))
     setKeyboardTaskId(null)
-    setDragState(payload)
+    dragPayloadRef.current = payload
+    draggedElementRef.current = event.currentTarget
+    event.currentTarget.setAttribute('data-calendar-dragging', 'true')
   }, [])
 
-  const clearDragState = useCallback(() => {
-    setDragState(null)
-    setDragOverDate(null)
-  }, [])
+  useEffect(() => clearDragState, [clearDragState])
 
   const activateDate = useCallback((date: Date) => {
     const targetDate = format(date, 'yyyy-MM-dd')
@@ -874,7 +886,7 @@ export default function CalendarView({
     onCreate: createTodo,
     onDragStart: handleCalendarDragStart,
     onDragEnd: clearDragState,
-    onDragOverDate: setDragOverDate,
+    onDragOverTarget: setDropTarget,
     onDrop: handleDrop,
     hasKeyboardTask: !!keyboardTaskId,
   }
@@ -915,7 +927,6 @@ export default function CalendarView({
                       date={day}
                       todos={todosByDate[dateString] || []}
                       isCurrentMonth={isSameMonth(day, currentDate)}
-                      isDropTarget={dragOverDate === dateString}
                       {...sharedDayProps}
                     />
                   )
@@ -929,7 +940,6 @@ export default function CalendarView({
               currentDate={currentDate}
               selectedDate={selectedDate}
               todosByDate={todosByDate}
-              dragOverDate={dragOverDate}
               {...sharedDayProps}
             />
           )}
@@ -942,7 +952,6 @@ export default function CalendarView({
             todos={todos}
             reducedMotion={!!prefersReducedMotion}
             keyboardTaskId={keyboardTaskId}
-            draggingTaskId={dragState?.origin === 'drawer' ? dragState.todoId : null}
             onClose={() => {
               setIsScheduleOpen(false)
               setKeyboardTaskId(null)
