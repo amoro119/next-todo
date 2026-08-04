@@ -21,6 +21,7 @@ interface LiveMarkdownEditorProps {
   recordKey: string;
   onChange: (markdown: string) => void;
   onError?: (error: Error) => void;
+  focusTarget?: boolean;
 }
 
 const BLOCK_SELECTOR = 'p,div,li,h1,h2,h3,h4,h5,h6,blockquote,pre';
@@ -277,6 +278,7 @@ export default function LiveMarkdownEditor({
   recordKey,
   onChange,
   onError,
+  focusTarget = false,
 }: LiveMarkdownEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const appliedRecordRef = useRef('');
@@ -437,6 +439,7 @@ export default function LiveMarkdownEditor({
       aria-label="备注"
       aria-multiline="true"
       data-empty={!value.trim()}
+      data-note-editor={focusTarget ? 'true' : undefined}
       data-placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
       spellCheck
       onInput={handleInput}

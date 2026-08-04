@@ -3,7 +3,6 @@
 import type { IPureNode } from 'markmap-common';
 import type { Markmap } from 'markmap-view';
 import {
-  ChevronLeft,
   Focus,
   Maximize2,
   Minus,
@@ -28,15 +27,15 @@ import {
 export interface MarkdownMindmapProps {
   markdown: string;
   rootLabel: string;
-  expanded: boolean;
-  onExpandedChange: (expanded: boolean) => void;
+  fullscreen?: boolean;
+  onRequestFullscreen?: () => void;
 }
 
 export default function MarkdownMindmap({
   markdown,
   rootLabel,
-  expanded,
-  onExpandedChange,
+  fullscreen = false,
+  onRequestFullscreen,
 }: MarkdownMindmapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const markmapRef = useRef<Markmap | null>(null);
@@ -67,6 +66,12 @@ export default function MarkdownMindmap({
     let svg: SVGSVGElement | null = null;
     let resizeFrame = 0;
     let nodeKeyDownHandler: ((event: KeyboardEvent) => void) | null = null;
+
+    const setRenderError = (error: unknown) => {
+      if (cancelled) return;
+      setErrorMessage(error instanceof Error ? error.message : '未知错误');
+      setStatus('error');
+    };
 
     async function initialize() {
       try {
@@ -106,7 +111,6 @@ export default function MarkdownMindmap({
           lineWidth: (node) => (node.state.depth === 0 ? 1.5 : 1),
         }, root);
         markmapRef.current = instance;
-        setStatus('ready');
 
         svg = svgRef.current;
         const makeNodesKeyboardAccessible = () => {
@@ -130,27 +134,33 @@ export default function MarkdownMindmap({
         mutationObserver = new MutationObserver(makeNodesKeyboardAccessible);
         mutationObserver.observe(svg, { childList: true, subtree: true });
 
-        window.requestAnimationFrame(() => {
-          if (!cancelled && firstFitRef.current) {
-            firstFitRef.current = false;
-            void instance.fit();
-          }
-        });
+        const renderForCurrentSize = () => {
+          window.cancelAnimationFrame(resizeFrame);
+          resizeFrame = window.requestAnimationFrame(() => {
+            if (cancelled || !svg) return;
+
+            const bounds = svg.getBoundingClientRect();
+            if (bounds.width < 2 || bounds.height < 2) return;
+
+            const render = firstFitRef.current ? instance.fit() : instance.renderData();
+            void render
+              .then(() => {
+                if (cancelled) return;
+                firstFitRef.current = false;
+                setStatus('ready');
+              })
+              .catch(setRenderError);
+          });
+        };
+
+        renderForCurrentSize();
 
         if (typeof ResizeObserver !== 'undefined') {
-          resizeObserver = new ResizeObserver(() => {
-            window.cancelAnimationFrame(resizeFrame);
-            resizeFrame = window.requestAnimationFrame(() => {
-              // 仅更新布局，不调用 fit，避免覆盖用户的缩放和平移视角。
-              if (!cancelled) void instance.renderData();
-            });
-          });
+          resizeObserver = new ResizeObserver(renderForCurrentSize);
           resizeObserver.observe(svgRef.current.parentElement ?? svgRef.current);
         }
       } catch (error) {
-        if (cancelled) return;
-        setErrorMessage(error instanceof Error ? error.message : '未知错误');
-        setStatus('error');
+        setRenderError(error);
       }
     }
 
@@ -185,34 +195,16 @@ export default function MarkdownMindmap({
     }
   }, [markdown, rootLabel, transform]);
 
-  useEffect(() => {
-    if (!expanded) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onExpandedChange(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [expanded, onExpandedChange]);
-
   return (
     <section
-      className={`task-mindmap ${expanded ? 'task-mindmap--expanded' : ''}`}
+      className={`task-mindmap ${fullscreen ? 'task-mindmap--fullscreen' : ''}`}
       aria-label="备注思维导图"
+      data-note-editor={fullscreen ? 'true' : undefined}
+      tabIndex={fullscreen ? -1 : undefined}
     >
       <div className="task-mindmap__toolbar">
-        {expanded && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onExpandedChange(false)}
-            aria-label="返回备注"
-          >
-            <ChevronLeft aria-hidden="true" />
-          </Button>
-        )}
         <span className="task-mindmap__title">
-          {expanded ? (rootLabel.trim() || '未命名任务') : '思维导图'}
+          {fullscreen ? (rootLabel.trim() || '未命名任务') : '思维导图'}
         </span>
         <div className="task-mindmap__controls">
           <Button
@@ -265,12 +257,12 @@ export default function MarkdownMindmap({
           >
             <RotateCcw aria-hidden="true" />
           </Button>
-          {!expanded && (
+          {onRequestFullscreen && (
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              onClick={() => onExpandedChange(true)}
+              onClick={onRequestFullscreen}
               aria-label="放大显示导图"
               title="放大显示"
             >

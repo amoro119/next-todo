@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
 import LiveMarkdownEditor from './markdown/LiveMarkdownEditor';
@@ -17,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
 import {
   AIServiceError,
   decomposeTask,
@@ -24,7 +26,7 @@ import {
   hasAIConfig,
   mergeDecompositionBlock,
 } from '@/lib/ai';
-import { ArrowLeft, CalendarDays, CodeXml, LoaderCircle, Map, Text, WandSparkles } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CodeXml, LoaderCircle, Map, Maximize2, Minimize2, Text, WandSparkles } from 'lucide-react';
 
 interface TodoModalProps {
   isOpen?: boolean;
@@ -224,10 +226,14 @@ export default function TodoModal({
   const titleInputRef = useRef<HTMLInputElement>(null);
   const decompositionControllerRef = useRef<AbortController | null>(null);
   const decompositionRequestIdRef = useRef(0);
-  const mindmapFocusRestoreRef = useRef<HTMLElement | null>(null);
+  const noteFullscreenTriggerRef = useRef<HTMLButtonElement>(null);
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [noteMode, setNoteMode] = useState<'rich-text' | 'source' | 'mindmap'>('rich-text');
-  const [isMindmapExpanded, setIsMindmapExpanded] = useState(false);
+  const [isNoteFullscreen, setIsNoteFullscreen] = useState(false);
+  const {
+    modalRef: noteFullscreenRef,
+    refreshFocusableElements: refreshNoteFullscreenFocus,
+  } = useFocusTrap(isNoteFullscreen);
 
   const updateFields = useCallback((updates: Partial<Todo>) => {
     for (const field of Object.keys(updates) as Array<keyof Todo>) {
@@ -277,8 +283,26 @@ export default function TodoModal({
     decompositionControllerRef.current = null;
     setIsDecomposing(false);
     setNoteMode('rich-text');
-    setIsMindmapExpanded(false);
+    setIsNoteFullscreen(false);
   }, [initialData?.id, isOpen]);
+
+  useEffect(() => {
+    if (!isNoteFullscreen) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => {
+      refreshNoteFullscreenFocus();
+      noteFullscreenRef.current
+        ?.querySelector<HTMLElement>('[data-note-editor="true"]')
+        ?.focus();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [isNoteFullscreen, noteFullscreenRef, noteMode, refreshNoteFullscreenFocus]);
 
   useEffect(() => () => {
     decompositionRequestIdRef.current += 1;
@@ -377,6 +401,23 @@ export default function TodoModal({
     setNoteMode(nextMode);
   }, [editableTodo.content, updateFields]);
 
+  const handleNoteFullscreenChange = useCallback((fullscreen: boolean) => {
+    if (fullscreen) {
+      setIsNoteFullscreen(true);
+      return;
+    }
+
+    setIsNoteFullscreen(false);
+    window.requestAnimationFrame(() => noteFullscreenTriggerRef.current?.focus());
+  }, []);
+
+  const handleNoteFullscreenKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    handleNoteFullscreenChange(false);
+  }, [handleNoteFullscreenChange]);
+
   const handleToggleComplete = async () => {
     if (isRecycled) return;
     const isCompleted = !!editableTodo.completed;
@@ -474,18 +515,124 @@ export default function TodoModal({
     }
   };
 
-  const handleMindmapExpandedChange = useCallback((expanded: boolean) => {
-    if (expanded) {
-      mindmapFocusRestoreRef.current = document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-      setIsMindmapExpanded(true);
-      return;
+  const renderNoteModeControls = (fullscreen = false) => (
+    <div className="flex min-w-0 items-center gap-2">
+      <Tabs
+        value={noteMode}
+        onValueChange={(value) => handleNoteModeChange(value as typeof noteMode)}
+      >
+        <TabsList
+          className="todo-note-tabs"
+          aria-label="备注显示模式"
+        >
+          <TabsTrigger value="rich-text" className="todo-note-tabs__trigger">
+            <Text aria-hidden="true" />
+            富文本
+          </TabsTrigger>
+          <TabsTrigger value="source" className="todo-note-tabs__trigger">
+            <CodeXml aria-hidden="true" />
+            源码
+          </TabsTrigger>
+          <TabsTrigger value="mindmap" className="todo-note-tabs__trigger">
+            <Map aria-hidden="true" />
+            导图
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={handleDecomposeTask}
+        disabled={!editableTodo.title.trim() || isDecomposing}
+        aria-label={isDecomposing ? '正在 AI 拆解任务' : 'AI 拆解任务'}
+        title={editableTodo.title.trim() ? 'AI 拆解任务' : '请先填写任务标题'}
+        className="todo-note-ai-button"
+      >
+        {isDecomposing ? (
+          <LoaderCircle className="animate-spin" aria-hidden="true" />
+        ) : (
+          <WandSparkles aria-hidden="true" />
+        )}
+      </Button>
+      {fullscreen ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => handleNoteFullscreenChange(false)}
+          aria-label="退出备注全屏"
+          title="退出全屏 (Esc)"
+          className="todo-note-ai-button"
+        >
+          <Minimize2 aria-hidden="true" />
+        </Button>
+      ) : presentation === 'drawer' && mode === 'edit' ? (
+        <Button
+          ref={noteFullscreenTriggerRef}
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => handleNoteFullscreenChange(true)}
+          aria-label="全屏编辑备注"
+          title="全屏编辑备注"
+          className="todo-note-ai-button"
+        >
+          <Maximize2 aria-hidden="true" />
+        </Button>
+      ) : null}
+    </div>
+  );
+
+  const renderNoteEditor = (fullscreen = false) => {
+    if (isRecycled) {
+      return <MarkdownPreview markdown={editableTodo.content ?? ''} />;
     }
 
-    setIsMindmapExpanded(false);
-    window.requestAnimationFrame(() => mindmapFocusRestoreRef.current?.focus());
-  }, []);
+    if (noteMode === 'mindmap') {
+      return (
+        <MarkdownMindmap
+          markdown={editableTodo.content ?? ''}
+          rootLabel={editableTodo.title}
+          fullscreen={fullscreen}
+          onRequestFullscreen={
+            !fullscreen && presentation === 'drawer' && mode === 'edit'
+              ? () => handleNoteFullscreenChange(true)
+              : undefined
+          }
+        />
+      );
+    }
+
+    if (noteMode === 'source') {
+      return (
+        <Textarea
+          id={fullscreen ? 'content-fullscreen' : 'content'}
+          name="content"
+          aria-label="备注"
+          value={editableTodo.content ?? ''}
+          onChange={handleInputChange}
+          placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
+          rows={10}
+          className="todo-note-source"
+          data-note-editor={fullscreen ? 'true' : undefined}
+          spellCheck={false}
+        />
+      );
+    }
+
+    return (
+      <div className={fullscreen ? 'contents' : undefined} data-note-editor-shell={fullscreen ? 'true' : undefined}>
+        <LiveMarkdownEditor
+          value={editableTodo.content ?? ''}
+          recordKey={`${mode}:${initialData?.id ?? 'new'}:${fullscreen ? 'fullscreen' : 'inline'}`}
+          onChange={handleNoteChange}
+          onError={handleNoteError}
+          focusTarget={fullscreen}
+        />
+      </div>
+    );
+  };
 
   const panelTitle = isRecycled ? '回收站任务详情' : mode === 'create' ? '创建任务' : '任务详情';
   const deleteAction = (
@@ -571,78 +718,11 @@ export default function TodoModal({
               <div className="todo-note-section__header">
                 <span className="text-sm font-medium text-[oklch(var(--foreground))]">备注</span>
                 {!isRecycled && (
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Tabs
-                      value={noteMode}
-                      onValueChange={(value) => handleNoteModeChange(value as typeof noteMode)}
-                    >
-                      <TabsList
-                        className="todo-note-tabs"
-                        aria-label="备注显示模式"
-                      >
-                        <TabsTrigger value="rich-text" className="todo-note-tabs__trigger">
-                          <Text aria-hidden="true" />
-                          富文本
-                        </TabsTrigger>
-                        <TabsTrigger value="source" className="todo-note-tabs__trigger">
-                          <CodeXml aria-hidden="true" />
-                          源码
-                        </TabsTrigger>
-                        <TabsTrigger value="mindmap" className="todo-note-tabs__trigger">
-                          <Map aria-hidden="true" />
-                          导图
-                        </TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleDecomposeTask}
-                      disabled={!editableTodo.title.trim() || isDecomposing}
-                      aria-label={isDecomposing ? '正在 AI 拆解任务' : 'AI 拆解任务'}
-                      title={editableTodo.title.trim() ? 'AI 拆解任务' : '请先填写任务标题'}
-                      className="todo-note-ai-button"
-                    >
-                      {isDecomposing ? (
-                        <LoaderCircle className="animate-spin" aria-hidden="true" />
-                      ) : (
-                        <WandSparkles aria-hidden="true" />
-                      )}
-                    </Button>
-                  </div>
+                  renderNoteModeControls()
                 )}
               </div>
 
-              {isRecycled ? (
-                <MarkdownPreview markdown={editableTodo.content ?? ''} />
-              ) : noteMode === 'mindmap' ? (
-                <MarkdownMindmap
-                  markdown={editableTodo.content ?? ''}
-                  rootLabel={editableTodo.title}
-                  expanded={false}
-                  onExpandedChange={handleMindmapExpandedChange}
-                />
-              ) : noteMode === 'source' ? (
-                <Textarea
-                  id="content"
-                  name="content"
-                  aria-label="备注"
-                  value={editableTodo.content ?? ''}
-                  onChange={handleInputChange}
-                  placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
-                  rows={10}
-                  className="todo-note-source"
-                  spellCheck={false}
-                />
-              ) : (
-                <LiveMarkdownEditor
-                  value={editableTodo.content ?? ''}
-                  recordKey={`${mode}:${initialData?.id ?? 'new'}`}
-                  onChange={handleNoteChange}
-                  onError={handleNoteError}
-                />
-              )}
+              {!isNoteFullscreen ? renderNoteEditor() : null}
 
               <span className="sr-only" role="status" aria-live="polite">
                 {isDecomposing ? '正在生成任务拆解步骤' : ''}
@@ -835,15 +915,49 @@ export default function TodoModal({
           )}
         </DialogFooter>
 
-        {isMindmapExpanded ? (
-          <div className="todo-mindmap-overlay">
-            <MarkdownMindmap
-              markdown={editableTodo.content ?? ''}
-              rootLabel={editableTodo.title}
-              expanded
-              onExpandedChange={handleMindmapExpandedChange}
-            />
-          </div>
+        {isNoteFullscreen && typeof document !== 'undefined' ? createPortal(
+          <div
+            ref={noteFullscreenRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="todo-note-fullscreen-title"
+            className="todo-note-fullscreen"
+            onKeyDown={handleNoteFullscreenKeyDown}
+          >
+            <header className="todo-note-fullscreen__header">
+              <div className="todo-note-fullscreen__bar">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0"
+                    onClick={() => handleNoteFullscreenChange(false)}
+                    aria-label="返回任务详情"
+                    title="返回任务详情"
+                  >
+                    <ArrowLeft aria-hidden="true" />
+                  </Button>
+                  <div className="min-w-0">
+                    <h2 id="todo-note-fullscreen-title" className="text-base font-semibold">备注</h2>
+                    <p className="truncate text-xs text-[oklch(var(--muted-foreground))]">
+                      {editableTodo.title.trim() || '未命名任务'}
+                    </p>
+                  </div>
+                </div>
+                {renderNoteModeControls(true)}
+              </div>
+            </header>
+            <main className="todo-note-fullscreen__main">
+              <div className="todo-note-fullscreen__editor">
+                {renderNoteEditor(true)}
+              </div>
+            </main>
+            <span className="sr-only" role="status" aria-live="polite">
+              {isDecomposing ? '正在生成任务拆解步骤' : ''}
+            </span>
+          </div>,
+          document.body,
         ) : null}
     </>
   );

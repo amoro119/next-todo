@@ -1652,6 +1652,74 @@ span.shortcut-name {
   margin-top: 8px;
 }
 
+.todo-note-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: oklch(var(--background));
+  color: oklch(var(--foreground));
+}
+
+.todo-note-fullscreen__header {
+  border-bottom: 1px solid oklch(var(--border));
+  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+}
+
+.todo-note-fullscreen__bar {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  margin: 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.todo-note-fullscreen__main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: clamp(12px, 2.5vw, 28px);
+}
+
+.todo-note-fullscreen__editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+}
+
+.todo-note-fullscreen__editor > .todo-note-source,
+.todo-note-fullscreen__editor > .live-markdown-editor,
+.todo-note-fullscreen__editor > [data-note-editor-shell='true'] > .live-markdown-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  resize: none;
+  padding: clamp(16px, 2.2vw, 28px);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.todo-note-fullscreen__editor > .task-mindmap {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.todo-note-fullscreen__editor > .task-mindmap .task-mindmap__canvas,
+.todo-note-fullscreen__editor > .task-mindmap .task-mindmap__svg {
+  height: 100%;
+  min-height: 0;
+}
+
 .todo-note-tabs::-webkit-scrollbar,
 .markdown-preview pre::-webkit-scrollbar,
 .markdown-preview table::-webkit-scrollbar {
@@ -1982,27 +2050,6 @@ span.shortcut-name {
   color: oklch(var(--destructive));
 }
 
-.todo-mindmap-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  min-width: 0;
-  min-height: 0;
-  background: oklch(var(--background));
-}
-
-.todo-mindmap-overlay .task-mindmap {
-  height: 100%;
-  border: 0;
-  border-radius: 0;
-}
-
-.todo-mindmap-overlay .task-mindmap__canvas,
-.todo-mindmap-overlay .task-mindmap__svg {
-  min-height: 0;
-  height: 100%;
-}
-
 @media (max-width: 480px) {
   .todo-note-section__header {
     align-items: flex-start;
@@ -2042,6 +2089,29 @@ span.shortcut-name {
 
   .live-markdown-editor {
     min-height: 220px;
+  }
+
+  .todo-note-fullscreen__header {
+    padding-bottom: 10px;
+  }
+
+  .todo-note-fullscreen__bar {
+    display: grid;
+    gap: 8px;
+  }
+
+  .todo-note-fullscreen__bar > div:last-child {
+    justify-content: space-between;
+  }
+
+  .todo-note-fullscreen__main {
+    padding: 10px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .todo-note-fullscreen__editor > .todo-note-source,
+  .todo-note-fullscreen__editor > .live-markdown-editor,
+  .todo-note-fullscreen__editor > [data-note-editor-shell='true'] > .live-markdown-editor {
+    padding: 16px;
   }
 }
 
