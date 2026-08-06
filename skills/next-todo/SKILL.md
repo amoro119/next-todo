@@ -1,5 +1,5 @@
 ---
-name: todo
+name: next-todo
 description: Use for Next Todo task changes, queries, and digests.
 version: 1.1.0
 metadata:
@@ -153,8 +153,8 @@ cronjob(
   action="create",
   name="daily-todo-digest",
   schedule="every day at 08:00",
-  skill="todo",
-  prompt="调用 todo skill 的 digest，并发送摘要。",
+  skill="next-todo",
+  prompt="调用 next-todo skill 的 digest，并发送摘要。",
   deliver="origin",
 )
 ```
@@ -189,4 +189,4 @@ API outcomes:
 - For `create`, verify `status` is `created` or `ignored_duplicate` and retain `task_id`.
 - For `update`, verify `status` is `updated`; for `complete`, accept `completed` or `already_completed`.
 - For `query`, verify `count` matches the returned task array when both are present.
-- For automation, call `cronjob(action="list")` after creation and confirm the saved schedule and attached `todo` skill.
+- For automation, call `cronjob(action="list")` after creation and confirm the saved schedule and attached `next-todo` skill.
