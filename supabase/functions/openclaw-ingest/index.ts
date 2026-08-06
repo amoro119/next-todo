@@ -27,8 +27,16 @@ const createTaskSchema = z.object({
   priority: z.number().int().min(0).max(3).optional().default(0),
   tags: z.string().optional(),
   list_id: z.string().uuid().optional(),
-  list_name: z.string().optional(),
+  list_name: z.string().trim().min(1).optional(),
   source: z.string().optional(),
+}).superRefine((value, ctx) => {
+  if (value.list_id !== undefined && value.list_name !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['list_name'],
+      message: 'Provide either list_id or list_name, not both',
+    });
+  }
 });
 
 // Schema for update action
@@ -42,6 +50,15 @@ const updateTaskSchema = z.object({
   priority: z.number().int().min(0).max(3).optional(),
   tags: z.string().optional(),
   list_id: z.string().uuid().nullable().optional(),
+  list_name: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.list_id !== undefined && value.list_name !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['list_name'],
+      message: 'Provide either list_id or list_name, not both',
+    });
+  }
 });
 
 // Schema for complete action
@@ -57,6 +74,22 @@ const queryTaskSchema = z.object({
   status: z.enum(['pending', 'completed', 'all']).optional().default('all'),
   limit: z.number().int().min(1).optional(),
   list_id: z.string().uuid().optional(),
+  list_name: z.string().trim().min(1).optional(),
+}).superRefine((value, ctx) => {
+  if (value.list_id !== undefined && value.list_name !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['list_name'],
+      message: 'Provide either list_id or list_name, not both',
+    });
+  }
+  if (value.task_id !== undefined && (value.list_id !== undefined || value.list_name !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['task_id'],
+      message: 'task_id cannot be combined with list filters',
+    });
+  }
 });
 
 // Schema for digest action
@@ -231,6 +264,59 @@ async function deterministicUuid(value: string): Promise<string> {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+type ListReferenceResult = {
+  id?: string | null;
+  error?: string;
+  status?: 404 | 409 | 500;
+};
+
+/** Resolve a user-facing list name without ever treating it as a task tag. */
+async function resolveListReference(
+  supabase: any,
+  listId: string | null | undefined,
+  listName: string | undefined,
+): Promise<ListReferenceResult> {
+  if (listName === undefined) {
+    return { id: listId };
+  }
+
+  const { data, error } = await supabase
+    .from('lists')
+    .select('id')
+    .eq('name', listName)
+    .limit(2);
+
+  if (error) {
+    return { error: 'Failed to resolve list name', status: 500 };
+  }
+
+  const matches = Array.isArray(data) ? data : [];
+  if (matches.length === 0) {
+    return { error: `List not found: ${listName}`, status: 404 };
+  }
+  if (matches.length > 1) {
+    return { error: `List name is ambiguous: ${listName}`, status: 409 };
+  }
+
+  return { id: matches[0].id };
+}
+
+async function verifyListId(supabase: any, listId: string): Promise<ListReferenceResult> {
+  const { data: list, error } = await supabase
+    .from('lists')
+    .select('id')
+    .eq('id', listId)
+    .maybeSingle();
+
+  if (error) {
+    return { error: 'Failed to verify list', status: 500 };
+  }
+  if (!list) {
+    return { error: 'List not found', status: 404 };
+  }
+  return { id: list.id };
+}
+
 async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   const parsed = updateTaskSchema.safeParse(body);
   if (!parsed.success) {
@@ -238,7 +324,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: errorMsg }, 400);
   }
 
-  const { task_id, title, content, due_date, start_date, priority, tags, list_id } = parsed.data;
+  const { task_id, title, content, due_date, start_date, priority, tags, list_id, list_name } = parsed.data;
 
   // Check if task exists and is not deleted
   const { data: task, error: fetchError } = await supabase
@@ -255,19 +341,15 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: 'Task not found' }, 404);
   }
 
-  if (list_id !== undefined && list_id !== null) {
-    const { data: list, error: listError } = await supabase
-      .from('lists')
-      .select('id')
-      .eq('id', list_id)
-      .maybeSingle();
+  const resolvedList = await resolveListReference(supabase, list_id, list_name);
+  if (resolvedList.error) {
+    return c.json({ error: resolvedList.error }, resolvedList.status);
+  }
 
-    if (listError) {
-      return c.json({ error: 'Failed to verify list' }, 500);
-    }
-
-    if (!list) {
-      return c.json({ error: 'List not found' }, 404);
+  if (resolvedList.id !== undefined && resolvedList.id !== null) {
+    const listVerification = await verifyListId(supabase, resolvedList.id);
+    if (listVerification.error) {
+      return c.json({ error: listVerification.error }, listVerification.status);
     }
   }
 
@@ -280,7 +362,7 @@ async function handleUpdateTask(c: any, body: unknown, supabase: any) {
   if (start_date !== undefined) updateData.start_date = convertToUTC0(start_date);
   if (priority !== undefined) updateData.priority = priority;
   if (tags !== undefined) updateData.tags = tags;
-  if (list_id !== undefined) updateData.list_id = list_id;
+  if (resolvedList.id !== undefined) updateData.list_id = resolvedList.id;
 
   const baseValues = Object.fromEntries(
     Object.keys(updateData).map((field) => [field, task[field]]),
@@ -355,6 +437,21 @@ async function handleCreateTask(c: any, body: unknown, supabase: any) {
     });
   }
 
+  const resolvedList = await resolveListReference(
+    supabase,
+    requestData.list_id,
+    requestData.list_name,
+  );
+  if (resolvedList.error) {
+    return c.json({ error: resolvedList.error }, resolvedList.status);
+  }
+  if (resolvedList.id !== undefined && resolvedList.id !== null) {
+    const listVerification = await verifyListId(supabase, resolvedList.id);
+    if (listVerification.error) {
+      return c.json({ error: listVerification.error }, listVerification.status);
+    }
+  }
+
   const taskId = existingEvent?.task_id
     ?? await deterministicUuid(`openclaw-task:${requestData.event_id}`);
   const now = new Date().toISOString();
@@ -364,7 +461,7 @@ async function handleCreateTask(c: any, body: unknown, supabase: any) {
     completed: false,
     priority: requestData.priority,
     created_time: now,
-    list_id: requestData.list_id ?? null,
+    list_id: resolvedList.id ?? null,
     content: requestData.content ?? null,
     due_date: convertToUTC0(requestData.due_date),
     start_date: convertToUTC0(requestData.start_date),
@@ -526,7 +623,12 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, 400);
   }
 
-  const { task_id, status, limit, list_id } = parsed.data;
+  const { task_id, status, limit, list_id, list_name } = parsed.data;
+
+  const resolvedList = await resolveListReference(supabase, list_id, list_name);
+  if (resolvedList.error) {
+    return c.json({ error: resolvedList.error }, resolvedList.status);
+  }
 
   if (task_id) {
     const { data: task, error: fetchError } = await supabase
@@ -565,8 +667,8 @@ async function handleQueryTask(c: any, body: unknown, supabase: any) {
     query = query.limit(limit);
   }
 
-  if (list_id) {
-    query = query.eq('list_id', list_id);
+  if (resolvedList.id) {
+    query = query.eq('list_id', resolvedList.id);
   }
 
   if (status === 'pending') {
