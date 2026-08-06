@@ -19,6 +19,12 @@ Dates are interpreted as Asia/Shanghai wall-clock values. Accepted forms:
   YYYY-MM-DD
   YYYY-MM-DDTHH:MM[:SS]
   YYYY-MM-DDTHH:MM:SS[.sss]Z
+
+Credentials:
+  Hermes loads NEXT_TODO_API_URL and OPENCLAW_API_KEY (preferred), or
+  NEXT_TODO_JWT (compatibility fallback), from ~/.hermes/.env
+  (or $HERMES_HOME/.env).
+  Codex should provide the same variables in its process environment.
 EOF
 }
 
@@ -310,7 +316,15 @@ case "$action" in
 esac
 
 [[ -n "${NEXT_TODO_API_URL:-}" ]] || die 'NEXT_TODO_API_URL is not set'
-[[ -n "${OPENCLAW_API_KEY:-}" ]] || die 'OPENCLAW_API_KEY is not set'
+
+# OPENCLAW_API_KEY is the preferred long-lived integration credential.
+# NEXT_TODO_JWT remains a compatibility fallback for existing Hermes setups
+# that store a user JWT instead. Never print either value.
+auth_token="${OPENCLAW_API_KEY:-}"
+if [[ -z "$auth_token" ]]; then
+  auth_token="${NEXT_TODO_JWT:-}"
+fi
+[[ -n "$auth_token" ]] || die 'credentials are missing: set OPENCLAW_API_KEY (preferred) or NEXT_TODO_JWT in the runtime environment'
 
 response_file="$(mktemp "${TMPDIR:-/tmp}/todo-api.XXXXXX")"
 trap 'rm -f "$response_file"' EXIT
@@ -324,7 +338,7 @@ if ! http_code="$(curl \
   --output "$response_file" \
   --write-out '%{http_code}' \
   --request POST \
-  --header "Authorization: Bearer ${OPENCLAW_API_KEY}" \
+  --header "Authorization: Bearer ${auth_token}" \
   --header 'Content-Type: application/json' \
   --data-binary "$payload" \
   "$api_url")"; then

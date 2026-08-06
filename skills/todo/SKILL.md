@@ -12,8 +12,13 @@ required_environment_variables:
     prompt: Next Todo API base URL
     required_for: Calling the Next Todo ingest endpoint
   - name: OPENCLAW_API_KEY
-    prompt: Next Todo ingest API key
+    prompt: Preferred Next Todo ingest API key
     required_for: Authenticating Next Todo requests
+    optional: true
+  - name: NEXT_TODO_JWT
+    prompt: Existing Next Todo user JWT (compatibility fallback)
+    required_for: Authenticating Next Todo requests when OPENCLAW_API_KEY is unavailable
+    optional: true
 ---
 
 # Next Todo
@@ -27,6 +32,21 @@ Use this skill when the user asks to create, edit, reschedule, move, complete, l
 Use the `terminal` tool and bundled client for every API call. Do not construct JSON with string interpolation and do not print either credential.
 
 The `metadata.hermes.tags` in this file are skill-catalog labels only; they are not tags for a task.
+
+## Environment Setup
+
+Hermes loads this skill's environment from `$HERMES_HOME/.env`, which defaults to `~/.hermes/.env`. Configure the API URL there and use the dedicated `OPENCLAW_API_KEY` as the preferred credential:
+
+```dotenv
+NEXT_TODO_API_URL=https://<project-ref>.supabase.co/functions/v1
+OPENCLAW_API_KEY=<dedicated-ingest-secret>
+```
+
+Existing installations may use `NEXT_TODO_JWT`; the client accepts it as a compatibility fallback, but user JWTs can expire and should eventually be replaced by the dedicated key. Do not move production secrets into the repository. Codex should receive the same variables through its process/session environment rather than reading Hermes' private file directly. Never print either credential or ask the user to paste one into chat.
+
+## Platform Support
+
+On Windows, Hermes runs terminal commands through Git Bash. Install Git for Windows and `jq`, and ensure `bash`, `curl`, `jq`, and `mktemp` are available in that Bash environment. WSL is the most predictable option. A PowerShell-only terminal is not supported by this Bash client; report the missing runtime instead of rewriting the request as an inline PowerShell call.
 
 ```bash
 bash "${HERMES_SKILL_DIR}/scripts/todo-api.sh" <action> [options]
@@ -144,6 +164,8 @@ Confirm the delivery target when `origin` is unavailable or the user wants anoth
 ## Pitfalls
 
 - If `bash`, `curl`, or `jq` is unavailable, report the missing binary. Do not install software without the user's approval.
+- On Windows, verify the command is running inside Git Bash or WSL; do not assume PowerShell can execute this `.sh` client.
+- If authentication fails, check the variable names and runtime environment: `OPENCLAW_API_KEY` is preferred; `NEXT_TODO_JWT` is a temporary compatibility fallback. Do not search arbitrary files for secrets.
 - Treat `NEXT_TODO_API_URL` as the base functions URL; the client appends `/openclaw-ingest`.
 - Let Hermes collect missing environment variables through its secure skill setup. Never ask the user to paste `OPENCLAW_API_KEY` into a chat.
 - Do not use partial task IDs for mutations; the API requires a full UUID.
