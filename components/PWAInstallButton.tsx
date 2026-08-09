@@ -1,10 +1,18 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { Download } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/components/common/cn';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+interface PWAInstallButtonProps {
+  isCollapsed?: boolean;
+  mobile?: boolean;
 }
 
 /**
@@ -13,7 +21,7 @@ interface BeforeInstallPromptEvent extends Event {
  * the browser's native PWA install dialog. Hidden when the app is already
  * running in standalone mode (installed) or when installation is unavailable.
  */
-export function PWAInstallButton() {
+export function PWAInstallButton({ isCollapsed = false, mobile = false }: PWAInstallButtonProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
@@ -59,27 +67,22 @@ export function PWAInstallButton() {
   if (isInstalled || !deferredPrompt) return null;
 
   return (
-    <button
+    <Button
+      type="button"
       onClick={handleInstall}
-      className="inline-flex items-center justify-center gap-1.5 p-2 rounded-full bg-[oklch(var(--primary))] text-[oklch(var(--primary-foreground))] hover:opacity-90 transition-opacity duration-150"
-      aria-label="安装应用"
-      title="安装为桌面应用"
+      variant="ghost"
+      size={mobile ? 'mobileIcon' : 'default'}
+      className={cn(
+        'text-[oklch(var(--muted-foreground))]',
+        mobile
+          ? 'shrink-0'
+          : cn('w-full', isCollapsed ? 'justify-center px-0' : 'justify-start px-3')
+      )}
+      aria-label="安装为桌面应用"
+      title={isCollapsed || mobile ? '安装为桌面应用' : undefined}
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-        <polyline points="7,10 12,15 17,10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-    </button>
+      <Download size={16} />
+      <span className={cn((isCollapsed || mobile) && 'sr-only')}>安装为桌面应用</span>
+    </Button>
   );
 }

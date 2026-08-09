@@ -53,7 +53,6 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
         <div className={cn('flex items-center px-3 py-4', isCollapsed ? 'justify-center' : 'justify-between')}>
           {!isCollapsed && <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>}
           <div className={cn('flex items-center gap-1', isCollapsed && 'flex-col')}>
-            <PWAInstallButton />
             <Button
               type="button"
               variant="ghost"
@@ -106,6 +105,8 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
             </div>
           )}
 
+          <PWAInstallButton isCollapsed={isCollapsed} />
+
           <Button
             type="button"
             variant="ghost"
@@ -134,16 +135,19 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
       <div className="mobile-app-nav sticky top-0 z-40 w-full border-b border-[oklch(var(--border))] bg-[oklch(var(--background))] md:hidden">
         <div className="flex items-center justify-between px-4 py-2">
           <span className="text-sm font-semibold text-[oklch(var(--foreground))]">NEXT TODO</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="mobileIcon"
-            onClick={onOpenSettings}
-            className="text-[oklch(var(--muted-foreground))]"
-            aria-label="设置"
-          >
-            <Settings size={16} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <PWAInstallButton mobile />
+            <Button
+              type="button"
+              variant="ghost"
+              size="mobileIcon"
+              onClick={onOpenSettings}
+              className="text-[oklch(var(--muted-foreground))]"
+              aria-label="设置"
+            >
+              <Settings size={16} />
+            </Button>
+          </div>
         </div>
         <div className="mobile-scroll-x flex gap-2 overflow-x-auto px-4 pb-2 scrollbar-none">
           {NAV_ITEMS.map(({ section, label, icon: Icon }) => (
