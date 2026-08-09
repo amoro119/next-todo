@@ -516,7 +516,7 @@ export default function TodoModal({
   };
 
   const renderNoteModeControls = (fullscreen = false) => (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-center gap-1">
       <Tabs
         value={noteMode}
         onValueChange={(value) => handleNoteModeChange(value as typeof noteMode)}
