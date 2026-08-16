@@ -1,7 +1,7 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, type PointerEvent as ReactPointerEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
@@ -39,6 +39,107 @@ type NoteAutosaveState = {
   timer: number | null;
   workerPromise: Promise<void> | null;
 };
+
+interface NoteEditorSurfaceProps {
+  noteMode: 'rich-text' | 'source' | 'mindmap';
+  content: string;
+  recordKey: string;
+  rootLabel: string;
+  fullscreen: boolean;
+  presentation: 'dialog' | 'drawer';
+  mode: 'create' | 'edit';
+  onChange: (content: string) => void;
+  onError: (error: Error) => void;
+  flushRef?: MutableRefObject<(() => void) | null>;
+  onRequestFullscreen?: () => void;
+}
+
+function NoteEditorSurface({
+  noteMode,
+  content,
+  recordKey,
+  rootLabel,
+  fullscreen,
+  presentation,
+  mode,
+  onChange,
+  onError,
+  flushRef,
+  onRequestFullscreen,
+}: NoteEditorSurfaceProps) {
+  const [draft, setDraft] = useState(content);
+  const richFlushRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    setDraft(content);
+  }, [content, recordKey]);
+
+  const handleChange = useCallback((nextContent: string) => {
+    setDraft(nextContent);
+    onChange(nextContent);
+  }, [onChange]);
+
+  const flushEditor = useCallback(() => {
+    if (noteMode === 'rich-text') {
+      richFlushRef.current?.();
+    } else {
+      handleChange(draft);
+    }
+  }, [draft, handleChange, noteMode]);
+
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flushEditor;
+    return () => {
+      if (flushRef.current === flushEditor) flushRef.current = null;
+    };
+  }, [flushEditor, flushRef]);
+
+  if (noteMode === 'mindmap') {
+    return (
+      <MarkdownMindmap
+        markdown={draft}
+        rootLabel={rootLabel}
+        fullscreen={fullscreen}
+        onRequestFullscreen={
+          !fullscreen && presentation === 'drawer' && mode === 'edit'
+            ? onRequestFullscreen
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (noteMode === 'source') {
+    return (
+      <Textarea
+        id={fullscreen ? 'content-fullscreen' : 'content'}
+        name="content"
+        aria-label="备注"
+        value={draft}
+        onChange={(event) => handleChange(event.target.value)}
+        placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
+        rows={10}
+        className="todo-note-source"
+        data-note-editor={fullscreen ? 'true' : undefined}
+        spellCheck={false}
+      />
+    );
+  }
+
+  return (
+    <div className={fullscreen ? 'contents' : undefined} data-note-editor-shell={fullscreen ? 'true' : undefined}>
+      <LiveMarkdownEditor
+        value={draft}
+        recordKey={recordKey}
+        onChange={handleChange}
+        onError={onError}
+        focusTarget={fullscreen}
+        flushRef={richFlushRef}
+      />
+    </div>
+  );
+}
 
 interface TodoModalProps {
   isOpen?: boolean;
@@ -232,6 +333,7 @@ export default function TodoModal({
   const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
   
   const [editableTodo, setEditableTodo] = useState<Todo>(mergedInitialTodo);
+  const noteContentRef = useRef(mergedInitialTodo.content ?? '');
   const dirtyFieldsRef = useRef(new Set<keyof Todo>());
   const activeRecordIdRef = useRef<string | null>(initialData?.id ?? null);
   const isRecycled = !!editableTodo.deleted;
@@ -240,6 +342,7 @@ export default function TodoModal({
   const decompositionRequestIdRef = useRef(0);
   const noteFullscreenTriggerRef = useRef<HTMLButtonElement>(null);
   const noteAutosaveRef = useRef<NoteAutosaveState | null>(null);
+  const noteEditorFlushRef = useRef<(() => void) | null>(null);
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [noteMode, setNoteMode] = useState<'rich-text' | 'source' | 'mindmap'>('rich-text');
   const [isNoteFullscreen, setIsNoteFullscreen] = useState(false);
@@ -350,6 +453,7 @@ export default function TodoModal({
   }, [flushNoteAutosave]);
 
   useEffect(() => () => {
+    noteEditorFlushRef.current?.();
     void flushNoteAutosaveRef.current();
   }, []);
 
@@ -362,6 +466,9 @@ export default function TodoModal({
         activeRecordIdRef.current = initialData.id ?? null;
       }
       const incoming = { ...initialTodo, ...initialData } as Todo;
+      if (recordChanged || !dirtyFieldsRef.current.has('content')) {
+        noteContentRef.current = incoming.content ?? '';
+      }
       setEditableTodo((current) => {
         if (recordChanged) return incoming;
         const merged = { ...current };
@@ -378,6 +485,7 @@ export default function TodoModal({
       const contextDefaults = getContextDefaults();
       const mergedInitialTodo = { ...initialTodo, ...contextDefaults };
       dirtyFieldsRef.current.clear();
+      noteContentRef.current = mergedInitialTodo.content ?? '';
       setEditableTodo(mergedInitialTodo);
     }
   }, [initialData, initialTodo, mode, getContextDefaults]);
@@ -422,8 +530,12 @@ export default function TodoModal({
 
   const handleSave = async () => {
     try {
+      noteEditorFlushRef.current?.();
       await flushNoteAutosave();
-      const cleaned = cleanTodoDates(editableTodo);
+      const cleaned = cleanTodoDates({
+        ...editableTodo,
+        content: noteContentRef.current,
+      });
       const dirtyPatch = Object.fromEntries(
         [...dirtyFieldsRef.current].map((field) => [field, cleaned[field]]),
       ) as Partial<Todo>;
@@ -436,6 +548,7 @@ export default function TodoModal({
   };
 
   const handleClose = useCallback(() => {
+    noteEditorFlushRef.current?.();
     void flushNoteAutosave();
     onClose();
   }, [flushNoteAutosave, onClose]);
@@ -499,9 +612,10 @@ export default function TodoModal({
 
   const handleNoteChange = useCallback((content: string) => {
     if (isRecycled) return;
-    updateFields({ content });
+    noteContentRef.current = content;
+    dirtyFieldsRef.current.add('content');
     scheduleNoteAutosave(content);
-  }, [isRecycled, scheduleNoteAutosave, updateFields]);
+  }, [isRecycled, scheduleNoteAutosave]);
 
   const handleNoteError = useCallback(() => {
     setNoteMode('source');
@@ -510,15 +624,16 @@ export default function TodoModal({
 
   const handleNoteModeChange = useCallback((nextMode: typeof noteMode) => {
     if (nextMode === 'rich-text') {
-      const currentContent = editableTodo.content ?? '';
+      const currentContent = noteContentRef.current;
       const normalizedContent = normalizeTaskListMarkers(currentContent);
       if (normalizedContent !== currentContent) {
+        noteContentRef.current = normalizedContent;
         updateFields({ content: normalizedContent });
         scheduleNoteAutosave(normalizedContent);
       }
     }
     setNoteMode(nextMode);
-  }, [editableTodo.content, scheduleNoteAutosave, updateFields]);
+  }, [scheduleNoteAutosave, updateFields]);
 
   const handleNoteFullscreenChange = useCallback((fullscreen: boolean) => {
     if (fullscreen) {
@@ -585,7 +700,7 @@ export default function TodoModal({
       const steps = await decomposeTask(
         {
           title: editableTodo.title,
-          notes: editableTodo.content ?? '',
+          notes: noteContentRef.current,
           listName,
           goalName,
           startDate: editableTodo.start_date,
@@ -597,10 +712,9 @@ export default function TodoModal({
       if (requestId !== decompositionRequestIdRef.current || controller.signal.aborted) return;
 
       dirtyFieldsRef.current.add('content');
-      setEditableTodo((current) => ({
-        ...current,
-        content: mergeDecompositionBlock(current.content ?? '', steps),
-      }));
+      const nextContent = mergeDecompositionBlock(noteContentRef.current, steps);
+      noteContentRef.current = nextContent;
+      setEditableTodo((current) => ({ ...current, content: nextContent }));
       toast.success('已生成拆解步骤，保存任务后生效');
     } catch (error) {
       if (
@@ -705,51 +819,25 @@ export default function TodoModal({
 
   const renderNoteEditor = (fullscreen = false) => {
     if (isRecycled) {
-      return <MarkdownPreview markdown={editableTodo.content ?? ''} />;
+      return <MarkdownPreview markdown={noteContentRef.current} />;
     }
 
-    if (noteMode === 'mindmap') {
-      return (
-        <MarkdownMindmap
-          markdown={editableTodo.content ?? ''}
-          rootLabel={editableTodo.title}
-          fullscreen={fullscreen}
-          onRequestFullscreen={
-            !fullscreen && presentation === 'drawer' && mode === 'edit'
-              ? () => handleNoteFullscreenChange(true)
-              : undefined
-          }
-        />
-      );
-    }
-
-    if (noteMode === 'source') {
-      return (
-        <Textarea
-          id={fullscreen ? 'content-fullscreen' : 'content'}
-          name="content"
-          aria-label="备注"
-          value={editableTodo.content ?? ''}
-          onChange={(event) => handleNoteChange(event.target.value)}
-          placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
-          rows={10}
-          className="todo-note-source"
-          data-note-editor={fullscreen ? 'true' : undefined}
-          spellCheck={false}
-        />
-      );
-    }
-
+    const recordKey = `${mode}:${initialData?.id ?? 'new'}:${fullscreen ? 'fullscreen' : 'inline'}`;
     return (
-      <div className={fullscreen ? 'contents' : undefined} data-note-editor-shell={fullscreen ? 'true' : undefined}>
-        <LiveMarkdownEditor
-          value={editableTodo.content ?? ''}
-          recordKey={`${mode}:${initialData?.id ?? 'new'}:${fullscreen ? 'fullscreen' : 'inline'}`}
-          onChange={handleNoteChange}
-          onError={handleNoteError}
-          focusTarget={fullscreen}
-        />
-      </div>
+      <NoteEditorSurface
+        key={recordKey}
+        noteMode={noteMode}
+        content={noteContentRef.current}
+        recordKey={recordKey}
+        rootLabel={editableTodo.title}
+        fullscreen={fullscreen}
+        presentation={presentation}
+        mode={mode}
+        onChange={handleNoteChange}
+        onError={handleNoteError}
+        flushRef={noteEditorFlushRef}
+        onRequestFullscreen={() => handleNoteFullscreenChange(true)}
+      />
     );
   };
 

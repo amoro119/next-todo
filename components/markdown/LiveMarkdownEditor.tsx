@@ -2,11 +2,13 @@
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
+  type MutableRefObject,
   type MouseEvent,
 } from 'react';
 
@@ -22,6 +24,7 @@ interface LiveMarkdownEditorProps {
   onChange: (markdown: string) => void;
   onError?: (error: Error) => void;
   focusTarget?: boolean;
+  flushRef?: MutableRefObject<(() => void) | null>;
 }
 
 const BLOCK_SELECTOR = 'p,div,li,h1,h2,h3,h4,h5,h6,blockquote,pre';
@@ -279,10 +282,14 @@ export default function LiveMarkdownEditor({
   onChange,
   onError,
   focusTarget = false,
+  flushRef,
 }: LiveMarkdownEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const appliedRecordRef = useRef('');
   const appliedValueRef = useRef<string | null>(null);
+  const emitFrameRef = useRef<number | null>(null);
+  const hasPendingUserEditRef = useRef(false);
+  const isComposingRef = useRef(false);
 
   const emitMarkdown = useCallback(() => {
     const editor = editorRef.current;
@@ -291,11 +298,51 @@ export default function LiveMarkdownEditor({
       const markdown = editableHtmlToMarkdown(editor);
       editor.dataset.empty = markdown ? 'false' : 'true';
       appliedValueRef.current = markdown;
+      hasPendingUserEditRef.current = false;
       onChange(markdown);
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
     }
   }, [onChange, onError]);
+
+  const scheduleEmitMarkdown = useCallback(() => {
+    if (emitFrameRef.current !== null) return;
+    emitFrameRef.current = window.requestAnimationFrame(() => {
+      emitFrameRef.current = null;
+      emitMarkdown();
+    });
+  }, [emitMarkdown]);
+
+  const commitMarkdown = useCallback(() => {
+    if (emitFrameRef.current !== null) {
+      window.cancelAnimationFrame(emitFrameRef.current);
+      emitFrameRef.current = null;
+    }
+    emitMarkdown();
+  }, [emitMarkdown]);
+
+  const flushMarkdown = useCallback(() => {
+    if (!hasPendingUserEditRef.current) return;
+    if (emitFrameRef.current !== null) {
+      window.cancelAnimationFrame(emitFrameRef.current);
+      emitFrameRef.current = null;
+    }
+    emitMarkdown();
+  }, [emitMarkdown]);
+
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flushMarkdown;
+    return () => {
+      if (flushRef.current === flushMarkdown) flushRef.current = null;
+    };
+  }, [flushMarkdown, flushRef]);
+
+  useEffect(() => () => {
+    if (emitFrameRef.current !== null) {
+      window.cancelAnimationFrame(emitFrameRef.current);
+    }
+  }, []);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -319,10 +366,11 @@ export default function LiveMarkdownEditor({
 
   const handleInput = (event: FormEvent<HTMLDivElement>) => {
     const root = event.currentTarget;
+    hasPendingUserEditRef.current = true;
     if (!applyChecklistShortcut(root)) {
       applyInlineShortcut(root);
     }
-    emitMarkdown();
+    if (!isComposingRef.current) scheduleEmitMarkdown();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -331,7 +379,7 @@ export default function LiveMarkdownEditor({
       if (command === 'b' || command === 'i') {
         event.preventDefault();
         document.execCommand(command === 'b' ? 'bold' : 'italic');
-        emitMarkdown();
+        commitMarkdown();
         return;
       }
     }
@@ -339,7 +387,7 @@ export default function LiveMarkdownEditor({
     if (event.key === ' ' && !event.metaKey && !event.ctrlKey && !event.altKey) {
       if (applyBlockShortcut(event.currentTarget)) {
         event.preventDefault();
-        emitMarkdown();
+        commitMarkdown();
         return;
       }
     }
@@ -353,7 +401,7 @@ export default function LiveMarkdownEditor({
 
       if (block === root) {
         insertParagraphAfterRoot(root);
-        emitMarkdown();
+        commitMarkdown();
         return;
       }
 
@@ -376,7 +424,7 @@ export default function LiveMarkdownEditor({
             block.after(nextItem);
             setCaretAfter(nextItem.querySelector('input')!);
           }
-          emitMarkdown();
+          commitMarkdown();
           return;
         }
 
@@ -390,7 +438,7 @@ export default function LiveMarkdownEditor({
         } else {
           splitBlockAtCaret(block, document.createElement('li'));
         }
-        emitMarkdown();
+        commitMarkdown();
         return;
       }
 
@@ -398,7 +446,7 @@ export default function LiveMarkdownEditor({
       if (!splitBlockAtCaret(block, nextParagraph)) {
         block.after(createEmptyBlock('p'));
       }
-      emitMarkdown();
+      commitMarkdown();
     }
   };
 
@@ -412,7 +460,7 @@ export default function LiveMarkdownEditor({
       } else {
         document.execCommand('insertText', false, markdown);
       }
-      emitMarkdown();
+      commitMarkdown();
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
     }
@@ -425,7 +473,7 @@ export default function LiveMarkdownEditor({
       return;
     }
     if (target instanceof HTMLInputElement && target.type === 'checkbox') {
-      emitMarkdown();
+      commitMarkdown();
     }
   };
 
@@ -446,6 +494,11 @@ export default function LiveMarkdownEditor({
       onKeyDown={handleKeyDown}
       onPaste={handlePaste}
       onClick={handleClick}
+      onCompositionStart={() => { isComposingRef.current = true; }}
+      onCompositionEnd={() => {
+        isComposingRef.current = false;
+        scheduleEmitMarkdown();
+      }}
     />
   );
 }

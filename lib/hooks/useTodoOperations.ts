@@ -214,6 +214,9 @@ export type LastAction =
 /* ------------------------------------------------------------------ */
 
 export function useTodoOperations(todos: Todo[], lists: List[]) {
+  const todosRef = useRef(todos)
+  todosRef.current = todos
+
   const api = useMemo(() => {
     const base = createDexieDatabaseAPI(db)
     return createBackwardCompatApi(base)
@@ -351,7 +354,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   const handleUpdateTodo = useCallback(
     async (todoId: string, updates: Partial<Omit<Todo, "id" | "list_name">>) => {
       if (!updates || Object.keys(updates).length === 0) return
-      const current = todos.find((todo) => todo.id === todoId)
+      const current = todosRef.current.find((todo) => todo.id === todoId)
       if (updates.completed === true
         && current
         && !current.completed
@@ -384,7 +387,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       }
       await todoStore.getState().updateTodo(todoId, updates)
     },
-    [api, todoStore, todos]
+    [api, todoStore]
   )
 
   const handleToggleComplete = useCallback(
