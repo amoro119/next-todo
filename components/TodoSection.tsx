@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useMemo } from 'react'
 import { TodoList } from "@/components/TodoList"
 import GoalDetailsDrawer from "@/components/goals/GoalDetailsDrawer"
 import { utcToLocalDateString } from "@/lib/hooks/useTodoOperations"
@@ -70,6 +71,31 @@ export function TodoSection({
   handleAssociateTasks,
   handleUpdateGoal,
 }: TodoSectionProps) {
+  const handleSelectTodo = useCallback((todo: Todo) => {
+    setSelectedGoal(null)
+    setSelectedTodo(todo)
+  }, [setSelectedGoal, setSelectedTodo])
+
+  const handleViewGoal = useCallback((goalId: string) => {
+    const goal = goals.find((item) => item.id === goalId)
+    if (!goal) return
+    setSelectedTodo(null)
+    setSelectedGoal(goal)
+  }, [goals, setSelectedGoal, setSelectedTodo])
+
+  const handleCloseTodoDetails = useCallback(() => {
+    setSelectedTodo(null)
+  }, [setSelectedTodo])
+
+  const handleCloseGoalDetails = useCallback(() => {
+    setSelectedGoal(null)
+  }, [setSelectedGoal])
+
+  const selectedGoalTodos = useMemo(
+    () => selectedGoal ? displayTodos.filter((todo) => todo.goal_id === selectedGoal.id) : [],
+    [displayTodos, selectedGoal],
+  )
+
   return (
     <div className="flex flex-col h-full w-full mx-auto px-4">
       <div className="flex flex-col flex-1 w-full min-h-0">
@@ -106,17 +132,8 @@ export function TodoSection({
                   currentView={currentView}
                   onToggleComplete={handleToggleComplete}
                   onRestore={handleRestoreTodo}
-                  onSelectTodo={(todo) => {
-                    setSelectedGoal(null)
-                    setSelectedTodo(todo)
-                  }}
-                  onViewGoal={(goalId) => {
-                    const goal = goals.find((g) => g.id === goalId)
-                    if (goal) {
-                      setSelectedTodo(null)
-                      setSelectedGoal(goal)
-                    }
-                  }}
+                  onSelectTodo={handleSelectTodo}
+                  onViewGoal={handleViewGoal}
                   onOpenCreateTodo={handleAddTodo}
                 />
               </div>
@@ -141,12 +158,12 @@ export function TodoSection({
               onDelete={handleDeleteTodo}
               onRestore={handleRestoreTodo}
               onPermanentDelete={handlePermanentDeleteTodo}
-              onClose={() => setSelectedTodo(null)}
+              onClose={handleCloseTodoDetails}
             />
 
             <GoalDetailsDrawer
               goal={selectedGoal}
-              todos={selectedGoal ? displayTodos.filter((todo) => todo.goal_id === selectedGoal.id) : []}
+              todos={selectedGoalTodos}
               goals={goals}
               lists={lists}
               onUpdateGoal={handleUpdateGoal}
@@ -155,7 +172,7 @@ export function TodoSection({
               onCreateTodo={handleCreateTodoForGoal}
               onAssociateTasks={handleAssociateTasks}
               onEditGoal={handleEditGoal}
-              onClose={() => setSelectedGoal(null)}
+              onClose={handleCloseGoalDetails}
             />
           </div>
         </div>

@@ -408,19 +408,19 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
 
   const handleDeleteTodo = useCallback(
     async (todoId: string) => {
-      const todoToDelete = todos.find((t: Todo) => t.id === todoId)
+      const todoToDelete = todosRef.current.find((t: Todo) => t.id === todoId)
       if (!todoToDelete) return
       setLastAction({ type: "delete", data: todoToDelete })
       if (selectedTodoId === todoId) setSelectedTodo(null)
       await todoStore.getState().updateTodo(todoId, { deleted: true })
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [todos, selectedTodoId, setSelectedTodo, todoStore]
+    [selectedTodoId, setSelectedTodo, todoStore]
   )
 
   const handleRestoreTodo = useCallback(
     async (todoId: string) => {
-      const recycledTodos = todos.filter((t: Todo) => t.deleted)
+      const recycledTodos = todosRef.current.filter((t: Todo) => t.deleted)
       const todoToRestore = recycledTodos.find((t: Todo) => t.id === todoId)
       if (!todoToRestore) return
       setLastAction({ type: "restore", data: todoToRestore })
@@ -428,12 +428,12 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       await todoStore.getState().updateTodo(todoId, { deleted: false })
       setSearchRefreshTrigger(prev => prev + 1)
     },
-    [todos, selectedTodoId, setSelectedTodo, todoStore]
+    [selectedTodoId, setSelectedTodo, todoStore]
   )
 
   const handlePermanentDeleteTodo = useCallback(
     async (todoId: string) => {
-      const recycledTodos = todos.filter((t: Todo) => t.deleted)
+      const recycledTodos = todosRef.current.filter((t: Todo) => t.deleted)
       const todoToDelete = recycledTodos.find((t: Todo) => t.id === todoId)
       if (!todoToDelete) return
       // “永久删除”在多设备协议中仍写 tombstone；物理删除会导致离线设备复活记录。
@@ -441,7 +441,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
       todoStore.setState((s) => ({ todos: s.todos.filter((t) => t.id !== todoId) }))
       if (selectedTodoId === todoId) setSelectedTodo(null)
     },
-    [todos, selectedTodoId, setSelectedTodo, api, todoStore]
+    [selectedTodoId, setSelectedTodo, api, todoStore]
   )
 
   const handleSaveTodoDetails = useCallback(

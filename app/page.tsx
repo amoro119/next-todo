@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useLiveQuery as useDexieLiveQuery } from "dexie-react-hooks"
 import { useUIStore } from "@/lib/stores/uiStore"
@@ -51,8 +51,9 @@ export default function Page() {
   }, [goalsRaw, listsRaw, todosRaw])
 
   const todoOps = useTodoOperations(todos, lists)
-  const { setSlogan, todayStrInUTC8: operationTodayStr, currentView, setCurrentMode, setCurrentView, setSelectedGoal, sortInboxTodos } = todoOps
+  const { setSlogan, todayStrInUTC8: operationTodayStr, currentView, setCurrentMode, setCurrentView, setSelectedGoal, setSelectedTodo, sortInboxTodos } = todoOps
   const goalOps = useGoalOperations(goals, lists, todos, setSelectedGoal)
+  const closeSelectedTodo = useCallback(() => setSelectedTodo(null), [setSelectedTodo])
 
   useEffect(() => {
     if (sloganMeta?.value) setSlogan(String(sloganMeta.value))
@@ -269,7 +270,7 @@ export default function Page() {
           onDelete={todoOps.handleDeleteTodo}
           onRestore={todoOps.handleRestoreTodo}
           onPermanentDelete={todoOps.handlePermanentDeleteTodo}
-          onClose={() => todoOps.setSelectedTodo(null)}
+          onClose={closeSelectedTodo}
         />
         </motion.div>
       )}

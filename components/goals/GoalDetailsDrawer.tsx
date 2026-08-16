@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Goal, List, Todo } from '@/lib/types'
 import GoalDetails from './GoalDetails'
@@ -31,7 +31,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-export default function GoalDetailsDrawer({
+function GoalDetailsDrawer({
   goal,
   todos,
   goals,
@@ -199,15 +199,12 @@ export default function GoalDetailsDrawer({
         aria-modal={isDesktop ? undefined : true}
         className="fixed inset-0 z-50 flex h-[100dvh] w-full min-h-0 flex-col overflow-hidden bg-[oklch(var(--background))] will-change-transform md:relative md:inset-auto md:z-auto md:block md:h-full md:w-auto md:shrink-0"
         style={{
-          width: isDesktop ? (goal ? drawerCssWidth : 0) : '100%',
+          // 关闭时保留外壳宽度，直到内容的 transform 退出完成；否则桌面端会
+          // 在第一帧直接把抽屉裁成 0 宽，退出动画不可见。
+          width: isDesktop ? (displayGoal ? drawerCssWidth : 0) : '100%',
           backgroundColor: displayGoal ? 'oklch(var(--background))' : 'transparent',
           pointerEvents: goal ? 'auto' : 'none',
-          transition: isDesktop ? (isResizing ? 'none' : 'width 320ms cubic-bezier(0.22, 1, 0.36, 1)') : 'none',
-        }}
-        onTransitionEnd={(event) => {
-          if (event.target === event.currentTarget && event.propertyName === 'width' && !goal) {
-            setMountedGoal(null)
-          }
+          contain: 'layout paint',
         }}
         aria-hidden={!goal}
         aria-label={displayGoal ? `目标详情：${displayGoal.name}` : undefined}
@@ -220,11 +217,13 @@ export default function GoalDetailsDrawer({
                 ? { opacity: goal ? 1 : 0, x: goal ? 0 : '100%' }
                 : { opacity: goal ? 1 : 0, y: goal ? 0 : '100%' }}
               onAnimationComplete={() => {
-                if (!isDesktop && !goal) setMountedGoal(null)
+                if (!goal) setMountedGoal(null)
               }}
               transition={{ duration: goal ? 0.36 : 0.24, ease: goal ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1] }}
-              className="h-full bg-[oklch(var(--background))]"
-              style={isDesktop ? { width: drawerCssWidth, minWidth: drawerCssWidth } : { width: '100%' }}
+              className="h-full will-change-transform bg-[oklch(var(--background))]"
+              style={isDesktop
+                ? { width: drawerCssWidth, minWidth: drawerCssWidth, contain: 'layout paint', willChange: 'transform, opacity' }
+                : { width: '100%', contain: 'layout paint', willChange: 'transform, opacity' }}
             >
               <div className="mobile-detail-safe-top flex h-full min-h-0 flex-col bg-[oklch(var(--background))] px-3 sm:px-5">
                 <GoalHeader
@@ -253,3 +252,5 @@ export default function GoalDetailsDrawer({
     </>
   )
 }
+
+export default memo(GoalDetailsDrawer)

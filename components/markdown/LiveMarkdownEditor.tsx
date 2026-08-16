@@ -3,7 +3,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   type ClipboardEvent,
   type FormEvent,
@@ -344,7 +343,9 @@ export default function LiveMarkdownEditor({
     }
   }, []);
 
-  useLayoutEffect(() => {
+  // Markdown 解析、清洗和 innerHTML 写入可能较重；放到首帧绘制后，
+  // 避免打开详情抽屉时阻塞 transform 动画的第一帧。
+  useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
 

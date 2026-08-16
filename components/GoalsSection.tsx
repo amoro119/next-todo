@@ -1,5 +1,6 @@
 'use client'
 
+import { useCallback, useMemo } from 'react'
 import GoalsMainInterface from "@/components/goals/GoalsMainInterface"
 import GoalDetailsDrawer from "@/components/goals/GoalDetailsDrawer"
 import type { Todo, List, Goal } from "@/lib/types"
@@ -43,6 +44,14 @@ export function GoalsSection({
   handleArchiveGoal,
   goalsMainInterfaceRef,
 }: GoalsSectionProps) {
+  const selectedGoalTodos = useMemo(
+    () => selectedGoal ? todos.filter((todo) => todo.goal_id === selectedGoal.id) : [],
+    [selectedGoal, todos],
+  )
+  const handleCloseGoalDetails = useCallback(() => {
+    setSelectedGoal(null)
+  }, [setSelectedGoal])
+
   return (
     <div className="mx-auto flex h-full min-h-0 w-full flex-col px-4">
       <div className="goals flex min-h-0 w-full flex-1 flex-col">
@@ -73,7 +82,7 @@ export function GoalsSection({
 
           <GoalDetailsDrawer
             goal={selectedGoal}
-            todos={selectedGoal ? todos.filter((todo) => todo.goal_id === selectedGoal.id) : []}
+            todos={selectedGoalTodos}
             goals={goals}
             lists={lists}
             onUpdateGoal={handleUpdateGoal}
@@ -82,7 +91,7 @@ export function GoalsSection({
             onCreateTodo={handleCreateTodoForGoal}
             onAssociateTasks={handleAssociateTasks}
             onEditGoal={handleEditGoal}
-            onClose={() => setSelectedGoal(null)}
+            onClose={handleCloseGoalDetails}
           />
         </div>
       </div>

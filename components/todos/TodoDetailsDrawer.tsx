@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  memo,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
@@ -40,7 +41,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
-export default function TodoDetailsDrawer({
+function TodoDetailsDrawer({
   todo,
   goals,
   lists,
@@ -261,6 +262,7 @@ export default function TodoDetailsDrawer({
           width: isDesktop ? (displayTodo ? drawerCssWidth : 0) : '100%',
           visibility: displayTodo ? 'visible' : 'hidden',
           pointerEvents: todo ? 'auto' : 'none',
+          contain: 'layout paint',
         }}
         aria-hidden={!todo}
         aria-label={displayTodo ? `任务详情：${displayTodo.title}` : undefined}
@@ -279,7 +281,9 @@ export default function TodoDetailsDrawer({
                 ? MOBILE_SHEET_ENTER_TRANSITION
                 : { duration: 0.24, ease: [0.4, 0, 1, 1] }}
               className="h-full w-full will-change-transform md:w-auto"
-              style={isDesktop ? { width: drawerCssWidth, minWidth: drawerCssWidth } : undefined}
+              style={isDesktop
+                ? { width: drawerCssWidth, minWidth: drawerCssWidth, contain: 'layout paint', willChange: 'transform, opacity' }
+                : { contain: 'layout paint', willChange: 'transform, opacity' }}
             >
               <TodoModal
                 isOpen={!!todo}
@@ -306,3 +310,5 @@ export default function TodoDetailsDrawer({
     </>
   )
 }
+
+export default memo(TodoDetailsDrawer)
