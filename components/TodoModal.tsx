@@ -227,6 +227,13 @@ export default function TodoModal({
   const decompositionControllerRef = useRef<AbortController | null>(null);
   const decompositionRequestIdRef = useRef(0);
   const noteFullscreenTriggerRef = useRef<HTMLButtonElement>(null);
+  const noteAutosaveRef = useRef<{
+    recordId: string;
+    generation: number;
+    savedGeneration: number;
+    latest: { generation: number; content: string } | null;
+    inFlight: boolean;
+  } | null>(null);
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [noteMode, setNoteMode] = useState<'rich-text' | 'source' | 'mindmap'>('rich-text');
   const [isNoteFullscreen, setIsNoteFullscreen] = useState(false);
@@ -241,6 +248,47 @@ export default function TodoModal({
     }
     setEditableTodo((current) => ({ ...current, ...updates }));
   }, []);
+
+  const saveNoteImmediately = useCallback((content: string) => {
+    if (mode !== 'edit' || !onUpdate || !editableTodo.id) return;
+
+    const recordId = editableTodo.id;
+    let saveState = noteAutosaveRef.current;
+    if (!saveState || saveState.recordId !== recordId) {
+      saveState = {
+        recordId,
+        generation: 0,
+        savedGeneration: 0,
+        latest: null,
+        inFlight: false,
+      };
+      noteAutosaveRef.current = saveState;
+    }
+
+    const generation = ++saveState.generation;
+    saveState.latest = { generation, content };
+    if (saveState.inFlight) return;
+
+    saveState.inFlight = true;
+    void (async () => {
+      while (saveState?.latest && saveState.savedGeneration < saveState.latest.generation) {
+        const target = saveState.latest;
+        try {
+          await onUpdate(recordId, { content: target.content });
+          saveState.savedGeneration = Math.max(saveState.savedGeneration, target.generation);
+          if (saveState.latest?.generation === target.generation) {
+            dirtyFieldsRef.current.delete('content');
+          }
+        } catch {
+          if (saveState.latest?.generation === target.generation) {
+            toast.error('备注自动保存失败，请点击“保存”重试');
+            break;
+          }
+        }
+      }
+      if (saveState) saveState.inFlight = false;
+    })();
+  }, [editableTodo.id, mode, onUpdate]);
 
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
   useEffect(() => {
@@ -383,7 +431,8 @@ export default function TodoModal({
   const handleNoteChange = useCallback((content: string) => {
     if (isRecycled) return;
     updateFields({ content });
-  }, [isRecycled, updateFields]);
+    saveNoteImmediately(content);
+  }, [isRecycled, saveNoteImmediately, updateFields]);
 
   const handleNoteError = useCallback(() => {
     setNoteMode('source');
@@ -396,10 +445,11 @@ export default function TodoModal({
       const normalizedContent = normalizeTaskListMarkers(currentContent);
       if (normalizedContent !== currentContent) {
         updateFields({ content: normalizedContent });
+        saveNoteImmediately(normalizedContent);
       }
     }
     setNoteMode(nextMode);
-  }, [editableTodo.content, updateFields]);
+  }, [editableTodo.content, saveNoteImmediately, updateFields]);
 
   const handleNoteFullscreenChange = useCallback((fullscreen: boolean) => {
     if (fullscreen) {
@@ -611,7 +661,7 @@ export default function TodoModal({
           name="content"
           aria-label="备注"
           value={editableTodo.content ?? ''}
-          onChange={handleInputChange}
+          onChange={(event) => handleNoteChange(event.target.value)}
           placeholder="输入 Markdown，例如 # 标题、- 列表、- [ ] 清单、> 引用…"
           rows={10}
           className="todo-note-source"
