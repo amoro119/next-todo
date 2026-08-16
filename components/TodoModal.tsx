@@ -28,6 +28,18 @@ import {
 } from '@/lib/ai';
 import { ArrowLeft, CalendarDays, CodeXml, LoaderCircle, Map, Maximize2, Minimize2, Text, WandSparkles } from 'lucide-react';
 
+const NOTE_AUTOSAVE_DELAY_MS = 350;
+
+type NoteAutosaveState = {
+  recordId: string;
+  generation: number;
+  savedGeneration: number;
+  latest: { generation: number; content: string } | null;
+  lastChangedAt: number;
+  timer: number | null;
+  workerPromise: Promise<void> | null;
+};
+
 interface TodoModalProps {
   isOpen?: boolean;
   presentation?: 'dialog' | 'drawer';
@@ -227,13 +239,7 @@ export default function TodoModal({
   const decompositionControllerRef = useRef<AbortController | null>(null);
   const decompositionRequestIdRef = useRef(0);
   const noteFullscreenTriggerRef = useRef<HTMLButtonElement>(null);
-  const noteAutosaveRef = useRef<{
-    recordId: string;
-    generation: number;
-    savedGeneration: number;
-    latest: { generation: number; content: string } | null;
-    inFlight: boolean;
-  } | null>(null);
+  const noteAutosaveRef = useRef<NoteAutosaveState | null>(null);
   const [isDecomposing, setIsDecomposing] = useState(false);
   const [noteMode, setNoteMode] = useState<'rich-text' | 'source' | 'mindmap'>('rich-text');
   const [isNoteFullscreen, setIsNoteFullscreen] = useState(false);
@@ -249,32 +255,17 @@ export default function TodoModal({
     setEditableTodo((current) => ({ ...current, ...updates }));
   }, []);
 
-  const saveNoteImmediately = useCallback((content: string) => {
-    if (mode !== 'edit' || !onUpdate || !editableTodo.id) return;
+  const runNoteAutosave = useCallback((saveState: NoteAutosaveState): Promise<void> => {
+    const update = onUpdate;
+    if (!update) return Promise.resolve();
+    if (saveState.workerPromise) return saveState.workerPromise;
 
-    const recordId = editableTodo.id;
-    let saveState = noteAutosaveRef.current;
-    if (!saveState || saveState.recordId !== recordId) {
-      saveState = {
-        recordId,
-        generation: 0,
-        savedGeneration: 0,
-        latest: null,
-        inFlight: false,
-      };
-      noteAutosaveRef.current = saveState;
-    }
-
-    const generation = ++saveState.generation;
-    saveState.latest = { generation, content };
-    if (saveState.inFlight) return;
-
-    saveState.inFlight = true;
-    void (async () => {
-      while (saveState?.latest && saveState.savedGeneration < saveState.latest.generation) {
+    const worker = (async () => {
+      while (saveState.latest && saveState.savedGeneration < saveState.latest.generation) {
         const target = saveState.latest;
         try {
-          await onUpdate(recordId, { content: target.content });
+          // onUpdate 先完成 Dexie + outbox 事务，再由同步服务上传远端。
+          await update(saveState.recordId, { content: target.content });
           saveState.savedGeneration = Math.max(saveState.savedGeneration, target.generation);
           if (saveState.latest?.generation === target.generation) {
             dirtyFieldsRef.current.delete('content');
@@ -285,10 +276,82 @@ export default function TodoModal({
             break;
           }
         }
+
+        // 如果输入期间产生了新内容，仍需等到最后一次输入后再写，
+        // 避免连续编辑时每次本地更新都触发整棵任务列表重渲染。
+        if (saveState.latest && saveState.latest.generation > saveState.savedGeneration) {
+          const elapsed = Date.now() - saveState.lastChangedAt;
+          const remaining = Math.max(0, NOTE_AUTOSAVE_DELAY_MS - elapsed);
+          if (remaining > 0) {
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, remaining);
+            });
+          }
+        }
       }
-      if (saveState) saveState.inFlight = false;
     })();
-  }, [editableTodo.id, mode, onUpdate]);
+
+    saveState.workerPromise = worker;
+    void worker.then(
+      () => {
+        if (saveState.workerPromise === worker) saveState.workerPromise = null;
+      },
+      () => {
+        if (saveState.workerPromise === worker) saveState.workerPromise = null;
+      },
+    );
+    return worker;
+  }, [onUpdate]);
+
+  const scheduleNoteAutosave = useCallback((content: string) => {
+    if (mode !== 'edit' || !onUpdate || !editableTodo.id) return;
+
+    const recordId = editableTodo.id;
+    let saveState = noteAutosaveRef.current;
+    if (!saveState || saveState.recordId !== recordId) {
+      saveState = {
+        recordId,
+        generation: 0,
+        savedGeneration: 0,
+        latest: null,
+        lastChangedAt: 0,
+        timer: null,
+        workerPromise: null,
+      };
+      noteAutosaveRef.current = saveState;
+    }
+
+    saveState.generation += 1;
+    saveState.latest = { generation: saveState.generation, content };
+    saveState.lastChangedAt = Date.now();
+    if (saveState.timer) window.clearTimeout(saveState.timer);
+    saveState.timer = window.setTimeout(() => {
+      saveState!.timer = null;
+      void runNoteAutosave(saveState!);
+    }, NOTE_AUTOSAVE_DELAY_MS);
+  }, [editableTodo.id, mode, onUpdate, runNoteAutosave]);
+
+  const flushNoteAutosave = useCallback(async () => {
+    const saveState = noteAutosaveRef.current;
+    if (!saveState || saveState.recordId !== editableTodo.id) return;
+
+    if (saveState.timer) {
+      window.clearTimeout(saveState.timer);
+      saveState.timer = null;
+    }
+    // 关闭/点击保存时不再等待防抖窗口，确保最后输入先落本地。
+    saveState.lastChangedAt = 0;
+    await runNoteAutosave(saveState);
+  }, [editableTodo.id, runNoteAutosave]);
+
+  const flushNoteAutosaveRef = useRef(flushNoteAutosave);
+  useEffect(() => {
+    flushNoteAutosaveRef.current = flushNoteAutosave;
+  }, [flushNoteAutosave]);
+
+  useEffect(() => () => {
+    void flushNoteAutosaveRef.current();
+  }, []);
 
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
   useEffect(() => {
@@ -359,6 +422,7 @@ export default function TodoModal({
 
   const handleSave = async () => {
     try {
+      await flushNoteAutosave();
       const cleaned = cleanTodoDates(editableTodo);
       const dirtyPatch = Object.fromEntries(
         [...dirtyFieldsRef.current].map((field) => [field, cleaned[field]]),
@@ -370,6 +434,11 @@ export default function TodoModal({
       throw error;
     }
   };
+
+  const handleClose = useCallback(() => {
+    void flushNoteAutosave();
+    onClose();
+  }, [flushNoteAutosave, onClose]);
 
   const handleDelete = async () => {
     if (onDelete && editableTodo.id) {
@@ -431,8 +500,8 @@ export default function TodoModal({
   const handleNoteChange = useCallback((content: string) => {
     if (isRecycled) return;
     updateFields({ content });
-    saveNoteImmediately(content);
-  }, [isRecycled, saveNoteImmediately, updateFields]);
+    scheduleNoteAutosave(content);
+  }, [isRecycled, scheduleNoteAutosave, updateFields]);
 
   const handleNoteError = useCallback(() => {
     setNoteMode('source');
@@ -445,11 +514,11 @@ export default function TodoModal({
       const normalizedContent = normalizeTaskListMarkers(currentContent);
       if (normalizedContent !== currentContent) {
         updateFields({ content: normalizedContent });
-        saveNoteImmediately(normalizedContent);
+        scheduleNoteAutosave(normalizedContent);
       }
     }
     setNoteMode(nextMode);
-  }, [editableTodo.content, saveNoteImmediately, updateFields]);
+  }, [editableTodo.content, scheduleNoteAutosave, updateFields]);
 
   const handleNoteFullscreenChange = useCallback((fullscreen: boolean) => {
     if (fullscreen) {
@@ -716,7 +785,7 @@ export default function TodoModal({
               onPointerCancel={onSheetPointerCancel}
               style={{ touchAction: 'none' }}
             />
-            <Button type="button" className="h-11 w-11 md:h-9 md:w-9" variant="ghost" size="icon" onClick={onClose} aria-label="返回任务列表">
+            <Button type="button" className="h-11 w-11 md:h-9 md:w-9" variant="ghost" size="icon" onClick={handleClose} aria-label="返回任务列表">
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             </Button>
             <h1 className="truncate text-base font-semibold text-[oklch(var(--foreground))]">{panelTitle}</h1>
@@ -944,13 +1013,13 @@ export default function TodoModal({
                   </AlertDialogContent>
                 </AlertDialog>
                 <div className="order-1 grid grid-cols-2 gap-2 sm:order-2 sm:flex">
-                  <Button type="button" variant="outline" onClick={onClose}>关闭</Button>
+                  <Button type="button" variant="outline" onClick={handleClose}>关闭</Button>
                   <Button type="button" onClick={handleRestore}>恢复</Button>
                 </div>
               </div>
             ) : (
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Button type="button" variant="outline" className="order-2 w-full sm:order-1 sm:w-auto" onClick={onClose}>取消</Button>
+                <Button type="button" variant="outline" className="order-2 w-full sm:order-1 sm:w-auto" onClick={handleClose}>取消</Button>
                 <div className="order-1 grid grid-cols-2 gap-2 sm:order-2 sm:flex">
                   {deleteAction}
                   <Button type="button" onClick={handleSave}>保存</Button>
@@ -959,7 +1028,7 @@ export default function TodoModal({
             )
           ) : (
             <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:justify-end">
-              <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+              <Button type="button" variant="outline" onClick={handleClose}>取消</Button>
               <Button type="button" onClick={handleSave} disabled={!editableTodo.title.trim()}>创建</Button>
             </div>
           )}
@@ -1025,7 +1094,7 @@ export default function TodoModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent
         size="lg"
         className="todo-dialog-content grid h-[100dvh] w-full grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden sm:h-[min(86dvh,760px)]"
