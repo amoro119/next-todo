@@ -5,6 +5,7 @@ import { TodoList } from "@/components/TodoList"
 import GoalDetailsDrawer from "@/components/goals/GoalDetailsDrawer"
 import { utcToLocalDateString } from "@/lib/hooks/useTodoOperations"
 import type { Todo, List, Goal } from "@/lib/types"
+import type { TodoNoteDraftHandlers } from "@/lib/db/databaseAPI"
 import { TodoViewOptions } from "@/components/todos/TodoViewOptions"
 import { TodoInput } from "@/components/todos/TodoInput"
 import TodoDetailsDrawer from "@/components/todos/TodoDetailsDrawer"
@@ -36,6 +37,7 @@ interface TodoSectionProps {
   handlePermanentDeleteTodo: (id: string) => Promise<void>
   handleSaveTodoDetails: (todo: Todo, dirtyPatch?: Partial<Todo>) => Promise<void>
   handleUpdateTodo: (id: string, u: Partial<Omit<Todo, "id" | "list_name">>) => Promise<void>
+  noteDrafts?: TodoNoteDraftHandlers
   handleCreateTodoForGoal: (d: Partial<Todo>) => Promise<void>
   handleEditGoal: (g: Goal) => void
   handleAssociateTasks: (ids: string[], gid: string) => Promise<void>
@@ -66,6 +68,7 @@ export function TodoSection({
   handlePermanentDeleteTodo,
   handleSaveTodoDetails,
   handleUpdateTodo,
+  noteDrafts,
   handleCreateTodoForGoal,
   handleEditGoal,
   handleAssociateTasks,
@@ -155,6 +158,7 @@ export function TodoSection({
               lists={lists}
               onSubmit={handleSaveTodoDetails}
               onUpdate={handleUpdateTodo}
+              noteDrafts={noteDrafts}
               onDelete={handleDeleteTodo}
               onRestore={handleRestoreTodo}
               onPermanentDelete={handlePermanentDeleteTodo}
@@ -168,6 +172,7 @@ export function TodoSection({
               lists={lists}
               onUpdateGoal={handleUpdateGoal}
               onUpdateTodo={handleUpdateTodo}
+              noteDrafts={noteDrafts}
               onDeleteTodo={handleDeleteTodo}
               onCreateTodo={handleCreateTodoForGoal}
               onAssociateTasks={handleAssociateTasks}

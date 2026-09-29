@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { useLiveQuery as useDexieLiveQuery } from "dexie-react-hooks"
 import { useUIStore } from "@/lib/stores/uiStore"
@@ -22,7 +22,8 @@ import { TodoSection } from "@/components/TodoSection"
 import { GoalsSection } from "@/components/GoalsSection"
 import TodoDetailsDrawer from "@/components/todos/TodoDetailsDrawer"
 import { useOptimizedInboxFilter } from "@/components/InboxPerformanceOptimizer"
-import type { Todo, List, Goal } from "@/lib/types"
+import { shallowEqualValue, useStableArray } from "@/lib/hooks/useStableValue"
+import type { Todo, Goal } from "@/lib/types"
 
 export default function Page() {
   const { activeSection, setActiveSection } = useUIStore()
@@ -32,23 +33,46 @@ export default function Page() {
   const { data: goalsRaw } = useGoalsQuery()
   const sloganMeta = useDexieLiveQuery(() => db.meta.get("slogan"), [])
 
-  const todos = useMemo(() => todosRaw.map(normalizeTodo), [todosRaw])
-  const lists = useMemo(() => listsRaw.map(normalizeList), [listsRaw])
+  // Sync can merge many records in a short burst. Keep the current frame's
+  // data stable while React schedules the larger derived tree in the
+  // background, so opening/closing a drawer remains an urgent interaction.
+  const deferredTodosRaw = useDeferredValue(todosRaw)
+  const deferredListsRaw = useDeferredValue(listsRaw)
+  const deferredGoalsRaw = useDeferredValue(goalsRaw)
 
-  const goals = useMemo(() => {
-    return goalsRaw.map((goal) => {
-      const list = listsRaw.find((l) => l.id === goal.list_id)
-      const taskTodos = todosRaw.filter((t) => t.goal_id === goal.id && !t.deleted)
-      const completedTasks = taskTodos.filter((t) => t.completed)
+  const normalizedTodos = useMemo(() => deferredTodosRaw.map(normalizeTodo), [deferredTodosRaw])
+  const normalizedLists = useMemo(() => deferredListsRaw.map(normalizeList), [deferredListsRaw])
+  const todos = useStableArray(normalizedTodos, shallowEqualValue)
+  const lists = useStableArray(normalizedLists, shallowEqualValue)
+
+  const listNamesById = useMemo(
+    () => new Map(deferredListsRaw.map((list) => [list.id, list.name])),
+    [deferredListsRaw],
+  )
+  const goalProgressById = useMemo(() => {
+    const progress = new Map<string, { total: number; completed: number }>()
+    for (const todo of deferredTodosRaw) {
+      if (!todo.goal_id || todo.deleted) continue
+      const current = progress.get(todo.goal_id) ?? { total: 0, completed: 0 }
+      current.total += 1
+      if (todo.completed) current.completed += 1
+      progress.set(todo.goal_id, current)
+    }
+    return progress
+  }, [deferredTodosRaw])
+  const computedGoals = useMemo(() => {
+    return deferredGoalsRaw.map((goal) => {
+      const taskProgress = goalProgressById.get(goal.id) ?? { total: 0, completed: 0 }
       return {
         ...goal,
-        list_name: list?.name ?? null,
-        total_tasks: taskTodos.length,
-        completed_tasks: completedTasks.length,
-        progress: taskTodos.length > 0 ? Math.round((completedTasks.length / taskTodos.length) * 100) : 0,
+        list_name: goal.list_id ? listNamesById.get(goal.list_id) ?? null : null,
+        total_tasks: taskProgress.total,
+        completed_tasks: taskProgress.completed,
+        progress: taskProgress.total > 0 ? Math.round((taskProgress.completed / taskProgress.total) * 100) : 0,
       } as Goal
     })
-  }, [goalsRaw, listsRaw, todosRaw])
+  }, [deferredGoalsRaw, goalProgressById, listNamesById])
+  const goals = useStableArray(computedGoals, shallowEqualValue)
 
   const todoOps = useTodoOperations(todos, lists)
   const { setSlogan, todayStrInUTC8: operationTodayStr, currentView, setCurrentMode, setCurrentView, setSelectedGoal, setSelectedTodo, sortInboxTodos } = todoOps
@@ -59,13 +83,14 @@ export default function Page() {
     if (sloganMeta?.value) setSlogan(String(sloganMeta.value))
   }, [sloganMeta, setSlogan])
 
-  const todosWithListNames = useMemo(() => {
+  const computedTodosWithListNames = useMemo(() => {
     const listMap = new Map(lists.map((list) => [list.id, list.name]))
     return todos.map((todo) => ({
       ...todo,
       list_name: todo.list_id ? listMap.get(todo.list_id) || null : null,
     }))
   }, [todos, lists])
+  const todosWithListNames = useStableArray(computedTodosWithListNames, shallowEqualValue)
 
   const { filterInboxTodos } = useOptimizedInboxFilter()
 
@@ -95,12 +120,12 @@ export default function Page() {
     const counts: Record<string, number> = {}
     for (const goal of goals) {
       if (goal.list_id) {
-        const list = lists.find((l: List) => l.id === goal.list_id)
-        if (list) counts[list.name] = (counts[list.name] || 0) + 1
+        const listName = listNamesById.get(goal.list_id)
+        if (listName) counts[listName] = (counts[listName] || 0) + 1
       }
     }
     return counts
-  }, [goals, lists])
+  }, [goals, listNamesById])
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [todayStrInUTC8, setTodayStrInUTC8] = useState(() => operationTodayStr)
@@ -110,7 +135,7 @@ export default function Page() {
     return () => clearInterval(interval)
   }, [operationTodayStr])
 
-  const displayTodos = useMemo(() => {
+  const computedDisplayTodos = useMemo(() => {
     if (currentView === "inbox") {
       const filtered = filterInboxTodos(uncompletedTodos)
       return sortInboxTodos(filtered)
@@ -132,6 +157,7 @@ export default function Page() {
       return t.list_name === currentView
     })
   }, [currentView, uncompletedTodos, recycledTodos, todosWithListNames, todayStrInUTC8, filterInboxTodos, sortInboxTodos])
+  const displayTodos = useStableArray(computedDisplayTodos, shallowEqualValue)
 
   useEffect(() => {
     const handler = (event: CustomEvent) => {
@@ -198,6 +224,7 @@ export default function Page() {
           handlePermanentDeleteTodo={todoOps.handlePermanentDeleteTodo}
           handleSaveTodoDetails={todoOps.handleSaveTodoDetails}
           handleUpdateTodo={todoOps.handleUpdateTodo}
+          noteDrafts={todoOps.noteDrafts}
           handleCreateTodoForGoal={todoOps.handleCreateTodoForGoal}
           handleEditGoal={goalOps.handleEditGoal}
           handleAssociateTasks={goalOps.handleAssociateTasks}
@@ -223,6 +250,7 @@ export default function Page() {
           selectedGoal={todoOps.selectedGoal}
           setSelectedGoal={todoOps.setSelectedGoal}
           handleUpdateTodo={todoOps.handleUpdateTodo}
+          noteDrafts={todoOps.noteDrafts}
           handleDeleteTodo={todoOps.handleDeleteTodo}
           handleCreateTodoForGoal={todoOps.handleCreateTodoForGoal}
           handleAssociateTasks={goalOps.handleAssociateTasks}
@@ -267,6 +295,7 @@ export default function Page() {
           lists={lists}
           onSubmit={todoOps.handleSaveTodoDetails}
           onUpdate={todoOps.handleUpdateTodo}
+          noteDrafts={todoOps.noteDrafts}
           onDelete={todoOps.handleDeleteTodo}
           onRestore={todoOps.handleRestoreTodo}
           onPermanentDelete={todoOps.handlePermanentDeleteTodo}
@@ -323,6 +352,7 @@ export default function Page() {
         showSelectedTodoModal={activeSection !== "todo" && activeSection !== "calendar"}
         onSaveTodoDetails={todoOps.handleSaveTodoDetails}
         onUpdateTodo={todoOps.handleUpdateTodo}
+        noteDrafts={todoOps.noteDrafts}
         onCloseSelectedTodo={() => todoOps.setSelectedTodo(null)}
         onDeleteTodo={async (todoId) => { todoOps.handleDeleteTodo(todoId); todoOps.setSelectedTodo(null) }}
         onRestoreTodo={todoOps.handleRestoreTodo}

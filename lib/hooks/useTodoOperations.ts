@@ -4,13 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { v4 as uuid, v5 as uuidv5 } from "uuid"
 import debounce from "lodash.debounce"
 import { db } from "@/lib/db/dexie"
-import { createDexieDatabaseAPI, type DatabaseAPI } from "@/lib/db/databaseAPI"
+import { createDexieDatabaseAPI, type DatabaseAPI, type TodoNoteDraftHandlers } from "@/lib/db/databaseAPI"
 import type { Todo as DbTodo } from "@/lib/db/types"
 import { useStores } from "@/lib/stores/createStores"
 import { RecurringTaskGenerator } from "@/lib/recurring/RecurringTaskGenerator"
 import type { Todo, List, Goal } from "@/lib/types"
 import { useOptimizedInboxFilter, useOptimizedInboxSort } from "@/components/InboxPerformanceOptimizer"
 import { useAppDialog } from "@/lib/hooks/useAppDialog"
+import { shallowEqualValue, useStableValue } from "@/lib/hooks/useStableValue"
+
+const TODO_NOTE_SYNC_INTERVAL_MS = 60_000
 
 /* ------------------------------------------------------------------ */
 /*  Helpers & utilities (extracted verbatim from old page.tsx)        */
@@ -224,6 +227,25 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
 
   const { todoStore, listStore } = useStores()
   const { alert, confirm } = useAppDialog()
+  const noteDrafts = useMemo<TodoNoteDraftHandlers>(() => ({
+    load: (todoId) => api.getTodoNoteDraft(todoId),
+    save: (todoId, content) => api.saveTodoNoteDraft(todoId, content),
+    commit: (todoId) => todoStore.getState().commitTodoNoteDraft(todoId),
+  }), [api, todoStore])
+  const noteDraftFlushInProgressRef = useRef(false)
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (noteDraftFlushInProgressRef.current) return
+      noteDraftFlushInProgressRef.current = true
+      void todoStore.getState().flushPendingTodoNoteDrafts()
+        .catch((error) => console.error("同步本地备注草稿失败:", error))
+        .finally(() => {
+          noteDraftFlushInProgressRef.current = false
+        })
+    }, TODO_NOTE_SYNC_INTERVAL_MS)
+    return () => window.clearInterval(interval)
+  }, [todoStore])
 
   // ── State ───────────────────────────────────────────────────────
   const [currentMode, setCurrentMode] = useState<"todo" | "goals">(() => {
@@ -279,10 +301,11 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
 
   // 只保存稳定的记录 ID。Dexie 每次同步都会返回新的对象实例；直接把对象
   // 放进 state 会在每次回写后再触发一次 setState 和整页重渲染。
-  const selectedTodo = useMemo(
+  const selectedTodoCandidate = useMemo(
     () => selectedTodoId ? todos.find((todo) => todo.id === selectedTodoId) ?? null : null,
     [selectedTodoId, todos],
   )
+  const selectedTodo = useStableValue(selectedTodoCandidate, shallowEqualValue)
   const setSelectedTodo = useCallback((todo: Todo | null) => {
     setSelectedTodoId(todo?.id ?? null)
   }, [])
@@ -590,6 +613,7 @@ export function useTodoOperations(todos: Todo[], lists: List[]) {
   return {
     // API
     api,
+    noteDrafts,
     // State
     currentMode, setCurrentMode,
     currentView, setCurrentView,

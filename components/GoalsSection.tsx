@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react'
 import GoalsMainInterface from "@/components/goals/GoalsMainInterface"
 import GoalDetailsDrawer from "@/components/goals/GoalDetailsDrawer"
 import type { Todo, List, Goal } from "@/lib/types"
+import type { TodoNoteDraftHandlers } from "@/lib/db/databaseAPI"
 import type { GoalsMainInterfaceRef } from "@/components/goals/GoalsMainInterface"
 import type { RefObject } from "react"
 
@@ -15,6 +16,7 @@ interface GoalsSectionProps {
   selectedGoal: Goal | null
   setSelectedGoal: (g: Goal | null) => void
   handleUpdateTodo: (id: string, u: Partial<Omit<Todo, "id" | "list_name">>) => Promise<void>
+  noteDrafts?: TodoNoteDraftHandlers
   handleDeleteTodo: (id: string) => Promise<void>
   handleCreateTodoForGoal: (d: Partial<Todo>) => Promise<void>
   handleAssociateTasks: (ids: string[], gid: string) => Promise<void>
@@ -34,6 +36,7 @@ export function GoalsSection({
   selectedGoal,
   setSelectedGoal,
   handleUpdateTodo,
+  noteDrafts,
   handleDeleteTodo,
   handleCreateTodoForGoal,
   handleAssociateTasks,
@@ -87,6 +90,7 @@ export function GoalsSection({
             lists={lists}
             onUpdateGoal={handleUpdateGoal}
             onUpdateTodo={handleUpdateTodo}
+            noteDrafts={noteDrafts}
             onDeleteTodo={handleDeleteTodo}
             onCreateTodo={handleCreateTodoForGoal}
             onAssociateTasks={handleAssociateTasks}

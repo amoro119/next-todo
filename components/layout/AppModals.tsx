@@ -1,6 +1,7 @@
 'use client'
 import React from 'react'
 import type { Todo, List, Goal } from '@/lib/types'
+import type { TodoNoteDraftHandlers } from '@/lib/db/databaseAPI'
 import { GoalFormData } from '@/components/goals/GoalModal'
 import TodoModal from '@/components/TodoModal'
 import ManageListsModal from '@/components/ManageListsModal'
@@ -43,6 +44,7 @@ export interface AppModalsProps {
   showSelectedTodoModal: boolean
   onSaveTodoDetails: (todoData: Todo, dirtyPatch?: Partial<Todo>) => Promise<void>
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => Promise<void>
+  noteDrafts?: TodoNoteDraftHandlers
   onCloseSelectedTodo: () => void
   onDeleteTodo: (todoId: string) => Promise<void>
   onRestoreTodo: (todoId: string) => void | Promise<void>
@@ -68,6 +70,7 @@ export function AppModals(props: AppModalsProps) {
     isSearchModalOpen, onSelectTodo, onSelectGoal, onToggleTodoComplete, onOpenSearchModal, onCloseSearchModal,
     isCalendarCreateModalOpen, calendarSelectedDate, onCalendarCreateTodo, onCloseCalendarCreateModal,
     selectedTodo, showSelectedTodoModal, onSaveTodoDetails, onUpdateTodo, onCloseSelectedTodo,
+    noteDrafts,
     onDeleteTodo, onRestoreTodo, onPermanentDeleteTodo,
     isGoalModalOpen, editingGoalId, newGoalTitle,
     onSaveGoal, onGoalCreated, onCloseGoalModal,
@@ -133,6 +136,7 @@ export function AppModals(props: AppModalsProps) {
           initialData={selectedTodo}
           onSubmit={onSaveTodoDetails}
           onUpdate={onUpdateTodo}
+          noteDrafts={noteDrafts}
           onClose={onCloseSelectedTodo}
           onDelete={onDeleteTodo}
           onRestore={onRestoreTodo}

@@ -3,16 +3,16 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, CheckSquare, PanelLeftClose, PanelLeftOpen, Settings, Target } from 'lucide-react'
 import { useNavResize } from '@/lib/hooks/useNavResize'
-import { useSyncStatus } from '@/lib/hooks/useSyncStatus'
+import { useIsSyncing } from '@/lib/hooks/useSyncStatus'
 import { useUIStore, type AppSection } from '@/lib/stores/uiStore'
 import { PWAInstallButton } from '@/components/PWAInstallButton'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/components/common/cn'
 
 const NAV_ITEMS = [
-  { section: 'todo' as AppSection, label: '待办', icon: CheckSquare },
-  { section: 'goals' as AppSection, label: '目标', icon: Target },
   { section: 'calendar' as AppSection, label: '日历', icon: CalendarDays },
+  { section: 'todo' as AppSection, label: '待办列表', icon: CheckSquare },
+  { section: 'goals' as AppSection, label: '目标', icon: Target },
 ]
 
 const COLLAPSED_NAV_WIDTH = 64
@@ -25,7 +25,7 @@ interface NavigationBarProps {
 
 export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBarProps) {
   const { navWidth, isResizing, resizeHandleProps } = useNavResize()
-  const { isSyncing } = useSyncStatus()
+  const isSyncing = useIsSyncing()
   const activeSection = useUIStore((s) => s.activeSection)
   const setActiveSection = useUIStore((s) => s.setActiveSection)
   const [isCollapsed, setIsCollapsed] = useState(false)

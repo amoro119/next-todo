@@ -8,6 +8,8 @@ interface TodoState {
   todos: Todo[]
   addTodo(partial: Partial<Todo>): Promise<void>
   updateTodo(id: string, updates: Partial<Todo>): Promise<void>
+  commitTodoNoteDraft(id: string): Promise<Todo | null>
+  flushPendingTodoNoteDrafts(): Promise<Todo[]>
   deleteTodo(id: string): Promise<void>
   setTodos(todos: Todo[]): void
 }
@@ -40,6 +42,40 @@ export function createTodoStore(api: DatabaseAPI): StoreApi<TodoState> {
         record: updated,
         table: 'todos',
       })
+    },
+
+    async commitTodoNoteDraft(id) {
+      const updated = await api.commitTodoNoteDraft(id)
+      if (!updated) return null
+      set((s) => ({ todos: s.todos.map((todo) => (todo.id === id ? updated : todo)) }))
+      dispatchDataChange('todos', {
+        source: 'local',
+        action: 'update',
+        id,
+        record: updated,
+        table: 'todos',
+      })
+      return updated
+    },
+
+    async flushPendingTodoNoteDrafts() {
+      const updatedTodos = await api.flushPendingTodoNoteDrafts()
+      if (updatedTodos.length === 0) return updatedTodos
+
+      const updatedById = new Map(updatedTodos.map((todo) => [todo.id, todo]))
+      set((s) => ({
+        todos: s.todos.map((todo) => updatedById.get(todo.id) ?? todo),
+      }))
+      for (const updated of updatedTodos) {
+        dispatchDataChange('todos', {
+          source: 'local',
+          action: 'update',
+          id: updated.id,
+          record: updated,
+          table: 'todos',
+        })
+      }
+      return updatedTodos
     },
 
     async deleteTodo(id) {

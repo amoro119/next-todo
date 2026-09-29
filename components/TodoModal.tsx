@@ -1,7 +1,7 @@
 // components/TodoModal.tsx
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useState, useEffect, useRef, useCallback, useMemo, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { Todo, List, Goal } from '../lib/types';
 import RecurrenceSelector from './RecurrenceSelector';
@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useFocusTrap } from '@/lib/hooks/useFocusTrap';
+import type { TodoNoteDraftHandlers } from '@/lib/db/databaseAPI';
 import {
   AIServiceError,
   decomposeTask,
@@ -159,6 +160,7 @@ interface TodoModalProps {
   onSubmit: (todoData: Todo, dirtyPatch?: Partial<Todo>) => void | Promise<unknown>;
   onDelete?: (todoId: string) => void;
   onUpdate?: (todoId: string, updates: Partial<Todo>) => Promise<void>;
+  noteDrafts?: TodoNoteDraftHandlers;
   onRestore?: (todoId: string) => void;
   onPermanentDelete?: (todoId: string) => void;
   onSheetPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -250,7 +252,7 @@ const cleanTodoDates = (todo: Todo): Todo => {
   };
 };
 
-export default function TodoModal({ 
+function TodoModal({
   isOpen = true,
   presentation = 'dialog',
   mode,
@@ -263,6 +265,7 @@ export default function TodoModal({
   onSubmit, 
   onDelete,
   onUpdate,
+  noteDrafts,
   onRestore,
   onPermanentDelete,
   onSheetPointerDown,
@@ -359,30 +362,33 @@ export default function TodoModal({
   }, []);
 
   const runNoteAutosave = useCallback((saveState: NoteAutosaveState): Promise<void> => {
-    const update = onUpdate;
-    if (!update) return Promise.resolve();
+    if (!noteDrafts && !onUpdate) return Promise.resolve();
     if (saveState.workerPromise) return saveState.workerPromise;
 
     const worker = (async () => {
       while (saveState.latest && saveState.savedGeneration < saveState.latest.generation) {
         const target = saveState.latest;
         try {
-          // onUpdate 先完成 Dexie + outbox 事务，再由同步服务上传远端。
-          await update(saveState.recordId, { content: target.content });
+          if (noteDrafts) {
+            // 输入期间只写入 IndexedDB 的本地草稿，不更新任务列表或唤醒远端同步。
+            await noteDrafts.save(saveState.recordId, target.content);
+          } else {
+            await onUpdate!(saveState.recordId, { content: target.content });
+          }
           saveState.savedGeneration = Math.max(saveState.savedGeneration, target.generation);
-          if (saveState.latest?.generation === target.generation) {
+          if (!noteDrafts && saveState.latest?.generation === target.generation) {
             dirtyFieldsRef.current.delete('content');
           }
         } catch {
           if (saveState.latest?.generation === target.generation) {
-            toast.error('备注自动保存失败，请点击“保存”重试');
+            toast.error(noteDrafts ? '备注本地保存失败，请重试' : '备注自动保存失败，请点击“保存”重试');
             break;
           }
         }
 
         // 如果输入期间产生了新内容，仍需等到最后一次输入后再写，
         // 避免连续编辑时每次本地更新都触发整棵任务列表重渲染。
-        if (saveState.latest && saveState.latest.generation > saveState.savedGeneration) {
+        if (!noteDrafts && saveState.latest && saveState.latest.generation > saveState.savedGeneration) {
           const elapsed = Date.now() - saveState.lastChangedAt;
           const remaining = Math.max(0, NOTE_AUTOSAVE_DELAY_MS - elapsed);
           if (remaining > 0) {
@@ -404,10 +410,26 @@ export default function TodoModal({
       },
     );
     return worker;
-  }, [onUpdate]);
+  }, [noteDrafts, onUpdate]);
 
-  const scheduleNoteAutosave = useCallback((content: string) => {
-    if (mode !== 'edit' || !onUpdate || !editableTodo.id) return;
+  const flushNoteAutosave = useCallback(async () => {
+    const saveState = noteAutosaveRef.current;
+    if (!saveState || saveState.recordId !== editableTodo.id) return;
+
+    if (saveState.timer) {
+      window.clearTimeout(saveState.timer);
+      saveState.timer = null;
+    }
+    saveState.lastChangedAt = 0;
+    await runNoteAutosave(saveState);
+    if (saveState.savedGeneration < saveState.generation) {
+      throw new Error('备注草稿尚未成功保存到本地');
+    }
+
+  }, [editableTodo.id, runNoteAutosave]);
+
+  const scheduleNoteAutosave = useCallback((content: string, isRestored = false) => {
+    if (mode !== 'edit' || (!noteDrafts && !onUpdate) || !editableTodo.id) return;
 
     const recordId = editableTodo.id;
     let saveState = noteAutosaveRef.current;
@@ -428,24 +450,22 @@ export default function TodoModal({
     saveState.latest = { generation: saveState.generation, content };
     saveState.lastChangedAt = Date.now();
     if (saveState.timer) window.clearTimeout(saveState.timer);
+
+    if (noteDrafts) {
+      if (isRestored) {
+        saveState.savedGeneration = saveState.generation;
+      } else {
+        // 本地持久化立即开始；worker 会合并尚未落盘的连续输入。
+        void runNoteAutosave(saveState);
+      }
+      return;
+    }
+
     saveState.timer = window.setTimeout(() => {
       saveState!.timer = null;
       void runNoteAutosave(saveState!);
     }, NOTE_AUTOSAVE_DELAY_MS);
-  }, [editableTodo.id, mode, onUpdate, runNoteAutosave]);
-
-  const flushNoteAutosave = useCallback(async () => {
-    const saveState = noteAutosaveRef.current;
-    if (!saveState || saveState.recordId !== editableTodo.id) return;
-
-    if (saveState.timer) {
-      window.clearTimeout(saveState.timer);
-      saveState.timer = null;
-    }
-    // 关闭/点击保存时不再等待防抖窗口，确保最后输入先落本地。
-    saveState.lastChangedAt = 0;
-    await runNoteAutosave(saveState);
-  }, [editableTodo.id, runNoteAutosave]);
+  }, [editableTodo.id, mode, noteDrafts, onUpdate, runNoteAutosave]);
 
   const flushNoteAutosaveRef = useRef(flushNoteAutosave);
   useEffect(() => {
@@ -454,7 +474,7 @@ export default function TodoModal({
 
   useEffect(() => () => {
     noteEditorFlushRef.current?.();
-    void flushNoteAutosaveRef.current();
+    void flushNoteAutosaveRef.current().catch(() => undefined);
   }, []);
 
   // 当 initialData 改变时，更新 editableTodo（主要用于编辑模式）
@@ -489,6 +509,33 @@ export default function TodoModal({
       setEditableTodo(mergedInitialTodo);
     }
   }, [initialData, initialTodo, mode, getContextDefaults]);
+
+  useEffect(() => {
+    const todoId = initialData?.id;
+    if (mode !== 'edit' || !todoId || !noteDrafts) return;
+    let cancelled = false;
+
+    void noteDrafts.load(todoId).then((draft) => {
+      if (
+        cancelled
+        || !draft
+        || activeRecordIdRef.current !== todoId
+        || (noteAutosaveRef.current?.recordId === todoId && noteAutosaveRef.current.generation > 0)
+      ) return;
+
+      noteContentRef.current = draft.content;
+      dirtyFieldsRef.current.add('content');
+      setEditableTodo((current) => ({ ...current, content: draft.content }));
+      scheduleNoteAutosave(draft.content, true);
+    }).catch((error) => {
+      console.error('[TodoModal] Failed to load local note draft:', error);
+      toast.error('恢复本地备注草稿失败');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData?.id, mode, noteDrafts, scheduleNoteAutosave]);
 
   useEffect(() => {
     if (isOpen) {
@@ -537,9 +584,12 @@ export default function TodoModal({
         content: noteContentRef.current,
       });
       const dirtyPatch = Object.fromEntries(
-        [...dirtyFieldsRef.current].map((field) => [field, cleaned[field]]),
+        [...dirtyFieldsRef.current]
+          .filter((field) => field !== 'content' || (cleaned.content ?? null) !== (initialData?.content ?? null))
+          .map((field) => [field, cleaned[field]]),
       ) as Partial<Todo>;
       await Promise.resolve(onSubmit(cleaned, mode === 'edit' ? dirtyPatch : undefined));
+      dirtyFieldsRef.current.delete('content');
       toast.success(mode === 'create' ? '任务已创建' : '任务已保存');
     } catch (error) {
       toast.error(mode === 'create' ? '创建任务失败' : '保存任务失败');
@@ -547,10 +597,14 @@ export default function TodoModal({
     }
   };
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
     noteEditorFlushRef.current?.();
-    void flushNoteAutosave();
-    onClose();
+    try {
+      await flushNoteAutosave();
+      onClose();
+    } catch {
+      toast.error('备注保存失败，请稍后重试');
+    }
   }, [flushNoteAutosave, onClose]);
 
   const handleDelete = async () => {
@@ -1193,3 +1247,5 @@ export default function TodoModal({
     </Dialog>
   );
 }
+
+export default memo(TodoModal);

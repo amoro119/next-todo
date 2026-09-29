@@ -10,9 +10,13 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const [sheetOffset, setSheetOffset] = useState(0)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [isDraggingSheet, setIsDraggingSheet] = useState(false)
   const sheetDragStartRef = useRef<number | null>(null)
+
+  const setSheetOffset = (offset: number) => {
+    contentRef.current?.style.setProperty('--settings-sheet-offset', `${offset}px`)
+  }
 
   const handleSheetPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -48,10 +52,11 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent
+        ref={contentRef}
         size="xl"
         showClose={false}
         className={`bottom-0 left-0 top-auto h-[min(92dvh,760px)] max-h-[92dvh] w-full translate-x-0 translate-y-[var(--settings-sheet-offset)] rounded-b-none rounded-t-2xl border-x-0 border-b-0 shadow-2xl data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom md:bottom-auto md:left-1/2 md:top-1/2 md:h-[80vh] md:max-h-[calc(100dvh-2rem)] md:w-full md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg md:border md:shadow-lg md:data-[state=closed]:zoom-out-95 md:data-[state=open]:zoom-in-95 ${isDraggingSheet ? 'transition-none' : ''}`}
-        style={{ '--settings-sheet-offset': `${sheetOffset}px` } as React.CSSProperties}
+        style={{ '--settings-sheet-offset': '0px' } as React.CSSProperties}
       >
         <DialogTitle className="sr-only">设置</DialogTitle>
         <div className="relative flex h-14 shrink-0 items-center justify-between border-b border-[oklch(var(--border))] px-5 pt-3 md:hidden">

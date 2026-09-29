@@ -9,10 +9,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion, useMotionValue } from 'framer-motion'
 import TodoModal from '@/components/TodoModal'
 import type { Goal, List, Todo } from '@/lib/types'
+import type { TodoNoteDraftHandlers } from '@/lib/db/databaseAPI'
 import { useIsDesktopLayout } from '@/lib/hooks/useIsDesktopLayout'
+import { shallowEqualValue, useStableArray, useStableValue } from '@/lib/hooks/useStableValue'
 
 interface TodoDetailsDrawerProps {
   todo: Todo | null
@@ -20,6 +22,7 @@ interface TodoDetailsDrawerProps {
   lists: List[]
   onSubmit: (todo: Todo) => void | Promise<void>
   onUpdate: (todoId: string, updates: Partial<Todo>) => Promise<void>
+  noteDrafts?: TodoNoteDraftHandlers
   onDelete: (todoId: string) => void | Promise<void>
   onRestore: (todoId: string) => void | Promise<void>
   onPermanentDelete: (todoId: string) => void | Promise<void>
@@ -47,6 +50,7 @@ function TodoDetailsDrawer({
   lists,
   onSubmit,
   onUpdate,
+  noteDrafts,
   onDelete,
   onRestore,
   onPermanentDelete,
@@ -56,17 +60,20 @@ function TodoDetailsDrawer({
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(DEFAULT_DRAWER_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
-  const [mountedTodo, setMountedTodo] = useState<Todo | null>(todo)
-  const [sheetOffset, setSheetOffset] = useState(0)
+  const stableTodo = useStableValue(todo, shallowEqualValue)
+  const stableGoals = useStableArray(goals, shallowEqualValue)
+  const stableLists = useStableArray(lists, shallowEqualValue)
+  const [mountedTodo, setMountedTodo] = useState<Todo | null>(stableTodo)
+  const sheetOffset = useMotionValue(0)
   const sheetDragRef = useRef<{ startY: number; offset: number } | null>(null)
   const isDesktop = useIsDesktopLayout()
 
   useEffect(() => {
-    if (todo) {
-      setMountedTodo(todo)
-      setSheetOffset(0)
+    if (stableTodo) {
+      setMountedTodo(stableTodo)
+      sheetOffset.set(0)
     }
-  }, [todo])
+  }, [sheetOffset, stableTodo])
 
   const getDrawerBounds = useCallback(() => {
     const containerWidth = drawerRef.current?.parentElement?.clientWidth ?? window.innerWidth
@@ -173,34 +180,34 @@ function TodoDetailsDrawer({
     }
   }
 
-  const handleSheetPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleSheetPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (isDesktop) return
 
     event.preventDefault()
-    sheetDragRef.current = { startY: event.clientY, offset: sheetOffset }
+    sheetDragRef.current = { startY: event.clientY, offset: sheetOffset.get() }
     event.currentTarget.setPointerCapture(event.pointerId)
-  }
+  }, [isDesktop, sheetOffset])
 
-  const handleSheetPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleSheetPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const dragState = sheetDragRef.current
     if (!dragState) return
 
-    setSheetOffset(Math.max(0, dragState.offset + event.clientY - dragState.startY))
-  }
+    sheetOffset.set(Math.max(0, dragState.offset + event.clientY - dragState.startY))
+  }, [sheetOffset])
 
-  const handleSheetPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleSheetPointerEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
 
-    const shouldClose = sheetOffset >= 120
+    const shouldClose = sheetOffset.get() >= 120
     sheetDragRef.current = null
-    setSheetOffset(0)
+    sheetOffset.set(0)
     if (shouldClose) onClose()
-  }
+  }, [onClose, sheetOffset])
 
   const drawerCssWidth = `min(100%, ${drawerWidth}px)`
-  const displayTodo = todo ?? mountedTodo
+  const displayTodo = stableTodo ?? mountedTodo
 
   return (
     <>
@@ -209,25 +216,25 @@ function TodoDetailsDrawer({
           role="separator"
           aria-label="调整任务详情宽度"
           aria-orientation="vertical"
-          aria-hidden={!todo}
+          aria-hidden={!stableTodo}
           aria-valuemin={MIN_DRAWER_WIDTH}
           aria-valuemax={MAX_DRAWER_WIDTH}
           aria-valuenow={Math.round(drawerWidth)}
           aria-valuetext={`${Math.round(drawerWidth)} 像素`}
-          tabIndex={todo ? 0 : -1}
+          tabIndex={stableTodo ? 0 : -1}
           title="拖动调整详情宽度；双击重置"
-          onPointerDown={todo ? handlePointerDown : undefined}
-          onPointerMove={todo ? handlePointerMove : undefined}
-          onPointerUp={todo ? handlePointerEnd : undefined}
-          onPointerCancel={todo ? handlePointerEnd : undefined}
-          onKeyDown={todo ? handleResizeKeyDown : undefined}
+          onPointerDown={stableTodo ? handlePointerDown : undefined}
+          onPointerMove={stableTodo ? handlePointerMove : undefined}
+          onPointerUp={stableTodo ? handlePointerEnd : undefined}
+          onPointerCancel={stableTodo ? handlePointerEnd : undefined}
+          onKeyDown={stableTodo ? handleResizeKeyDown : undefined}
           onDoubleClick={
-            todo
+            stableTodo
               ? () => setDrawerWidth(constrainDrawerWidth(DEFAULT_DRAWER_WIDTH))
               : undefined
           }
           className={`group relative hidden h-full w-4 shrink-0 touch-none cursor-col-resize select-none outline-none md:block focus-visible:bg-accent/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
-            !todo ? 'pointer-events-none' : ''
+            !stableTodo ? 'pointer-events-none' : ''
           } ${isResizing ? 'z-10' : ''}`}
         >
           <span
@@ -237,7 +244,7 @@ function TodoDetailsDrawer({
       )}
 
       <AnimatePresence initial={false}>
-        {todo && (
+        {stableTodo && (
           <motion.button
             type="button"
             aria-label="关闭任务详情"
@@ -261,10 +268,10 @@ function TodoDetailsDrawer({
           // 会迫使日历网格及其所有任务节点持续重新布局。
           width: isDesktop ? (displayTodo ? drawerCssWidth : 0) : '100%',
           visibility: displayTodo ? 'visible' : 'hidden',
-          pointerEvents: todo ? 'auto' : 'none',
+          pointerEvents: stableTodo ? 'auto' : 'none',
           contain: 'layout paint',
         }}
-        aria-hidden={!todo}
+        aria-hidden={!stableTodo}
         aria-label={displayTodo ? `任务详情：${displayTodo.title}` : undefined}
       >
         <AnimatePresence initial={false}>
@@ -272,12 +279,12 @@ function TodoDetailsDrawer({
             <motion.div
               initial={isDesktop ? { opacity: 0, x: '100%' } : { opacity: 0, y: '100%' }}
               animate={isDesktop
-                ? { opacity: todo ? 1 : 0, x: todo ? 0 : '100%' }
-                : { opacity: todo ? 1 : 0, y: todo ? sheetOffset : '100%' }}
+                ? { opacity: stableTodo ? 1 : 0, x: stableTodo ? 0 : '100%' }
+                : { opacity: stableTodo ? 1 : 0, y: stableTodo ? 0 : '100%' }}
               onAnimationComplete={() => {
-                if (!todo) setMountedTodo(null)
+                if (!stableTodo) setMountedTodo(null)
               }}
-              transition={todo
+              transition={stableTodo
                 ? MOBILE_SHEET_ENTER_TRANSITION
                 : { duration: 0.24, ease: [0.4, 0, 1, 1] }}
               className="h-full w-full will-change-transform md:w-auto"
@@ -285,24 +292,32 @@ function TodoDetailsDrawer({
                 ? { width: drawerCssWidth, minWidth: drawerCssWidth, contain: 'layout paint', willChange: 'transform, opacity' }
                 : { contain: 'layout paint', willChange: 'transform, opacity' }}
             >
-              <TodoModal
-                isOpen={!!todo}
-                presentation="drawer"
-                mode="edit"
-                lists={lists}
-                goals={goals}
-                initialData={displayTodo ?? undefined}
-                onSubmit={onSubmit}
-                onUpdate={onUpdate}
-                onClose={onClose}
-                onDelete={onDelete}
-                onRestore={onRestore}
-                onPermanentDelete={onPermanentDelete}
-                onSheetPointerDown={handleSheetPointerDown}
-                onSheetPointerMove={handleSheetPointerMove}
-                onSheetPointerUp={handleSheetPointerEnd}
-                onSheetPointerCancel={handleSheetPointerEnd}
-              />
+              <motion.div
+                className="h-full w-full will-change-transform md:w-auto"
+                style={isDesktop
+                  ? { width: drawerCssWidth, minWidth: drawerCssWidth, contain: 'layout paint' }
+                  : { width: '100%', y: sheetOffset, contain: 'layout paint', willChange: 'transform' }}
+              >
+                <TodoModal
+                  isOpen={!!stableTodo}
+                  presentation="drawer"
+                  mode="edit"
+                  lists={stableLists}
+                  goals={stableGoals}
+                  initialData={displayTodo ?? undefined}
+                  onSubmit={onSubmit}
+                  onUpdate={onUpdate}
+                  noteDrafts={noteDrafts}
+                  onClose={onClose}
+                  onDelete={onDelete}
+                  onRestore={onRestore}
+                  onPermanentDelete={onPermanentDelete}
+                  onSheetPointerDown={handleSheetPointerDown}
+                  onSheetPointerMove={handleSheetPointerMove}
+                  onSheetPointerUp={handleSheetPointerEnd}
+                  onSheetPointerCancel={handleSheetPointerEnd}
+                />
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>

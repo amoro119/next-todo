@@ -7,7 +7,7 @@ export { useModalKeyboardManager } from './useModalKeyboardManager';
 export { useDebounce } from './useDebounce';
 
 // Sync hooks
-export { useSyncStatus } from './useSyncStatus'
+export { useSyncStatus, useIsSyncing } from './useSyncStatus'
 export { useRealtimeSync } from './useRealtimeSync'
 export type { UseRealtimeSyncOptions } from './useRealtimeSync'
 

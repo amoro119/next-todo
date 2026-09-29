@@ -3,9 +3,11 @@
 import { memo, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { Goal, List, Todo } from '@/lib/types'
+import type { TodoNoteDraftHandlers } from '@/lib/db/databaseAPI'
 import GoalDetails from './GoalDetails'
 import GoalHeader from './GoalHeader'
 import { useIsDesktopLayout } from '@/lib/hooks/useIsDesktopLayout'
+import { shallowEqualValue, useStableArray, useStableValue } from '@/lib/hooks/useStableValue'
 
 interface GoalDetailsDrawerProps {
   goal: Goal | null
@@ -14,6 +16,7 @@ interface GoalDetailsDrawerProps {
   lists: List[]
   onUpdateGoal: (goal: Goal) => void
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => void
+  noteDrafts?: TodoNoteDraftHandlers
   onDeleteTodo: (todoId: string) => void
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void
   onAssociateTasks: (taskIds: string[], goalId: string) => void
@@ -38,6 +41,7 @@ function GoalDetailsDrawer({
   lists,
   onUpdateGoal,
   onUpdateTodo,
+  noteDrafts,
   onDeleteTodo,
   onCreateTodo,
   onAssociateTasks,
@@ -48,17 +52,21 @@ function GoalDetailsDrawer({
   const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [drawerWidth, setDrawerWidth] = useState(DEFAULT_DRAWER_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
-  const [mountedGoal, setMountedGoal] = useState<Goal | null>(goal)
-  const [mountedTodos, setMountedTodos] = useState<Todo[]>(todos)
+  const stableGoal = useStableValue(goal, shallowEqualValue)
+  const stableTodos = useStableArray(todos, shallowEqualValue)
+  const stableGoals = useStableArray(goals, shallowEqualValue)
+  const stableLists = useStableArray(lists, shallowEqualValue)
+  const [mountedGoal, setMountedGoal] = useState<Goal | null>(stableGoal)
+  const [mountedTodos, setMountedTodos] = useState<Todo[]>(stableTodos)
   const isDesktop = useIsDesktopLayout()
 
   useEffect(() => {
-    if (goal) setMountedGoal(goal)
-  }, [goal])
+    if (stableGoal) setMountedGoal(stableGoal)
+  }, [stableGoal])
 
   useEffect(() => {
-    if (goal) setMountedTodos(todos)
-  }, [goal, todos])
+    if (stableGoal) setMountedTodos(stableTodos)
+  }, [stableGoal, stableTodos])
 
   const getDrawerBounds = useCallback(() => {
     const containerWidth = drawerRef.current?.parentElement?.clientWidth ?? window.innerWidth
@@ -83,7 +91,7 @@ function GoalDetailsDrawer({
   }, [restoreDragStyles])
 
   useEffect(() => {
-    if (!goal) return
+    if (!stableGoal) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented) onClose()
@@ -91,7 +99,7 @@ function GoalDetailsDrawer({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [goal, onClose])
+  }, [onClose, stableGoal])
 
   useEffect(() => {
     const storedWidth = Number(window.localStorage.getItem(DRAWER_WIDTH_STORAGE_KEY))
@@ -163,8 +171,8 @@ function GoalDetailsDrawer({
   }
 
   const drawerCssWidth = `min(100%, ${drawerWidth}px)`
-  const displayGoal = goal ?? mountedGoal
-  const displayTodos = goal ? todos : mountedTodos
+  const displayGoal = stableGoal ?? mountedGoal
+  const displayTodos = stableGoal ? stableTodos : mountedTodos
 
   return (
     <>
@@ -206,7 +214,7 @@ function GoalDetailsDrawer({
           pointerEvents: goal ? 'auto' : 'none',
           contain: 'layout paint',
         }}
-        aria-hidden={!goal}
+        aria-hidden={!stableGoal}
         aria-label={displayGoal ? `目标详情：${displayGoal.name}` : undefined}
       >
         <AnimatePresence initial={false}>
@@ -214,12 +222,12 @@ function GoalDetailsDrawer({
             <motion.div
               initial={isDesktop ? { opacity: 0, x: '100%' } : { opacity: 0, y: '100%' }}
               animate={isDesktop
-                ? { opacity: goal ? 1 : 0, x: goal ? 0 : '100%' }
-                : { opacity: goal ? 1 : 0, y: goal ? 0 : '100%' }}
+                ? { opacity: stableGoal ? 1 : 0, x: stableGoal ? 0 : '100%' }
+                : { opacity: stableGoal ? 1 : 0, y: stableGoal ? 0 : '100%' }}
               onAnimationComplete={() => {
-                if (!goal) setMountedGoal(null)
+                if (!stableGoal) setMountedGoal(null)
               }}
-              transition={{ duration: goal ? 0.36 : 0.24, ease: goal ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1] }}
+              transition={{ duration: stableGoal ? 0.36 : 0.24, ease: stableGoal ? [0.22, 1, 0.36, 1] : [0.4, 0, 1, 1] }}
               className="h-full will-change-transform bg-[oklch(var(--background))]"
               style={isDesktop
                 ? { width: drawerCssWidth, minWidth: drawerCssWidth, contain: 'layout paint', willChange: 'transform, opacity' }
@@ -228,17 +236,18 @@ function GoalDetailsDrawer({
               <div className="mobile-detail-safe-top flex h-full min-h-0 flex-col bg-[oklch(var(--background))] px-3 sm:px-5">
                 <GoalHeader
                   selectedGoal={displayGoal!}
-                  goalCount={goals.length}
+                  goalCount={stableGoals.length}
                   onBackToList={onClose}
                   onEditGoal={onEditGoal}
                 />
                 <GoalDetails
                   goal={displayGoal!}
                   todos={displayTodos}
-                  goals={goals}
-                  lists={lists}
+                  goals={stableGoals}
+                  lists={stableLists}
                   onUpdateGoal={onUpdateGoal}
                   onUpdateTodo={onUpdateTodo}
+                  noteDrafts={noteDrafts}
                   onDeleteTodo={onDeleteTodo}
                   onCreateTodo={onCreateTodo}
                   onAssociateTasks={onAssociateTasks}

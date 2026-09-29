@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, GripVertical, Link2, ListChecks, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import type { Goal, Todo, List } from '@/lib/types'
+import type { TodoNoteDraftHandlers } from '@/lib/db/databaseAPI'
 import TodoModal from '@/components/TodoModal'
 import AssociateTaskModal from './AssociateTaskModal'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ interface GoalDetailsProps {
   lists: List[]
   onUpdateGoal: (goal: Goal) => void
   onUpdateTodo: (todoId: string, updates: Partial<Todo>) => void
+  noteDrafts?: TodoNoteDraftHandlers
   onDeleteTodo: (todoId: string) => void
   onCreateTodo: (todo: Omit<Todo, 'id' | 'created_time'>) => void
   onAssociateTasks: (taskIds: string[], goalId: string) => void
@@ -27,7 +29,7 @@ interface GoalDetailsProps {
 
 const priorityLabel = (priority: number) => ['无优先级', '低', '中', '高'][priority] ?? '无优先级'
 
-export default function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, onDeleteTodo, onCreateTodo, onAssociateTasks, loading = false }: GoalDetailsProps) {
+function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, noteDrafts, onDeleteTodo, onCreateTodo, onAssociateTasks, loading = false }: GoalDetailsProps) {
   const [localTodos, setLocalTodos] = useState(todos)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
@@ -129,10 +131,12 @@ export default function GoalDetails({ goal, todos, goals, lists, onUpdateTodo, o
 
       {showAddTask && <TodoModal isOpen mode="create" lists={lists} goals={goals} goalId={goal.id} onClose={() => setShowAddTask(false)} onSubmit={(data) => { onCreateTodo({ title: data.title, completed: false, deleted: false, sort_order: todos.length, due_date: data.due_date, content: data.content, tags: data.tags, priority: data.priority, start_date: data.start_date, list_id: data.list_id, goal_id: goal.id, completed_time: null, repeat: data.repeat, reminder: data.reminder, is_recurring: data.is_recurring, recurring_parent_id: data.recurring_parent_id, instance_number: data.instance_number, next_due_date: data.next_due_date }); setShowAddTask(false) }} />}
       {showAssociateTask && <AssociateTaskModal isOpen onClose={() => setShowAssociateTask(false)} onAssociateTasks={onAssociateTasks} goalId={goal.id} existingTaskIds={todos.map((todo) => todo.id)} />}
-      {editingTask && <TodoModal isOpen mode="edit" lists={lists} goals={goals} goalId={goal.id} initialData={editingTask} onClose={() => setEditingTask(null)} onUpdate={async (id, updates) => { await Promise.resolve(onUpdateTodo(id, updates)) }} onSubmit={(updated) => { const { id, ...rawUpdates } = updated; const updates = Object.fromEntries(Object.entries(rawUpdates).filter(([key]) => key !== 'list_name' && key !== 'goal_name')) as Partial<Todo>; void onUpdateTodo(id, updates); setEditingTask(null) }} onDelete={(id) => { onDeleteTodo(id); setEditingTask(null) }} />}
+      {editingTask && <TodoModal isOpen mode="edit" lists={lists} goals={goals} goalId={goal.id} initialData={editingTask} onClose={() => setEditingTask(null)} onUpdate={async (id, updates) => { await Promise.resolve(onUpdateTodo(id, updates)) }} noteDrafts={noteDrafts} onSubmit={(updated) => { const { id, ...rawUpdates } = updated; const updates = Object.fromEntries(Object.entries(rawUpdates).filter(([key]) => key !== 'list_name' && key !== 'goal_name')) as Partial<Todo>; void onUpdateTodo(id, updates); setEditingTask(null) }} onDelete={(id) => { onDeleteTodo(id); setEditingTask(null) }} />}
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>删除任务？</AlertDialogTitle><AlertDialogDescription>“{deleteTarget?.title}”将从任务列表中删除，此操作无法撤销。</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>取消</AlertDialogCancel><AlertDialogAction onClick={() => { if (deleteTarget) { setLocalTodos((items) => items.filter((item) => item.id !== deleteTarget.id)); onDeleteTodo(deleteTarget.id) } setDeleteTarget(null) }}>删除</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
       </AlertDialog>
     </div>
   )
 }
+
+export default memo(GoalDetails)

@@ -24,6 +24,10 @@ const LOCAL_ONLY_FIELDS = new Set([
 
 export interface DatabaseAPI {
   getTodos(listId?: string): Promise<Todo[]>
+  getTodoNoteDraft(todoId: string): Promise<TodoNoteDraft | null>
+  saveTodoNoteDraft(todoId: string, content: string): Promise<void>
+  commitTodoNoteDraft(todoId: string): Promise<Todo | null>
+  flushPendingTodoNoteDrafts(): Promise<Todo[]>
   getLists(): Promise<List[]>
   getGoals(): Promise<Goal[]>
   addTodo(todo: Partial<Todo>): Promise<Todo>
@@ -45,6 +49,37 @@ export interface DatabaseAPI {
   hardDeleteGoal(id: string): Promise<void>
   importBatch(input: ImportBatchInput): Promise<ImportBatchResult>
   clearLocalData(): Promise<void>
+}
+
+export interface TodoNoteDraft {
+  content: string
+  baseContent: string | null
+}
+
+export interface TodoNoteDraftHandlers {
+  load: (todoId: string) => Promise<TodoNoteDraft | null>
+  save: (todoId: string, content: string) => Promise<void>
+  commit: (todoId: string) => Promise<Todo | null>
+}
+
+const TODO_NOTE_DRAFT_KEY_PREFIX = 'todo-note-draft:'
+
+function todoNoteDraftKey(todoId: string): string {
+  return `${TODO_NOTE_DRAFT_KEY_PREFIX}${todoId}`
+}
+
+function parseTodoNoteDraft(value: string | undefined): TodoNoteDraft | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as Partial<TodoNoteDraft>
+    if (typeof parsed.content !== 'string') return null
+    return {
+      content: parsed.content,
+      baseContent: typeof parsed.baseContent === 'string' ? parsed.baseContent : null,
+    }
+  } catch {
+    return null
+  }
 }
 
 export interface ImportBatchInput {
@@ -165,9 +200,15 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
     requestedUpdates: Partial<T>,
   ): Promise<T> {
     const deviceId = await getOrCreateDeviceId(database)
+    const clearsNoteDraft = tableName === 'todos'
+      && Object.prototype.hasOwnProperty.call(requestedUpdates, 'content')
+      && (requestedUpdates as Partial<Todo>).content !== undefined
+    const transactionTables = clearsNoteDraft
+      ? [table, database.pendingOperations, database.meta]
+      : [table, database.pendingOperations]
     let result: T | undefined
 
-    await database.transaction('rw', [table, database.pendingOperations], async () => {
+    await database.transaction('rw', transactionTables, async () => {
       const before = await table.get(id)
       if (!before) throw new Error(`${tableName} record not found: ${id}`)
 
@@ -186,6 +227,7 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
       }
 
       await table.put(result)
+      if (clearsNoteDraft) await database.meta.delete(todoNoteDraftKey(id))
       if (Object.keys(patch).length > 0) {
         const deleting = patch.deleted_at != null
         const restoring = Object.prototype.hasOwnProperty.call(patch, 'deleted_at')
@@ -211,6 +253,56 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
     return result!
   }
 
+  async function commitTodoNoteDraft(todoId: string, notify = true): Promise<Todo | null> {
+    const key = todoNoteDraftKey(todoId)
+    if (!(await database.meta.get(key))) return null
+
+    const deviceId = await getOrCreateDeviceId(database)
+    let updated: Todo | null = null
+    let shouldNotify = false
+
+    await database.transaction(
+      'rw',
+      [database.todos, database.meta, database.pendingOperations],
+      async () => {
+        const [draftRecord, before] = await Promise.all([
+          database.meta.get(key),
+          database.todos.get(todoId),
+        ])
+        const draft = parseTodoNoteDraft(draftRecord?.value)
+        if (!draftRecord) return
+        if (!draft || !before) {
+          await database.meta.delete(key)
+          return
+        }
+        if (draft.content === before.content) {
+          await database.meta.delete(key)
+          return
+        }
+
+        const timestamp = now()
+        updated = { ...before, content: draft.content, updated_at: timestamp }
+        await database.todos.put(updated)
+        await enqueueOutboxMutation(database, {
+          deviceId,
+          table: 'todos',
+          recordId: todoId,
+          operation: 'update',
+          expectedRevision: Number(before.revision ?? 0) > 0
+            ? Number(before.revision)
+            : null,
+          patch: { content: draft.content },
+          baseValues: { content: draft.baseContent },
+        })
+        await database.meta.delete(key)
+        shouldNotify = true
+      },
+    )
+
+    if (shouldNotify && notify) notifyOutboxChanged()
+    return updated
+  }
+
   return {
     async getTodos(listId?: string): Promise<Todo[]> {
       if (listId !== undefined) {
@@ -219,6 +311,63 @@ export function createDexieDatabaseAPI(database: TodoDatabase): DatabaseAPI {
           .toArray()
       }
       return database.todos.filter((todo) => todo.deleted_at == null).toArray()
+    },
+
+    async getTodoNoteDraft(todoId: string): Promise<TodoNoteDraft | null> {
+      const record = await database.meta.get(todoNoteDraftKey(todoId))
+      return parseTodoNoteDraft(record?.value)
+    },
+
+    async saveTodoNoteDraft(todoId: string, content: string): Promise<void> {
+      await database.transaction('rw', [database.todos, database.meta], async () => {
+        const todo = await database.todos.get(todoId)
+        if (!todo) throw new Error(`todos record not found: ${todoId}`)
+
+        const key = todoNoteDraftKey(todoId)
+        const existing = await database.meta.get(key)
+        const priorDraft = parseTodoNoteDraft(existing?.value)
+        if (content === todo.content) {
+          await database.meta.delete(key)
+          return
+        }
+
+        const draft: TodoNoteDraft = {
+          content,
+          baseContent: priorDraft ? priorDraft.baseContent : todo.content,
+        }
+        await database.meta.put({
+          key,
+          value: JSON.stringify(draft),
+          deleted_at: null,
+          updated_at: now(),
+        })
+      })
+    },
+
+    async commitTodoNoteDraft(todoId: string): Promise<Todo | null> {
+      return commitTodoNoteDraft(todoId)
+    },
+
+    async flushPendingTodoNoteDrafts(): Promise<Todo[]> {
+      const drafts = await database.meta
+        .where('key')
+        .startsWith(TODO_NOTE_DRAFT_KEY_PREFIX)
+        .toArray()
+      let hasCommittedDraft = false
+      const committedTodos: Todo[] = []
+      try {
+        for (const record of drafts) {
+          const todoId = record.key.slice(TODO_NOTE_DRAFT_KEY_PREFIX.length)
+          const committed = await commitTodoNoteDraft(todoId, false)
+          if (committed) {
+            hasCommittedDraft = true
+            committedTodos.push(committed)
+          }
+        }
+      } finally {
+        if (hasCommittedDraft) notifyOutboxChanged()
+      }
+      return committedTodos
     },
 
     async getLists(): Promise<List[]> {
