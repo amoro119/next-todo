@@ -142,7 +142,11 @@ app.post('*', async (c) => {
   let authResult;
   try {
     authResult = await verifyAuth(authHeader);
-  } catch {
+  } catch (error) {
+    // Log only known classifications, never raw errors that may contain credentials.
+    const knownReasons = ["Unauthorized: Supabase env not configured", "Unauthorized: Invalid Authorization format", "Unauthorized: Invalid token"];
+    const reason = error instanceof Error && knownReasons.includes(error.message) ? error.message : "Authentication initialization failed";
+    console.warn(JSON.stringify({ event: "openclaw_auth_failed", reason }));
     return authError();
   }
 
