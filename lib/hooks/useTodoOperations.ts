@@ -13,6 +13,10 @@ import { useOptimizedInboxFilter, useOptimizedInboxSort } from "@/components/Inb
 import { useAppDialog } from "@/lib/hooks/useAppDialog"
 import { shallowEqualValue, useStableValue } from "@/lib/hooks/useStableValue"
 
+const shanghaiDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+})
+
 const TODO_NOTE_SYNC_INTERVAL_MS = 60_000
 
 /* ------------------------------------------------------------------ */
@@ -98,9 +102,7 @@ class DateCache {
   getTodayString(): string {
     const now = Date.now()
     if (!this.todayCache || now - this.todayCache.timestamp > this.CACHE_DURATION) {
-      const date = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-      }).format(new Date())
+      const date = shanghaiDateFormatter.format(new Date())
       this.todayCache = { date, timestamp: now }
     }
     return this.todayCache.date
@@ -122,9 +124,7 @@ export const utcToLocalDateString = (utcDate: string | null | undefined): string
   try {
     const date = new Date(utcDate)
     if (isNaN(date.getTime())) return ""
-    const result = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(date)
+    const result = shanghaiDateFormatter.format(date)
     dateCache.setDateCache(utcDate, result)
     return result
   } catch { return "" }
@@ -152,9 +152,7 @@ export function formatDbDate(val: unknown): string | null {
     try {
       const date = new Date(s)
       if (!isNaN(date.getTime())) {
-        return new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-        }).format(date)
+        return shanghaiDateFormatter.format(date)
       }
     } catch { /* fall through */ }
     return null
@@ -162,9 +160,7 @@ export function formatDbDate(val: unknown): string | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
   const d = new Date(s)
   if (!isNaN(d.getTime())) {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(d)
+    return shanghaiDateFormatter.format(d)
   }
   return null
 }

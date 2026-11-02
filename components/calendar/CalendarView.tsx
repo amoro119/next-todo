@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   addDays,
   addMonths,
@@ -52,25 +52,17 @@ function todoDates(todo: Todo) {
   return { start, end: end && start && end < start ? start : end }
 }
 
-function datesBetween(start: string, end: string) {
-  if (!start || !end) return []
-  const result: string[] = []
-  let cursor = parseISO(start)
-  const finish = parseISO(end)
-  while (cursor <= finish) {
-    result.push(format(cursor, 'yyyy-MM-dd'))
-    cursor = addDays(cursor, 1)
-  }
-  return result
-}
-
 export function segmentTodosByDate(todos: Todo[], visibleDates: string[]) {
   const map: Record<string, Todo[]> = Object.fromEntries(visibleDates.map((date) => [date, []]))
+  const dates = Object.keys(map)
+  if (!dates.length) return map
   for (const todo of todos) {
     if (todo.deleted) continue
     const { start, end } = todoDates(todo)
-    for (const date of datesBetween(start, end)) {
-      if (map[date]) map[date].push(todo)
+    if (!start || !end) continue
+    // ISO date strings sort chronologically; work is bounded by the visible grid.
+    for (const date of dates) {
+      if (date >= start && date <= end) map[date].push(todo)
     }
   }
   Object.values(map).forEach((items) => {
@@ -255,7 +247,7 @@ interface DayCellProps {
   onDrop: (event: React.DragEvent<HTMLElement>, targetDate: string) => void
 }
 
-function DayCell({
+const DayCell = memo(function DayCell({
   date,
   todos,
   selectedTodoId,
@@ -360,7 +352,7 @@ function DayCell({
       </div>
     </div>
   )
-}
+})
 
 interface DaySchedulePanelProps {
   selectedDate: Date
@@ -686,7 +678,7 @@ function ScheduleDrawer({ todos, reducedMotion, keyboardTaskId, onClose, onOpenT
   )
 }
 
-export default function CalendarView({
+function CalendarView({
   todos,
   currentDate,
   selectedTodoId,
@@ -966,3 +958,5 @@ export default function CalendarView({
     </div>
   )
 }
+
+export default memo(CalendarView)

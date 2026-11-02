@@ -69,11 +69,13 @@ function TodoDetailsDrawer({
   const isDesktop = useIsDesktopLayout()
 
   useEffect(() => {
-    if (stableTodo) {
+    if (isDesktop) {
+      setMountedTodo(null)
+    } else if (stableTodo) {
       setMountedTodo(stableTodo)
-      sheetOffset.set(0)
     }
-  }, [sheetOffset, stableTodo])
+    if (stableTodo) sheetOffset.set(0)
+  }, [isDesktop, sheetOffset, stableTodo])
 
   const getDrawerBounds = useCallback(() => {
     const containerWidth = drawerRef.current?.parentElement?.clientWidth ?? window.innerWidth
@@ -207,7 +209,9 @@ function TodoDetailsDrawer({
   }, [onClose, sheetOffset])
 
   const drawerCssWidth = `min(100%, ${drawerWidth}px)`
-  const displayTodo = stableTodo ?? mountedTodo
+  // Desktop panels share layout with the calendar. Release their space in one
+  // commit instead of keeping an empty column until an exit animation finishes.
+  const displayTodo = isDesktop ? stableTodo : (stableTodo ?? mountedTodo)
 
   return (
     <>
@@ -299,7 +303,7 @@ function TodoDetailsDrawer({
                   : { width: '100%', y: sheetOffset, contain: 'layout paint', willChange: 'transform' }}
               >
                 <TodoModal
-                  isOpen={!!stableTodo}
+                  isOpen={!!displayTodo}
                   presentation="drawer"
                   mode="edit"
                   lists={stableLists}

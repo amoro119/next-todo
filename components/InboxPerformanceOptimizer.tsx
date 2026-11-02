@@ -4,6 +4,10 @@
 import { useMemo, useCallback, useRef } from 'react';
 import type { Todo } from '../lib/types';
 
+const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+});
+
 // 高性能收件箱缓存系统
 class InboxCache {
   private filterCache = new Map<string, Todo[]>();
@@ -46,14 +50,7 @@ class InboxCache {
         return '';
       }
       
-      const formatter = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Shanghai',
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit'
-      });
-      
-      const result = formatter.format(date);
+      const result = dateFormatter.format(date);
       
       // 限制缓存大小
       if (this.dateCache.size > 500) {

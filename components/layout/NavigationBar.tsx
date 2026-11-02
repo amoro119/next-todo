@@ -23,9 +23,20 @@ interface NavigationBarProps {
   onSectionChange: (section: AppSection) => void
 }
 
-export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBarProps) {
-  const { navWidth, isResizing, resizeHandleProps } = useNavResize()
+// Keep frequent sync events out of the navigation/layout component.
+function SyncIndicator({ isCollapsed }: { isCollapsed: boolean }) {
   const isSyncing = useIsSyncing()
+  if (!isSyncing) return null
+  return (
+    <div role="status" className={cn('flex items-center gap-2 px-3 py-2 text-xs text-[oklch(var(--muted-foreground))]', isCollapsed && 'justify-center px-0')}>
+      <div className="h-3 w-3 shrink-0 animate-spin rounded-full border border-current border-t-transparent" />
+      <span className={cn(isCollapsed && 'sr-only')}>同步中</span>
+    </div>
+  )
+}
+
+export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBarProps) {
+  const { navWidth, resizeHandleProps } = useNavResize()
   const activeSection = useUIStore((s) => s.activeSection)
   const setActiveSection = useUIStore((s) => s.setActiveSection)
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -46,7 +57,7 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
         id="desktop-sidebar"
         className={cn(
           'hidden md:flex flex-col h-full border-r border-[oklch(var(--border))] bg-[oklch(var(--background))] relative shrink-0',
-          isResizing ? 'transition-none' : 'transition-[width] duration-200 ease-out'
+          'transition-none'
         )}
         style={{ width: `${isCollapsed ? COLLAPSED_NAV_WIDTH : navWidth}px` }}
       >
@@ -98,12 +109,7 @@ export function NavigationBar({ onOpenSettings, onSectionChange }: NavigationBar
         </nav>
 
         <div className={cn('mt-auto hidden md:flex flex-col gap-1 px-2', process.env.NODE_ENV === 'development' ? 'pb-16' : 'pb-3')}>
-          {isSyncing && (
-            <div className={cn('flex items-center gap-2 px-3 py-2 text-xs text-[oklch(var(--muted-foreground))]', isCollapsed && 'justify-center px-0')}>
-              <div className="h-3 w-3 shrink-0 animate-spin rounded-full border border-current border-t-transparent" />
-              <span className={cn(isCollapsed && 'sr-only')}>同步中</span>
-            </div>
-          )}
+          <SyncIndicator isCollapsed={isCollapsed} />
 
           <PWAInstallButton isCollapsed={isCollapsed} />
 

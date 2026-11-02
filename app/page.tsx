@@ -26,7 +26,8 @@ import { shallowEqualValue, useStableArray } from "@/lib/hooks/useStableValue"
 import type { Todo, Goal } from "@/lib/types"
 
 export default function Page() {
-  const { activeSection, setActiveSection } = useUIStore()
+  const activeSection = useUIStore((state) => state.activeSection)
+  const setActiveSection = useUIStore((state) => state.setActiveSection)
 
   const { data: todosRaw } = useTodosQuery()
   const { data: listsRaw } = useListsQuery()
@@ -274,7 +275,7 @@ export default function Page() {
           className="flex h-full min-h-0 overflow-hidden"
         >
         <div
-          className={`min-h-0 min-w-0 flex-1 overflow-hidden ${todoOps.selectedTodo ? 'sm:pr-5' : ''}`}
+          className="min-h-0 min-w-0 flex-1 overflow-hidden"
           onPointerDown={todoOps.selectedTodo ? () => todoOps.setSelectedTodo(null) : undefined}
         >
           <CalendarView
@@ -286,7 +287,7 @@ export default function Page() {
             onOpenModal={todoOps.setSelectedTodo}
             onAddTodo={todoOps.handleAddTodoFromCalendar}
             onOpenCreateModal={todoOps.handleOpenCalendarCreateModal}
-            onCloseTodoDetails={() => todoOps.setSelectedTodo(null)}
+            onCloseTodoDetails={closeSelectedTodo}
           />
         </div>
         <TodoDetailsDrawer

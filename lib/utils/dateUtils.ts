@@ -1,3 +1,10 @@
+const displayDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 /**
  * 通用日期格式化工具函数
  * 处理各种数据库日期格式并转换为本地日期显示
@@ -64,12 +71,7 @@ export function dbUTCToDisplayDate(utcDate: string | null | undefined): string {
       return '';
     }
     // en-CA locale 输出 YYYY-MM-DD 格式，timeZone 指定东八区
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date);
+    return displayDateFormatter.format(date);
   } catch (e) {
     console.error('Error converting UTC date for display:', utcDate, e);
     return '';
